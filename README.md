@@ -28,3 +28,6 @@ Activate the virtual environment, then issue:
 ```
 
 for the latest development version at test-pypi; omit the -i option to get it from pypi instead.
+
+# Using the Agents
+The pytest code exercises the agents themselves. The `von_connector` (django) package sets up a RESTful service wrapper around each demonstration agent. To complete the demonstration, a front end may wire the service wrappers to its user interface, providing an accessible view.
