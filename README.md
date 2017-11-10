@@ -23,6 +23,8 @@ Use the directions at `https://github.com/hyperledger/indy-sdk/blob/master/doc/u
 
 # Installing with pip
 Activate the virtual environment, then issue:
+```
 (py35) $ pip install -i https://testpypi.python.org/pypi von_agent
+```
 
 for the latest development version at test-pypi; omit the -i option to get it from pypi instead.
