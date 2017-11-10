@@ -19,3 +19,10 @@ The demonstration defines four agents:
 Use the directions at `https://github.com/hyperledger/indy-sdk/blob/master/doc/ubuntu-build.md` to:
   - build and install `libindy.so` in the `LD_LIBRARY_PATH` or `/usr/lib/`
   - set up the docker `indy_pool` container and the docker `indy_pool_network` network.
+  - create a virtual environment on python 3.5
+
+# Installing with pip
+Activate the virtual environment, then issue:
+(py35) $ pip install -i https://testpypi.python.org/pypi von_agent
+
+for the latest development version at test-pypi; omit the -i option to get it from pypi instead.

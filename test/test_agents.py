@@ -16,9 +16,9 @@ limitations under the License.
 
 from indy import agent, anoncreds, ledger, signus, pool, wallet, IndyError
 from indy.error import ErrorCode
-from agent.nodepool import NodePool
-from agent.demo_agents import TrustAnchorAgent, SRIAgent, OrgBookAgent, BCRegistrarAgent
-from agent.util import encode, revealed_attrs, ppjson, claims_for, prune_claims_json
+from von_agent.nodepool import NodePool
+from von_agent.demo_agents import TrustAnchorAgent, SRIAgent, OrgBookAgent, BCRegistrarAgent
+from von_agent.util import encode, revealed_attrs, ppjson, claims_for, prune_claims_json
 
 import datetime
 import pytest

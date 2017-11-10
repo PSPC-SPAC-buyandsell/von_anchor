@@ -16,7 +16,7 @@ limitations under the License.
 
 from random import choice
 from string import printable
-from agent.util import encode, decode
+from von_agent.util import encode, decode
 
 import pytest
 

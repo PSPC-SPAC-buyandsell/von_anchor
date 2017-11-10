@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from agent.nodepool import NodePool
-from agent.wallet import Wallet
+from von_agent.nodepool import NodePool
+from von_agent.wallet import Wallet
 
 import pytest
 
