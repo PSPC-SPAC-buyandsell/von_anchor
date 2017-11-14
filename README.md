@@ -17,7 +17,7 @@ The demonstration defines four agents:
 
 # Prerequisites
 Use the directions at `https://github.com/hyperledger/indy-sdk/blob/master/doc/ubuntu-build.md` to:
-  - build and install `libindy.so` in the `LD_LIBRARY_PATH` or `/usr/lib/`
+  - build and install `libindy.so` in the `LD_LIBRARY_PATH` or `/usr/lib/` -- alternatively, install the shared library through the von_connector
   - set up the docker `indy_pool` container and the docker `indy_pool_network` network.
   - create a virtual environment on python 3.5
 
