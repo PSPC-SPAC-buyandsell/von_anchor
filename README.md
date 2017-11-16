@@ -20,4 +20,5 @@ The design document is available from the `von_base` repository (<https://github
   - `von_base`
   - `von_agent`
   - `von_connector`
+
 including instructions for installation, configuration, and operation.
