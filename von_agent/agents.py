@@ -209,8 +209,6 @@ class BaseAgent:
         if (not data_json) or ('attr_names' not in data_json):
             return json.dumps({})  # not present, give back an empty production
 
-        resp['result']['data']['keys'] = resp['result']['data'].pop('attr_names')
-
         rv = json.dumps(resp['result'])
         logger.debug('BaseAgent.get_schema: <<< {}'.format(rv))
         return rv
@@ -1305,7 +1303,7 @@ class HolderProver(BaseListeningAgent):
                     '{}_uuid'.format(attr): {
                         'schema_seq_no': schema['seqNo'],
                         'name': attr
-                    } for attr in schema['data']['keys']
+                    } for attr in schema['data']['attr_names']
                 },
                 'requested_predicates': {
                 }
@@ -1416,8 +1414,8 @@ class HolderProver(BaseListeningAgent):
                     '{}_uuid'.format(attr): {
                         'schema_seq_no': schema['seqNo'],
                         'name': attr
-                    } for attr in schema['data']['keys']
-                    # } for attr in form['data']['claim-filter']['attr-match'] or schema['data']['keys']
+                    } for attr in schema['data']['attr_names']
+                    # } for attr in form['data']['claim-filter']['attr-match'] or schema['data']['attr_names']
                 },
                 'requested_predicates': {
                     # TODO: predicates
@@ -1489,7 +1487,7 @@ class HolderProver(BaseListeningAgent):
                     '{}_uuid'.format(attr): {
                         'schema_seq_no': schema['seqNo'],
                         'name': attr
-                    } for attr in schema['data']['keys']
+                    } for attr in schema['data']['attr_names']
                 },
                 'requested_predicates': {
                     # TODO: predicates
