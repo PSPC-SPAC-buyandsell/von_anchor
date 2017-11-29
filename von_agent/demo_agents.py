@@ -56,37 +56,14 @@ class TrustAnchorAgent(AgentRegistrar, Origin):
         raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
 
-class SRIAgent(Verifier, Issuer, HolderProver):
+class SRIAgent(Verifier, Issuer):
     """
     SRI agent is:
         * a Verifier for:
-            * Org Book proofs of BC Registrar
-            * its own proofs of its own SRI registration claims
-        * an Issuer and HolderProver of its own SRI registration claims
-        * a Prover for its own SRI registration claims.
+            * BC Org Book proofs of BC Registrar
+            * PSPC Org Book proofs of its own SRI registration claims
+        * an Issuer of its own SRI registration claims
     """
-
-    async def reset_wallet(self) -> int:
-        """
-        Method for SRIAgent to close and delete wallet, then create and open a new one. Delegates to
-        HolderProver.reset_wallet() to create wallet and reset master secret, then resets claim_def for
-        SRIAgent's Issuer nature.
-        Useful for demo purpose so as not to have to shut down and restart the HolderProver from django.
-        Precursor to revocation, and issuer/filter-specifiable claim deletion.
-
-        :return: wallet num
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('SRIAgent.reset_wallet: >>>')
-
-        await HolderProver.reset_wallet(self)
-        schema_json = await self._schema_info({})
-        await self.send_claim_def(schema_json)  # allow for new claim creation
-
-        rv = self.wallet.num
-        logger.debug('SRIAgent.reset_wallet: <<< {}'.format(rv))
-        return rv
 
     async def process_post(self, form: dict) -> str:
         """
@@ -153,7 +130,8 @@ class BCRegistrarAgent(Issuer):
 
 class OrgBookAgent(HolderProver):
     """
-    The Org Book  agent is a HolderProver of BC registrar claims
+    The BC Org Book agent is a HolderProver of BC registrar claims.
+    The PSPC Org Book agent is a HolderProver of SRI agent claims.
     """
 
     async def process_post(self, form: dict) -> str:

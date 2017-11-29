@@ -332,7 +332,7 @@ class BaseListeningAgent(BaseAgent):
 
         if not must.issubset(have):
             x = ValueError('Bad token:{} missing keys {}'.format(' ' + hint, must - have))
-            logger.exception(x)
+            logger.error(x)
             raise x
 
         logger.debug('BaseListeningAgent._vet_keys: <<<')
@@ -457,7 +457,7 @@ class BaseListeningAgent(BaseAgent):
             schema_json = self.schema_cache['json']
         else:
             x = ValueError('Schema neither loaded nor specified')
-            logger.exception(x)
+            logger.error(x)
             raise x
 
         rv = schema_json
@@ -1101,7 +1101,7 @@ class HolderProver(BaseListeningAgent):
 
         if self._master_secret is None:
             x = ValueError('Master secret is not set')
-            logger.exception(x)
+            logger.error(x)
             raise x
 
         rv = await anoncreds.prover_create_and_store_claim_req(
@@ -1195,7 +1195,7 @@ class HolderProver(BaseListeningAgent):
 
         if self._master_secret is None:
             x = ValueError('Master secret is not set')
-            logger.exception(x)
+            logger.error(x)
             raise x
 
         # TODO: support multiple schemata? Tricky.
@@ -1330,7 +1330,7 @@ class HolderProver(BaseListeningAgent):
 
         if self._master_secret is None:
             x = ValueError('Master secret is not set')
-            logger.exception(x)
+            logger.error(x)
             raise x
 
         _seed = self.wallet._seed
@@ -1475,7 +1475,7 @@ class HolderProver(BaseListeningAgent):
             claim = json.loads(claim_json)
             if all(not claim['attrs'][attr] for attr in claim['attrs']):
                 x = ValueError('No claim has claim-uuid {}'.format(form['data']['claim-uuid']))
-                logger.exception(x)
+                logger.error(x)
                 raise x
 
             schema = json.loads(schema_json)
