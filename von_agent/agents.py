@@ -697,7 +697,7 @@ class BaseListeningAgent(BaseAgent):
         logger = logging.getLogger(__name__)
         logger.debug('BaseListeningAgent.process_get_did: >>>')
 
-        rv = json.dumps(self.did or '{}')
+        rv = json.dumps(self.did or {})
         logger.debug('BaseListeningAgent.process_get_did: <<< {}'.format(rv))
         return rv
 

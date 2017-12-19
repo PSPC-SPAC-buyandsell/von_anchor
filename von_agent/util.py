@@ -37,6 +37,9 @@ def encode(value):
     To disambiguate for decoding, the function adds 2**32 to any non-trivial transform.
     """
 
+    if value is None:
+        return '4294967297'  # sentinel 2**32 + 1
+
     s = str(value)
     try:
         i = int(value)
@@ -61,6 +64,11 @@ def decode(value: str):
         return value
 
     i = int(value) - 2**32
+    if i == 0:
+        return ''  # special case: empty string encodes as 4294967296
+    elif i == 1:
+        return None  # sentinel 2**32 + 1
+
     blen = ceil(log(i, 16)/2)
     ibytes = unhexlify(i.to_bytes(blen, 'big'))
     return ibytes.decode()
@@ -162,8 +170,9 @@ def prune_claims_json(claim_uuids: set, claims: dict) -> str:
     Strips all claims out of the input json structure that do not match any of the input claim uuids
 
     :param claim_uuids: the set of claim uuids, as specified in claims json structure returned from get_claims,
-        showing up as dict keys that claims_for_value() returns
-    :param claims: claims structure returned by get_claims()
+        showing up as dict keys that claims_for() returns
+    :param claims: claims structure returned by (HolderProver agent) get_claims(), or (equivalently)
+        response json structure at ['claims'] to response to POST claims-request message type
     :return: the reduced claims json
     """
 
@@ -175,13 +184,13 @@ def prune_claims_json(claim_uuids: set, claims: dict) -> str:
 
 def revealed_attrs(proof: dict) -> dict:
     """
-    Fetches revealed attributes from input proof, returns dict mapping attribute names to [decoded, encoded] values,
+    Fetches revealed attributes from input proof, returns dict mapping attribute names to (decoded) values,
     for processing as further claims downstream
 
     :param: indy-sdk proof as dict (proving exactly one claim)
-    :return: dict mapping revealed attribute names to [decoded, encoded] values
+    :return: dict mapping revealed attribute names to decoded values
     """
 
     revealed = proof['proofs'][set(proof['proofs']).pop()]['proof']['primary_proof']['eq_proof']['revealed_attrs']
-    rv = {attr: [decode(revealed[attr]), revealed[attr]] for attr in revealed}
+    rv = {attr: decode(revealed[attr]) for attr in revealed}
     return rv
