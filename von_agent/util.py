@@ -30,7 +30,7 @@ def ppjson(dumpit):
 
 def encode(value):
     """
-    Encoder for claim values, returns encoded value.
+    Encode claim value.
     Operation leaves any (stringified) int32 alone: indy-sdk predicate claims operate on int32
     values properly only when their encoded values match their raw values.
 
@@ -53,7 +53,7 @@ def encode(value):
 
 def decode(value: str):
     """
-    Decoder for encoded claim values, returns decoded value.
+    Decode encoded claim value.
 
     :param value: numeric string to decode
     """
@@ -167,7 +167,7 @@ def claims_for(claims: dict, filt: dict = {}) -> dict:
 
 def prune_claims_json(claim_uuids: set, claims: dict) -> str:
     """
-    Strips all claims out of the input json structure that do not match any of the input claim uuids
+    Strip all claims out of the input json structure that do not match any of the input claim uuids.
 
     :param claim_uuids: the set of claim uuids, as specified in claims json structure returned from get_claims,
         showing up as dict keys that claims_for() returns
@@ -184,8 +184,8 @@ def prune_claims_json(claim_uuids: set, claims: dict) -> str:
 
 def revealed_attrs(proof: dict) -> dict:
     """
-    Fetches revealed attributes from input proof, returns dict mapping attribute names to (decoded) values,
-    for processing as further claims downstream
+    Fetch revealed attributes from input proof and return dict mapping attribute names to (decoded) values,
+    for processing as further claims downstream.
 
     :param: indy-sdk proof as dict (proving exactly one claim)
     :return: dict mapping revealed attribute names to decoded values

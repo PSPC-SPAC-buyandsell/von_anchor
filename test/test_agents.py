@@ -123,13 +123,13 @@ async def test_agents_direct(
     # 3. Publish schema to ledger if not yet present; get from ledger
     schema_data = {
         'name': 'supplier-registration',
-        'version': '1.1',
+        'version': '1.2',
         'attr_names': [
             'id',
             'busId',
             'orgTypeId',
             'jurisdictionId',
-            'LegalName',
+            'legalName',
             'effectiveDate',
             'endDate',
             'sriRegDate'
@@ -191,7 +191,7 @@ async def test_agents_direct(
             'busId': claim_value_pair('11121398'),
             'orgTypeId': claim_value_pair('2'),
             'jurisdictionId': claim_value_pair('1'),
-            'LegalName': claim_value_pair('The Original House of Pies'),
+            'legalName': claim_value_pair('The Original House of Pies'),
             'effectiveDate': claim_value_pair('2010-10-10'),
             'endDate': claim_value_pair(None),
             'sriRegDate': claim_value_pair(None)
@@ -201,7 +201,7 @@ async def test_agents_direct(
             'busId': claim_value_pair('11133333'),
             'orgTypeId': claim_value_pair('1'),
             'jurisdictionId': claim_value_pair('1'),
-            'LegalName': claim_value_pair('Planet Cake'),
+            'legalName': claim_value_pair('Planet Cake'),
             'effectiveDate': claim_value_pair('2011-10-01'),
             'endDate': claim_value_pair(None),
             'sriRegDate': claim_value_pair(None)
@@ -211,7 +211,7 @@ async def test_agents_direct(
             'busId': claim_value_pair('11144444'),
             'orgTypeId': claim_value_pair('2'),
             'jurisdictionId': claim_value_pair('1'),
-            'LegalName': claim_value_pair('Tart City'),
+            'legalName': claim_value_pair('Tart City'),
             'effectiveDate': claim_value_pair('2012-12-01'),
             'endDate': claim_value_pair(None),
             'sriRegDate': claim_value_pair(None)
@@ -239,9 +239,9 @@ async def test_agents_direct(
     (claim_uuids_all, claims_found_json) = await bcobag.get_claims(json.dumps(by_attr))
     print('\n\n== 5 == claims by attr, no filter {}; {}'.format(claim_uuids_all, ppjson(claims_found_json)))
     claims_found = json.loads(claims_found_json)
-    display_pruned_postfilt = claims_for(claims_found, {'LegalName': claims[2]['LegalName'][0]})
+    display_pruned_postfilt = claims_for(claims_found, {'legalName': claims[2]['legalName'][0]})
     print('\n\n== 6 == display claims filtered post-hoc matching {}: {}'.format(
-        claims[2]['LegalName'][0],
+        claims[2]['legalName'][0],
         ppjson(display_pruned_postfilt)))
     display_pruned = prune_claims_json({k for k in display_pruned_postfilt}, claims_found)
     print('\n\n== 7 == stripped down {}'.format(ppjson(display_pruned)))
@@ -473,13 +473,13 @@ async def test_agents_process_forms_local(
         # 3. Publish schema to ledger if not yet present; get from ledger
         schema_data = {
             'name': 'supplier-registration',
-            'version': '1.1',
+            'version': '1.2',
             'attr_names': [
                 'id',
                 'busId',
                 'orgTypeId',
                 'jurisdictionId',
-                'LegalName',
+                'legalName',
                 'effectiveDate',
                 'endDate',
                 'sriRegDate'
@@ -505,7 +505,7 @@ async def test_agents_process_forms_local(
 
         schema_lookup_form['data']['schema']['version'] = '999.999'
         assert not json.loads(await tag.process_post(schema_lookup_form))  # ought not exist
-        schema_lookup_form['data']['schema']['version'] = '1.1'
+        schema_lookup_form['data']['schema']['version'] = '1.2'
         schema_json = await tag.process_post(schema_lookup_form)  # may exist
         if not json.loads(schema_json):
             schema_send = json.loads(await tag.process_post({
@@ -613,7 +613,7 @@ async def test_agents_process_forms_local(
                 'busId': 11121398,
                 'orgTypeId': 2,
                 'jurisdictionId': 1,
-                'LegalName': 'The Original House of Pies',
+                'legalName': 'The Original House of Pies',
                 'effectiveDate': '2010-10-10',
                 'endDate': None,
                 'sriRegDate': None
@@ -623,7 +623,7 @@ async def test_agents_process_forms_local(
                 'busId': 11133333,
                 'orgTypeId': 1,
                 'jurisdictionId': 1,
-                'LegalName': 'Planet Cake',
+                'legalName': 'Planet Cake',
                 'effectiveDate': '2011-10-01',
                 'endDate': None,
                 'sriRegDate': None
@@ -633,7 +633,7 @@ async def test_agents_process_forms_local(
                 'busId': 11144444,
                 'orgTypeId': 2,
                 'jurisdictionId': 1,
-                'LegalName': 'Tart City',
+                'legalName': 'Tart City',
                 'effectiveDate': '2012-12-01',
                 'endDate': None,
                 'sriRegDate': None
@@ -680,9 +680,9 @@ async def test_agents_process_forms_local(
             }
         }))
         print('\n\n== 3 == claims by attr, no filter, process-post {}'.format(ppjson(claims_all)))
-        display_pruned_postfilt = claims_for(claims_all['claims'], {'LegalName': claims[2]['LegalName']})
+        display_pruned_postfilt = claims_for(claims_all['claims'], {'legalName': claims[2]['legalName']})
         print('\n\n== 4 == display claims filtered post-hoc matching {}: {}'.format(
-            claims[2]['LegalName'],
+            claims[2]['legalName'],
             ppjson(display_pruned_postfilt)))
         display_pruned = prune_claims_json({k for k in display_pruned_postfilt}, claims_all['claims'])
         print('\n\n== 5 == stripped down {}'.format(ppjson(display_pruned)))
@@ -703,7 +703,7 @@ async def test_agents_process_forms_local(
         print('\n\n== 6 == claims by attr, with filter a priori, process-post {}'.format(ppjson(claims_prefilt)))
         display_pruned_prefilt = claims_for(claims_prefilt['claims'])
         print('\n\n== 7 == display claims filtered a priori matching {}: {}'.format(
-            claims[2]['LegalName'],
+            claims[2]['legalName'],
             ppjson(display_pruned_prefilt)))
         assert set([*display_pruned_postfilt]) == set([*display_pruned_prefilt])
         assert len(display_pruned_postfilt) == 1
