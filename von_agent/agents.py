@@ -179,13 +179,13 @@ class BaseAgent:
         logger.debug('BaseAgent.get_nym: <<< {}'.format(rv))
         return rv
 
-    async def get_schema(self, issuer_did: str, name: str, version: str) -> str:
+    async def get_schema(self, origin_did: str, name: str, version: str) -> str:
         """
-        Method for Issuer/Verifier/HolderProver to get schema from ledger by issuer, name, and version;
+        Method for Issuer/Verifier/HolderProver to get schema from ledger by origin DID, name, and version;
         empty production {} for none, IndyError with error_code = ErrorCode.LedgerInvalidTransaction
         for bad request.
 
-        :param issuer_did: DID of schema issuer
+        :param origin_did: DID of schema origin
         :param name: schema name
         :param version: schema version string
 
@@ -193,14 +193,14 @@ class BaseAgent:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('BaseAgent.get_schema: >>> issuer_did: {}, name: {}, version: {}'.format(
-            issuer_did,
+        logger.debug('BaseAgent.get_schema: >>> origin_did: {}, name: {}, version: {}'.format(
+            origin_did,
             name,
             version))
 
         req_json = await ledger.build_get_schema_request(
             self.did,
-            issuer_did,
+            origin_did,
             json.dumps({'name': name, 'version': version}))
         resp_json = await ledger.submit_request(self.pool.handle, req_json)
         resp = json.loads(resp_json)
@@ -306,7 +306,6 @@ class BaseListeningAgent(BaseAgent):
         self._host = host
         self._port = port
         self._agent_api_path = agent_api_path
-        self._schema_cache = None
 
         logger.debug('BaseListeningAgent.__init__: <<<')
 
@@ -321,10 +320,6 @@ class BaseListeningAgent(BaseAgent):
     @property
     def agent_api_path(self):
         return self._agent_api_path
-
-    @property
-    def schema_cache(self):
-        return self._schema_cache
 
     def _vet_keys(must: Set[str], have: Set[str], hint: str = '') -> None:
         logger = logging.getLogger(__name__)
@@ -396,74 +391,6 @@ class BaseListeningAgent(BaseAgent):
         logger.debug('BaseListeningAgent.get_claim_def: <<< {}'.format(rv))
         return rv
 
-    async def get_schema(self, issuer_did: str, name: str, version: str) -> str:
-        """
-        Method to get schema from ledger by issuer, name, and version; empty production {} for none,
-        IndyError with error_code = ErrorCode.LedgerInvalidTransaction
-        for bad request.
-
-        BaseListenerAgent.get_schema() caches schema for future calls before returning.
-
-        :param issuer_did: DID of schema issuer
-        :param name: schema name
-        :param version: schema version string
-        :return: schema json as retrieved from ledger
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('BaseListeningAgent.get_schema: >>> issuer_did: {}, name: {}, version: {}'.format(
-            issuer_did,
-            name,
-            version))
-
-        schema_json = await super().get_schema(issuer_did, name, version)
-        schema = json.loads(schema_json)
-
-        if schema:
-            self._schema_cache = {
-                'issuer-did': issuer_did,
-                'name': name,
-                'version': version,
-                'seq_no': schema['seqNo'],
-                'json': schema_json
-            }
-
-        rv = schema_json
-        logger.debug('BaseListeningAgent.get_schema: <<< {}'.format(rv))
-        return rv
-
-    async def _schema_info(self, form_data: dict) -> str:
-        """
-        Gets schema json for use in indy-sdk structures, reading it from cached property
-        or from the ledger if specified in form data.
-
-        :param form_data: form['data'] of request form
-        :return: schema json as it appears on the ledger
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('BaseListeningAgent._schema_info: >>> form_data: {}'.format(form_data))
-
-        if 'schema' in form_data:
-            self.__class__._vet_keys(
-                {'issuer-did', 'name', 'version'},
-                set(form_data['schema'].keys()),
-                hint='schema')
-            schema_json = await self.get_schema(
-                form_data['schema']['issuer-did'], 
-                form_data['schema']['name'],
-                form_data['schema']['version'])
-        elif self.schema_cache is not None:
-            schema_json = self.schema_cache['json']
-        else:
-            x = ValueError('Schema neither loaded nor specified')
-            logger.error(x)
-            raise x
-
-        rv = schema_json
-        logger.debug('BaseListeningAgent._schema_info: <<< {}'.format(rv))
-        return rv
-
     async def _response_from_proxy(self, form: dict, proxy_marker_attr: str) -> 'Response':
         """
         Get the response from the proxy, if the request form content identifies to do so
@@ -524,10 +451,7 @@ class BaseListeningAgent(BaseAgent):
 
         if form['type'] == 'agent-nym-lookup':  # local only, no use case for proxying
             # get agent nym from ledger (if present)
-            self.__class__._vet_keys(
-                {'agent-nym',},
-                set(form['data'].keys()),
-                hint='data')
+            self.__class__._vet_keys({'agent-nym',}, set(form['data'].keys()), hint='data')
             self.__class__._vet_keys(
                 {'did'},
                 set(form['data']['agent-nym'].keys()),
@@ -539,10 +463,7 @@ class BaseListeningAgent(BaseAgent):
 
         elif form['type'] == 'agent-endpoint-lookup':  # local only, no use case for proxying
             # get agent endpoint from ledger (if present)
-            self.__class__._vet_keys(
-                {'agent-endpoint'},
-                set(form['data'].keys()),
-                hint='data')
+            self.__class__._vet_keys({'agent-endpoint'}, set(form['data'].keys()), hint='data')
             self.__class__._vet_keys(
                 {'did'},
                 set(form['data']['agent-endpoint'].keys()),
@@ -566,16 +487,13 @@ class BaseListeningAgent(BaseAgent):
 
         elif form['type'] == 'schema-lookup':  # local only, no use case for proxying
             # init schema from ledger
+            self.__class__._vet_keys({'schema'}, set(form['data'].keys()), hint='data')
             self.__class__._vet_keys(
-                {'schema'},
-                set(form['data'].keys()),
-                hint='data')
-            self.__class__._vet_keys(
-                {'issuer-did', 'name', 'version'},
+                {'origin-did', 'name', 'version'},
                 set(form['data']['schema'].keys()),
                 hint='schema')
             schema_json = await self.get_schema(
-                form['data']['schema']['issuer-did'], 
+                form['data']['schema']['origin-did'], 
                 form['data']['schema']['name'],
                 form['data']['schema']['version'])
             schema = json.loads(schema_json)
@@ -590,10 +508,11 @@ class BaseListeningAgent(BaseAgent):
             return rv
 
         elif form['type'] in ('claim-request', 'proof-request'):
+            self.__class__._vet_keys({'schema', 'claim-filter'}, set(form['data'].keys()), hint='data')
             self.__class__._vet_keys(
-                {'claim-filter'},
-                set(form['data'].keys()),
-                hint='data')
+                {'origin-did', 'name', 'version'},
+                set(form['data']['schema'].keys()),
+                hint='schema')
             self.__class__._vet_keys(
                 {'attr-match', 'predicate-match'},
                 set(form['data']['claim-filter'].keys()),
@@ -612,7 +531,11 @@ class BaseListeningAgent(BaseAgent):
                 '{} does not respond locally to token type {}'.format(self.__class__.__name__, form['type']))
 
         elif form['type'] == 'proof-request-by-claim-uuid':
-            self.__class__._vet_keys({'claim-uuid'}, set(form['data'].keys()), hint='data')
+            self.__class__._vet_keys({'schema', 'claim-uuid'}, set(form['data'].keys()), hint='data')
+            self.__class__._vet_keys(
+                {'origin-did', 'name', 'version'},
+                set(form['data']['schema'].keys()),
+                hint='schema')
 
             resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
@@ -626,7 +549,11 @@ class BaseListeningAgent(BaseAgent):
                 '{} does not respond locally to token type {}'.format(self.__class__.__name__, form['type']))
 
         elif form['type'] == 'verification-request':
-            self.__class__._vet_keys({'proof-req', 'proof'}, set(form['data'].keys()), hint='data')
+            self.__class__._vet_keys({'schema', 'proof-req', 'proof'}, set(form['data'].keys()), hint='data')
+            self.__class__._vet_keys(
+                {'origin-did', 'name', 'version'},
+                set(form['data']['schema'].keys()),
+                hint='schema')
 
             resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
@@ -640,6 +567,11 @@ class BaseListeningAgent(BaseAgent):
                 '{} does not respond locally to token type {}'.format(self.__class__.__name__, form['type']))
 
         elif form['type'] == 'claim-hello':
+            self.__class__._vet_keys({'schema', 'issuer-did'}, set(form['data'].keys()), hint='data')
+            self.__class__._vet_keys(
+                {'origin-did', 'name', 'version'},
+                set(form['data']['schema'].keys()),
+                hint='schema')
             resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
                 rv = resp_proxy_json  # it's proxied
@@ -849,26 +781,18 @@ class Origin(BaseListeningAgent):
 
         if form['type'] == 'schema-send':
             # write schema to ledger
+            self.__class__._vet_keys({'schema', 'attr-names'}, set(form['data'].keys()), hint='data')
             self.__class__._vet_keys(
-                {'schema', 'attr-names'},
-                set(form['data'].keys()),
-                hint='data')
-            self.__class__._vet_keys(
-                {'issuer-did', 'name', 'version'},
+                {'origin-did', 'name', 'version'},
                 set(form['data']['schema'].keys()),
                 hint='schema')
 
-            schema_json = await self.send_schema(json.dumps({
+            rv = await self.send_schema(json.dumps({
                 'name': form['data']['schema']['name'],
                 'version': form['data']['schema']['version'],
                 'attr_names': form['data']['attr-names']
             }))
-            schema = json.loads(schema_json)
 
-            rv = await self.get_schema(
-                self.schema_cache['issuer-did'],
-                self.schema_cache['name'],
-                self.schema_cache['version'])  # pick up ledger contributions
             logger.debug('Origin.process_post: <<< {}'.format(rv))
             return rv
 
@@ -876,9 +800,9 @@ class Origin(BaseListeningAgent):
         logger.debug('Origin.process_post: <!< not this form type: {}'.format(form['type']))
         raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
-class Issuer(BaseListeningAgent):
+class Issuer(Origin):
     """
-    Mixin for agent acting in role of Issuer
+    Mixin for agent acting in role of Issuer. Any issuer may originate its own schema.
     """
 
     async def send_claim_def(self, schema_json: str) -> str:
@@ -971,9 +895,17 @@ class Issuer(BaseListeningAgent):
 
         if form['type'] == 'claim-def-send':
             # create claim def, store in wallet, send to ledger
+            self.__class__._vet_keys({'schema'}, set(form['data'].keys()), hint='data')
+            self.__class__._vet_keys(
+                {'origin-did', 'name', 'version'},
+                set(form['data']['schema'].keys()),
+                hint='schema')
 
             # it's local, carry on (no use case for proxying)
-            schema_json = await self._schema_info(form['data'])
+            schema_json = await self.get_schema(
+                form['data']['schema']['origin-did'],
+                form['data']['schema']['name'],
+                form['data']['schema']['version'])
             await self.send_claim_def(schema_json)
             rv = json.dumps({})
             logger.debug('Issuer.process_post: <<< {}'.format(rv))
@@ -1382,8 +1314,15 @@ class HolderProver(BaseListeningAgent):
 
         elif form['type'] == 'claim-hello':
             # base listening agent code handles all proxied requests: it's local, carry on
-            self.__class__._vet_keys({'issuer-did'}, set(form['data'].keys()), hint='data')
-            schema_json = await self._schema_info(form['data'])
+            self.__class__._vet_keys({'issuer-did', 'schema'}, set(form['data'].keys()), hint='data')
+            self.__class__._vet_keys(
+                {'origin-did', 'name', 'version'},
+                set(form['data']['schema'].keys()),
+                hint='schema')
+            schema_json = await self.get_schema(
+                form['data']['schema']['origin-did'],
+                form['data']['schema']['name'],
+                form['data']['schema']['version'])
             schema = json.loads(schema_json)
             await self.store_claim_offer(form['data']['issuer-did'], schema['seqNo'])
             claim_def_json = await self.get_claim_def(schema['seqNo'], form['data']['issuer-did'])
@@ -1394,10 +1333,11 @@ class HolderProver(BaseListeningAgent):
             return rv
 
         elif form['type'] in ('claim-request', 'proof-request'):
+            self.__class__._vet_keys({'schema', 'claim-filter'}, set(form['data'].keys()), hint='data')
             self.__class__._vet_keys(
-                {'claim-filter'},
-                set(form['data'].keys()),
-                hint='data')
+                {'origin-did', 'name', 'version'},
+                set(form['data']['schema'].keys()),
+                hint='schema')
             self.__class__._vet_keys(
                 {'attr-match', 'predicate-match'},
                 set(form['data']['claim-filter'].keys()),
@@ -1405,7 +1345,11 @@ class HolderProver(BaseListeningAgent):
             # TODO: predicates
 
             # base listening agent code handles all proxied requests: it's local, carry on
-            schema = json.loads(await self._schema_info(form['data']))
+            schema_json = await self.get_schema(
+                form['data']['schema']['origin-did'],
+                form['data']['schema']['name'],
+                form['data']['schema']['version'])
+            schema = json.loads(schema_json)
             find_req = {
                 'nonce': str(int(time() * 1000)),
                 'name': 'find_req_0', # informational only
@@ -1467,10 +1411,17 @@ class HolderProver(BaseListeningAgent):
             return rv
 
         elif form['type'] == 'proof-request-by-claim-uuid':
-            self.__class__._vet_keys({'claim-uuid'}, set(form['data'].keys()), hint='data')
+            self.__class__._vet_keys({'schema', 'claim-uuid'}, set(form['data'].keys()), hint='data')
+            self.__class__._vet_keys(
+                {'origin-did', 'name', 'version'},
+                set(form['data']['schema'].keys()),
+                hint='schema')
 
             # base listening agent code handles all proxied requests: it's local, carry on
-            schema_json = await self._schema_info(form['data'])
+            schema_json = await self.get_schema(
+                form['data']['schema']['origin-did'],
+                form['data']['schema']['name'],
+                form['data']['schema']['version'])
             claim_json = await self.get_claim_by_claim_uuid(schema_json, form['data']['claim-uuid'])
             claim = json.loads(claim_json)
             if all(not claim['attrs'][attr] for attr in claim['attrs']):
@@ -1634,10 +1585,17 @@ class Verifier(BaseListeningAgent):
                 pass
 
         if form['type'] == 'verification-request':
-            self.__class__._vet_keys({'proof-req', 'proof'}, set(form['data'].keys()), hint='data')
+            self.__class__._vet_keys({'schema', 'proof-req', 'proof'}, set(form['data'].keys()), hint='data')
+            self.__class__._vet_keys(
+                {'origin-did', 'name', 'version'},
+                set(form['data']['schema'].keys()),
+                hint='schema')
 
             # base listening agent code handles all proxied requests: it's local, carry on
-            schema_json = await self._schema_info(form['data'])
+            schema_json = await self.get_schema(
+                form['data']['schema']['origin-did'],
+                form['data']['schema']['name'],
+                form['data']['schema']['version'])
             a_claim = form['data']['proof']['proofs'][set([*form['data']['proof']['proofs']]).pop()]
 
             rv = await self.verify_proof(
