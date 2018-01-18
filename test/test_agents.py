@@ -1,5 +1,5 @@
 """
-Copyright 2017 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+Copyright 2017-2018 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,11 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from collections import namedtuple
 from indy import agent, anoncreds, ledger, signus, pool, wallet, IndyError
 from indy.error import ErrorCode
-from von_agent.nodepool import NodePool
 from von_agent.demo_agents import TrustAnchorAgent, SRIAgent, OrgBookAgent, BCRegistrarAgent
-from von_agent.util import encode, revealed_attrs, ppjson, claims_for, prune_claims_json
+from von_agent.nodepool import NodePool
+from von_agent.schema_key import SchemaKey
+from von_agent.util import decode, encode, revealed_attrs, claims_for, prune_claims_json, schema_seq_nos_for, ppjson
 
 import datetime
 import pytest
@@ -30,8 +32,8 @@ def claim_value_pair(plain):
 
 
 #noinspection PyUnusedLocal
-@pytest.mark.asyncio
-async def test_agents_direct(
+# @pytest.mark.asyncio
+async def x_test_agents_direct(
         pool_name,
         pool_genesis_txn_path,
         seed_trustee1,
@@ -90,6 +92,12 @@ async def test_agents_direct(
     await bcobag.open()
     await bcrag.open()
 
+    # print('TAG DID {}'.format(tag.did))            # V4SG...
+    # print('SAG DID {}'.format(sag.did))            # FaBA...
+    # print('PSPCOBAG DID {}'.format(pspcobag.did))  # 45Ue...
+    # print('BCOBAG DID {}'.format(bcobag.did))      # Rzra...
+    # print('BCRAG DID {}'.format(bcrag.did))        # Q4zq...
+
     # 2. Publish agent particulars to ledger if not yet present
     for ag in (tag, sag, pspcobag, bcobag, bcrag):
         if not json.loads(await tag.get_nym(ag.did)):
@@ -121,28 +129,78 @@ async def test_agents_direct(
         assert 'port' in endpoints[k]
 
     # 3. Publish schema to ledger if not yet present; get from ledger
-    bc_schema_data = {
-        'name': 'bc-reg',
-        'version': '1.0',
-        'attr_names': [
-            'id',
-            'busId',
-            'orgTypeId',
-            'jurisdictionId',
-            'legalName',
-            'effectiveDate',
-            'endDate'
-        ]
+    S_KEY = {
+        'BC': SchemaKey(bcrag, 'bc-reg', '1.0'),
+        'SRI-1.0': SchemaKey(sag, 'sri', '1.0'),
+        'SRI-1.1': SchemaKey(sag, 'sri', '1.1'),
+        'GREEN': SchemaKey(sag, 'green', '1.0'),
     }
 
-    sri_schema_data = {
-        'name': 'sri',
-        'version': '1.0',
-        'attr_names': [
-            'legalName',
-            'jurisdictionId',
-            'sriRegDate'
-        ]
+    schema_data = {
+        S_KEY['BC']: {
+            'name': S_KEY['BC'].name,
+            'version': S_KEY['BC'].version,
+            'attr_names': [
+                'id',
+                'busId',
+                'orgTypeId',
+                'jurisdictionId',
+                'legalName',
+                'effectiveDate',
+                'endDate'
+            ]
+        },
+        S_KEY['SRI-1.0']: {
+            'name': S_KEY['SRI-1.0'].name,
+            'version': S_KEY['SRI-1.0'].version,
+            'attr_names': [
+                'legalName',
+                'jurisdictionId',
+                'sriRegDate'
+            ]
+        },
+        S_KEY['SRI-1.1']: {
+            'name': S_KEY['SRI-1.1'].name,
+            'version': S_KEY['SRI-1.1'].version,
+            'attr_names': [
+                'legalName',
+                'jurisdictionId',
+                'businessLang',
+                'sriRegDate'
+            ]
+        },
+        S_KEY['GREEN']: {
+            'name': S_KEY['GREEN'].name,
+            'version': S_KEY['GREEN'].version,
+            'attr_names': [
+                'legalName',
+                'greenLevel',
+                'auditDate'
+            ]
+        }
+    }
+
+    # index by transaction number
+    seq_no2schema = {}
+    seq_no2schema_key = {}
+
+    # index by SchemaKey
+    schema_json = {}
+    schema = {}
+    claim_def_json = {}
+    claim_def = {}
+    claim_data = {}
+    claim_req = {}
+    claim_req_json = {}
+    claim = {}
+    claim_json = {}
+    find_req = {}
+    claims_found = {}
+    claims_found_json = {}
+
+    holder_prover = {
+        bcrag: bcobag,
+        sag: pspcobag
     }
 
     try:
@@ -150,48 +208,43 @@ async def test_agents_direct(
     except IndyError as e:
         assert ErrorCode.LedgerInvalidTransaction == e.error_code
 
-    bc_schema_json = await bcrag.get_schema(bcrag.did, bc_schema_data['name'], bc_schema_data['version'])  # may exist
-    if not json.loads(bc_schema_json):
-        bc_schema_json = await bcrag.send_schema(json.dumps(bc_schema_data))
-    bc_schema_json = await bcrag.get_schema(
-        bcrag.did,
-        bc_schema_data['name'],
-        bc_schema_data['version'])  # should exist now
-    bc_schema = json.loads(bc_schema_json)
-    assert bc_schema
-    print('\n\n== 2.0 == BC SCHEMA {}'.format(ppjson(bc_schema)))
-
-    sri_schema_json = await sag.get_schema(sag.did, sri_schema_data['name'], sri_schema_data['version'])  # may exist
-    if not json.loads(sri_schema_json):
-        sri_schema_json = await sag.send_schema(json.dumps(sri_schema_data))
-    sri_schema_json = await sag.get_schema(
-        sag.did,
-        sri_schema_data['name'],
-        sri_schema_data['version'])  # should exist now
-    sri_schema = json.loads(sri_schema_json)
-    assert sri_schema
-    print('\n\n== 2.1 == SRI SCHEMA {}'.format(ppjson(sri_schema)))
+    i = 0
+    for s_key in schema_data:
+        swab_json = await bcrag.get_schema(  # may exist
+            s_key.origin.did,
+            s_key.name,
+            s_key.version)
+        if not json.loads(swab_json):
+            await s_key.origin.send_schema(json.dumps(schema_data[s_key]))
+        schema_json[s_key] = await s_key.origin.get_schema(
+            s_key.origin.did,
+            s_key.name,
+            s_key.version)  # should exist now
+        schema[s_key] = json.loads(schema_json[s_key])
+        seq_no2schema_key[schema[s_key]['seqNo']] = s_key
+        seq_no2schema[schema[s_key]['seqNo']] = schema[s_key]
+        print('\n\n== 2.{} == SCHEMA [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_key])))
+        assert schema[s_key]
+        i += 1
 
     # 4. BC Registrar and SRI agents (as Issuers) create, store, and publish claim definitions to ledger
-    # print('TAG DID {}'.format(tag.did))            # V4SG...
-    # print('SAG DID {}'.format(sag.did))            # FaBA...
-    # print('PSPCOBAG DID {}'.format(pspcobag.did))  # 45Ue...
-    # print('BCOBAG DID {}'.format(bcobag.did))      # Rzra...
-    # print('BCRAG DID {}'.format(bcrag.did))        # Q4zq...
     non_claim_def_json = await bcobag.get_claim_def(999999, bcrag.did)  # ought not exist
     assert not json.loads(non_claim_def_json)
 
-    bc_claim_def_json = await bcrag.send_claim_def(bc_schema_json)
-    bc_claim_def_json = await bcobag.get_claim_def(bc_schema['seqNo'], bcrag.did)  # ought to exist now
-
-    sri_claim_def_json = await sag.send_claim_def(sri_schema_json)
-    sri_claim_def_json = await pspcobag.get_claim_def(sri_schema['seqNo'], sag.did)
-
-    assert json.loads(bc_claim_def_json)['ref'] == bc_schema['seqNo']
-    assert json.loads(sri_claim_def_json)['ref'] == sri_schema['seqNo']
-
-    print('\n\n== 3.0 == BC claim def {}'.format(ppjson(json.loads(bc_claim_def_json))))
-    print('\n\n== 3.1 == SRI claim def {}'.format(ppjson(json.loads(sri_claim_def_json))))
+    i = 0
+    for s_key in schema_data:
+        await s_key.origin.send_claim_def(schema_json[s_key])
+        claim_def_json[s_key] = await holder_prover[s_key.origin].get_claim_def(
+            schema[s_key]['seqNo'],
+            s_key.origin.did)  # ought to exist now
+        claim_def[s_key] = json.loads(claim_def_json[s_key])
+        print('\n\n== 3.{} == Claim def [{} v{}]: {}'.format(
+            i,
+            s_key.name,
+            s_key.version,
+            ppjson(json.loads(claim_def_json[s_key]))))
+        assert json.loads(claim_def_json[s_key])['ref'] == schema[s_key]['seqNo']
+        i += 1
 
     # 5. Setup master secrets, claim reqs at HolderProver agents
     await bcobag.create_master_secret('MasterSecret')
@@ -201,114 +254,163 @@ async def test_agents_direct(
         wallet_num = ag.wallet.num
         assert (await ag.reset_wallet()) > wallet_num  # makes sure later ops are OK on reset wallet
 
-    await bcobag.store_claim_offer(bcrag.did, bc_schema['seqNo'])
-    bc_claim_req_json = await bcobag.store_claim_req(bcrag.did, bc_claim_def_json)
-    print('\n\n== 4.0 == BC reg claim req {}'.format(ppjson(bc_claim_req_json)))
-
-    await pspcobag.store_claim_offer(sag.did, sri_schema['seqNo'])
-    sri_claim_req_json = await pspcobag.store_claim_req(sag.did, sri_claim_def_json)
-    print('\n\n== 4.1 == SRI reg claim req {}'.format(ppjson(sri_claim_req_json)))
+    i = 0
+    for s_key in schema_data:
+        await holder_prover[s_key.origin].store_claim_offer(s_key.origin.did, schema[s_key]['seqNo'])
+        claim_req_json[s_key] = await holder_prover[s_key.origin].store_claim_req(
+            s_key.origin.did,
+            claim_def_json[s_key])
+        claim_req[s_key] = json.loads(claim_req_json[s_key])
+        print('\n\n== 4.{} == Claim req [{} v{}]: {}'.format(
+            i,
+            s_key.name,
+            s_key.version,
+            ppjson(claim_req_json[s_key])))
+        assert json.loads(claim_req_json[s_key])
+        i += 1
 
     # 6. BC Reg agent (as Issuer) issues claims and stores at HolderProver: get claim req, create claim, store claim
-    bc_claims = [
-        {
-            'id': claim_value_pair('1'),
-            'busId': claim_value_pair('11121398'),
-            'orgTypeId': claim_value_pair('2'),
-            'jurisdictionId': claim_value_pair('1'),
-            'legalName': claim_value_pair('The Original House of Pies'),
-            'effectiveDate': claim_value_pair('2010-10-10'),
-            'endDate': claim_value_pair(None)
-        },
-        {
-            'id': claim_value_pair('2'),
-            'busId': claim_value_pair('11133333'),
-            'orgTypeId': claim_value_pair('1'),
-            'jurisdictionId': claim_value_pair('1'),
-            'legalName': claim_value_pair('Planet Cake'),
-            'effectiveDate': claim_value_pair('2011-10-01'),
-            'endDate': claim_value_pair(None)
-        },
-        {
-            'id': claim_value_pair('3'),
-            'busId': claim_value_pair('11144444'),
-            'orgTypeId': claim_value_pair('2'),
-            'jurisdictionId': claim_value_pair('1'),
-            'legalName': claim_value_pair('Tart City'),
-            'effectiveDate': claim_value_pair('2012-12-01'),
-            'endDate': claim_value_pair(None)
-        }
-    ]
-    for c in bc_claims:
-        (_, bc_claim_json) = await bcrag.create_claim(bc_claim_req_json, c)
-        assert json.loads(bc_claim_json)
-        await bcobag.store_claim(bc_claim_json)
+    claim_data = {
+        S_KEY['BC']: [
+            {
+                'id': claim_value_pair('1'),
+                'busId': claim_value_pair('11121398'),
+                'orgTypeId': claim_value_pair('2'),
+                'jurisdictionId': claim_value_pair('1'),
+                'legalName': claim_value_pair('The Original House of Pies'),
+                'effectiveDate': claim_value_pair('2010-10-10'),
+                'endDate': claim_value_pair(None)
+            },
+            {
+                'id': claim_value_pair('2'),
+                'busId': claim_value_pair('11133333'),
+                'orgTypeId': claim_value_pair('1'),
+                'jurisdictionId': claim_value_pair('1'),
+                'legalName': claim_value_pair('Planet Cake'),
+                'effectiveDate': claim_value_pair('2011-10-01'),
+                'endDate': claim_value_pair(None)
+            },
+            {
+                'id': claim_value_pair('3'),
+                'busId': claim_value_pair('11144444'),
+                'orgTypeId': claim_value_pair('2'),
+                'jurisdictionId': claim_value_pair('1'),
+                'legalName': claim_value_pair('Tart City'),
+                'effectiveDate': claim_value_pair('2012-12-01'),
+                'endDate': claim_value_pair(None)
+            }
+        ],
+        S_KEY['SRI-1.0']: [],
+        S_KEY['SRI-1.1']: [],
+        S_KEY['GREEN']: []
+    }
+    for s_key in claim_data:
+        for c in claim_data[s_key]:
+            (_, claim_json[s_key]) = await s_key.origin.create_claim(claim_req_json[s_key], c)
+            assert json.loads(claim_json[s_key])
+            await holder_prover[s_key.origin].store_claim(claim_json[s_key])
 
-    # 7. BC Org Book agent (as HolderProver) finds claims
-    bc_by_attr = {
-        'nonce': '1234',
+    # 7. BC Org Book agent (as HolderProver) finds claims; actuator filters post hoc
+    find_req[S_KEY['BC']] = {
+        'nonce': '1000',
         'name': 'bc_proof_req',
         'version': '0',
         'requested_attrs': {
-            '{}_uuid'.format(attr): {
-                'schema_seq_no': bc_schema['seqNo'],
+            '{}_{}_uuid'.format(schema[S_KEY['BC']]['seqNo'], attr): {
+                'schema_seq_no': schema[S_KEY['BC']]['seqNo'],
                 'name': attr
-            } for attr in bc_claims[0]
+            } for attr in claim_data[S_KEY['BC']][0]
         },
-        'requested_predicates': {
-        }
-    } 
-    (bc_claim_uuids_all, bc_claims_found_json) = await bcobag.get_claims(json.dumps(bc_by_attr))
-    print('\n\n== 5 == BC claims by attr, no filter {}; {}'.format(bc_claim_uuids_all, ppjson(bc_claims_found_json)))
-    bc_claims_found = json.loads(bc_claims_found_json)
-    bc_display_pruned_postfilt = claims_for(bc_claims_found, {'legalName': bc_claims[2]['legalName'][0]})
-    print('\n\n== 6 == display BC claims filtered post-hoc matching {}: {}'.format(
-        bc_claims[2]['legalName'][0],
-        ppjson(bc_display_pruned_postfilt)))
-    bc_display_pruned = prune_claims_json({k for k in bc_display_pruned_postfilt}, bc_claims_found)
+        'requested_predicates': {}
+    }
+    (bc_claim_uuids_all, claims_found_json[S_KEY['BC']]) = await bcobag.get_claims(json.dumps(find_req[S_KEY['BC']]))
+    print('\n\n== 5 == All BC claims, no filter {}; {}'.format(
+        bc_claim_uuids_all,
+        ppjson(claims_found_json[S_KEY['BC']])))
+    claims_found[S_KEY['BC']] = json.loads(claims_found_json[S_KEY['BC']])
+    bc_display_pruned_filt_post_hoc = claims_for(
+        claims_found[S_KEY['BC']],
+        [{
+            'schema_seq_no': schema[S_KEY['BC']]['seqNo'],
+            'match': {
+                'legalName': decode(claim_data[S_KEY['BC']][2]['legalName'][1])
+            }
+        }])
+    print('\n\n== 6 == BC claims display, filtered post hoc matching {}: {}'.format(
+        decode(claim_data[S_KEY['BC']][2]['legalName'][1]),
+        ppjson(bc_display_pruned_filt_post_hoc)))
+    bc_display_pruned = prune_claims_json(
+        claims_found[S_KEY['BC']],
+        {k for k in bc_display_pruned_filt_post_hoc})
     print('\n\n== 7 == BC claims, stripped down {}'.format(ppjson(bc_display_pruned)))
 
-    filter_enc = {k: bc_claims[2][k][0] for k in bc_claims[2] if k in ('jurisdictionId', 'busId')}
-    (bc_claim_uuids_filt, bc_claims_found_json) = await bcobag.get_claims(json.dumps(bc_by_attr), filter_enc)
-    print('\n\n== 8 == BC claims by attr, filtered a priori {}; {}'.format(
+    filt = [{
+        'schema': {
+            'origin-did': S_KEY['BC'].origin.did,
+            'name': S_KEY['BC'].name,
+            'version': S_KEY['BC'].version
+        },
+        'match': {
+            k: decode(claim_data[S_KEY['BC']][2][k][1]) for k in claim_data[S_KEY['BC']][2]
+                if k in ('jurisdictionId', 'busId')
+        }
+    }]
+    (bc_claim_uuids_filt, claims_found_json[S_KEY['BC']]) = await bcobag.get_claims(
+        json.dumps(find_req[S_KEY['BC']]),
+        filt)
+    print('\n\n== 8 == BC claims, filtered a priori {}; {}'.format(
         bc_claim_uuids_filt,
-        ppjson(bc_claims_found_json)))
-    assert set([*bc_display_pruned_postfilt]) == bc_claim_uuids_filt
-    assert len(bc_display_pruned_postfilt) == 1
+        ppjson(claims_found_json[S_KEY['BC']])))
+    assert set([*bc_display_pruned_filt_post_hoc]) == bc_claim_uuids_filt
+    assert len(bc_display_pruned_filt_post_hoc) == 1
 
     bc_claim_uuid = bc_claim_uuids_filt.pop()
 
-    # 8. BC Org Book (as HolderProver) creates proof for claim specified by filter
-    bc_claims_found = json.loads(bc_claims_found_json)
+    # 8. BC Org Book agent (as HolderProver) creates proof for claim specified by filter
+    claims_found[S_KEY['BC']] = json.loads(claims_found_json[S_KEY['BC']])
     bc_requested_claims = {
         'self_attested_attributes': {},
         'requested_attrs': {
             attr: [bc_claim_uuid, True]
-                for attr in bc_by_attr['requested_attrs'] if attr in bc_claims_found['attrs']
+                for attr in find_req[S_KEY['BC']]['requested_attrs'] if attr in claims_found[S_KEY['BC']]['attrs']
         },
         'requested_predicates': {
             pred: bc_claim_uuid
-                for pred in bc_by_attr['requested_predicates']
+                for pred in find_req[S_KEY['BC']]['requested_predicates']
         }
     }
+    wallet_claim_uuid2schema = {
+        claims_found[S_KEY['BC']]['attrs'][attr_uuid][0]['claim_uuid']:
+            seq_no2schema[claims_found[S_KEY['BC']]['attrs'][attr_uuid][0]['schema_seq_no']]
+                for attr_uuid in claims_found[S_KEY['BC']]['attrs']
+    }
+    wallet_claim_uuid2claim_def = {
+        claims_found[S_KEY['BC']]['attrs'][attr_uuid][0]['claim_uuid']:
+            claim_def[seq_no2schema_key[claims_found[S_KEY['BC']]['attrs'][attr_uuid][0]['schema_seq_no']]]
+                for attr_uuid in claims_found[S_KEY['BC']]['attrs']
+    }
     bc_proof_json = await bcobag.create_proof(
-        json.dumps(bc_by_attr),
-        bc_schema,
-        json.loads(bc_claim_def_json),
+        find_req[S_KEY['BC']],
+        claims_found[S_KEY['BC']],
         bc_requested_claims)
     print('\n\n== 9 == BC proof (by filter) {}'.format(ppjson(bc_proof_json)))
 
     # 9. SRI agent (as Verifier) verifies proof (by filter)
     rc_json = await sag.verify_proof(
-        json.dumps(bc_by_attr),
-        json.loads(bc_proof_json),
-        bc_schema,
-        json.loads(bc_claim_def_json))
+        find_req[S_KEY['BC']],
+        json.loads(bc_proof_json))
     print('\n\n== 10 == The SRI agent verifies the BC proof (by filter) as {}'.format(ppjson(rc_json)))
     assert json.loads(rc_json)
 
-    # 10. BC Org Book (as HolderProver) finds claim by claim-uuid, no claim by non-claim-uuid
-    bc_claim_found_by_uuid = json.loads(await bcobag.get_claim_by_claim_uuid(bc_schema_json, bc_claim_uuid))
+    # 10. BC Org Book agent (as HolderProver) finds claim by claim-uuid, no claim by non-claim-uuid
+    seq_no = set(schema_seq_nos_for(claims_found[S_KEY['BC']], {bc_claim_uuid}).values()).pop()  # it's unique
+    req_attrs = {
+       '{}_{}_uuid'.format(seq_no, attr_name): {
+           'schema_seq_no': seq_no,
+           'name': attr_name
+       } for attr_name in schema_data[S_KEY['BC']]['attr_names']
+    }
+    bc_claim_found_by_uuid = json.loads(await bcobag.get_claim_by_claim_uuid(bc_claim_uuid, req_attrs))
     print('\n\n== 11 == BC claim by claim-uuid={}: {}'.format(
         bc_claim_uuid,
         ppjson(bc_claim_found_by_uuid)))
@@ -316,97 +418,182 @@ async def test_agents_direct(
     assert bc_claim_found_by_uuid['attrs']
 
     bc_non_claim_by_uuid = json.loads(await bcobag.get_claim_by_claim_uuid(
-        bc_schema_json,
-        'claim::ffffffff-ffff-ffff-ffff-ffffffffffff'))
+        'claim::ffffffff-ffff-ffff-ffff-ffffffffffff',
+        req_attrs))
     print('\n\n== 12 == BC non-claim: {}'.format(ppjson(bc_non_claim_by_uuid)))
     assert bc_non_claim_by_uuid
     assert all(not bc_non_claim_by_uuid['attrs'][attr] for attr in bc_non_claim_by_uuid['attrs'])
 
-    # 11. BC Org Book (as HolderProver) creates proof for claim specified by claim-uuid
+    # 11. BC Org Book agent (as HolderProver) creates proof for claim specified by claim-uuid
     bc_requested_claims = {
         'self_attested_attributes': {},
         'requested_attrs': {
             attr: [bc_claim_uuid, True]
                 for attr in bc_claim_found_by_uuid['attrs']
         },
-        'requested_predicates': {
-        }
+        'requested_predicates': {}
     }
     bc_proof_json = await bcobag.create_proof(
-        json.dumps(bc_by_attr),
-        bc_schema,
-        json.loads(bc_claim_def_json),
+        find_req[S_KEY['BC']],
+        bc_claim_found_by_uuid,
         bc_requested_claims)
     bc_proof = json.loads(bc_proof_json)
     print('\n\n== 13 == BC proof by claim-uuid={} {}'.format(bc_claim_uuid, ppjson(bc_proof_json)))
 
-    # 12. SRI agent (as Verifier) verifies proof
+    # 12. SRI agent (as Verifier) verifies proof (by claim-uuid)
     rc_json = await sag.verify_proof(
-        json.dumps(bc_by_attr),
-        bc_proof,
-        bc_schema,
-        json.loads(bc_claim_def_json))
-    print('\n\n== 14 == BC proof by claim-uuid={} verifies as {}'.format(bc_claim_uuid, ppjson(rc_json)))
+        find_req[S_KEY['BC']],
+        bc_proof)
+    print('\n\n== 14 == SRI agent verifies BC proof by claim-uuid={} as: {}'.format(bc_claim_uuid, ppjson(rc_json)))
     assert json.loads(rc_json)
 
-    # 13. Create and store SRI registration completion claim from verified proof
+    # 13. Create and store SRI registration completion claims, green claim from verified proof + extra data
     revealed = revealed_attrs(bc_proof)
-    sri_claim = {k: claim_value_pair(revealed[k]) for k in revealed if k in sri_schema_data['attr_names']}
-    yyyy_mm_dd = datetime.date.today().strftime('%Y-%m-%d')
-    sri_claim['sriRegDate'] = claim_value_pair(yyyy_mm_dd)
-    print('\n\n== 15 == SRI claim: {}'.format(ppjson(sri_claim)))
-    (_, sri_claim_json) = await sag.create_claim(sri_claim_req_json, sri_claim)
-    assert json.loads(sri_claim_json)
-    await pspcobag.store_claim(sri_claim_json)
+    claim_data[S_KEY['SRI-1.0']].append({
+        **{k: claim_value_pair(revealed[k]) for k in revealed if k in schema_data[S_KEY['SRI-1.0']]['attr_names']},
+        'sriRegDate': claim_value_pair(datetime.date.today().strftime('%Y-%m-%d'))
+    })
+    claim_data[S_KEY['SRI-1.1']].append({
+        **{k: claim_value_pair(revealed[k]) for k in revealed if k in schema_data[S_KEY['SRI-1.1']]['attr_names']},
+        'sriRegDate': claim_value_pair(datetime.date.today().strftime('%Y-%m-%d')),
+        'businessLang': claim_value_pair('EN-CA')
+    })
+    claim_data[S_KEY['GREEN']].append({
+        **{k: claim_value_pair(revealed[k]) for k in revealed if k in schema_data[S_KEY['GREEN']]['attr_names']},
+        'greenLevel': claim_value_pair('Silver'),
+        'auditDate': claim_value_pair(datetime.date.today().strftime('%Y-%m-%d'))
+    })
 
-    # 14. PSPC Org Book Agent (as HolderProver) finds claim
-    sri_by_attr = {
-        'nonce': '9999',
-        'name': 'sri_proof_req',
-        'version': '0',
-        'requested_attrs': {
-            '{}_uuid'.format(attr): {
-                'schema_seq_no': sri_schema['seqNo'],
-                'name': attr
-            } for attr in sri_claim
-        },
-        'requested_predicates': {
+    i = 0
+    for s_key in claim_data:
+        if s_key == S_KEY['BC']:
+            continue
+        for c in claim_data[s_key]:
+            (_, claim_json[s_key]) = await s_key.origin.create_claim(claim_req_json[s_key], c)
+            print('\n\n== 15.{} == SRI created claim [{} v{}]: {}'.format(
+                i,
+                s_key.name,
+                s_key.version,
+                ppjson(claim_json[s_key])))
+            i += 1
+            assert json.loads(claim_json[s_key])
+            await holder_prover[s_key.origin].store_claim(claim_json[s_key])
+
+    # 14. PSPC Org Book agent (as HolderProver) finds all claims, one schema at a time
+    i = 0
+    for s_key in schema:
+        if s_key == S_KEY['BC']:
+            continue
+        find_req[s_key] = {
+            'nonce': str(1234 + i),
+            'name': 'sri_find_req',
+            'version': '0',
+            'requested_attrs': {
+                '{}_{}_uuid'.format(schema[s_key]['seqNo'], attr): {
+                    'schema_seq_no': schema[s_key]['seqNo'],
+                    'name': attr
+                } for attr in claim_data[s_key][0]
+            },
+            'requested_predicates': {}
         }
-    } 
 
-    (sri_claim_uuids_all, sri_claims_found_json) = await pspcobag.get_claims(json.dumps(sri_by_attr))
-    print('\n\n== 16 == SRI claims by attr, no filter {}; {}'.format(
+        (sri_claim_uuids, claims_found_json[s_key]) = await holder_prover[s_key.origin].get_claims(
+            json.dumps(find_req[s_key]))
+
+        print('\n\n== 16.{} == Claims on [{} v{}], no filter {}: {}'.format(
+            i,
+            s_key.name,
+            s_key.version,
+            sri_claim_uuids,
+            ppjson(claims_found_json[s_key])))
+        i += 1
+    
+    # 15. PSPC Org Book agent (as HolderProver) finds all claims on all schemata at once; actuator filters post hoc
+    req_attrs_sri_find_all = {}
+    for s_key in schema_data:
+        if s_key == S_KEY['BC']:
+            continue
+        seq_no = schema[s_key]['seqNo']
+        for attr_name in schema_data[s_key]['attr_names']:
+            req_attrs_sri_find_all['{}_{}_uuid'.format(seq_no, attr_name)] = {
+                'schema_seq_no': seq_no,
+                'name': attr_name
+            }
+    find_req_sri_all = {
+        'nonce': '9999',
+        'name': 'sri_find_req_all',
+        'version': '0',
+        'requested_attrs': req_attrs_sri_find_all,
+        'requested_predicates': {}
+    }
+
+    (sri_claim_uuids_all, sri_claims_found_all_json) = await pspcobag.get_claims(json.dumps(find_req_sri_all))
+    print('\n\n== 17 == All SRI-issued claims (no filter) at PSPC Org Book {}: {}'.format(
         sri_claim_uuids_all,
-        ppjson(sri_claims_found_json)))
-    assert len(sri_claim_uuids_all) == 1
-    sri_claim_uuid = sri_claim_uuids_all.pop()
-    sri_claims_found = json.loads(sri_claims_found_json)
+        ppjson(sri_claims_found_all_json)))
 
-    # 15. PSPC Org Book Agent (as HolderProver) creates proof
+    sri_claims_found_all = json.loads(sri_claims_found_all_json)
+    sri_display_pruned_filt_post_hoc = claims_for(
+        sri_claims_found_all,
+        [{
+            'schema_seq_no': schema[S_KEY['GREEN']]['seqNo'],
+            'match': {
+                'legalName': decode(claim_data[S_KEY['GREEN']][0]['legalName'][1])
+            }
+        }])
+    print('\n\n== 18 == SRI claims display, filtered post hoc matching {}: {}'.format(
+        decode(claim_data[S_KEY['GREEN']][0]['legalName'][1]),
+        ppjson(sri_display_pruned_filt_post_hoc)))
+    sri_display_pruned = prune_claims_json(
+        sri_claims_found_all,
+        {k for k in sri_display_pruned_filt_post_hoc})
+    print('\n\n== 19 == SRI claims, stripped down {}'.format(ppjson(sri_display_pruned)))
+
+    filt = [{
+        'schema': {
+            'origin-did': S_KEY['GREEN'].origin.did,
+            'name': S_KEY['GREEN'].name,
+            'version': S_KEY['GREEN'].version
+        },
+        'match': {
+            'legalName': decode(claim_data[S_KEY['GREEN']][0]['legalName'][1])
+        }
+    }]
+    (sri_claim_uuids_filt, claims_found_json[S_KEY['GREEN']]) = await pspcobag.get_claims(
+        json.dumps(find_req[S_KEY['GREEN']]),
+        filt)
+    print('\n\n== 20 == SRI claims, filtered a priori {}; {}'.format(
+        sri_claim_uuids_filt,
+        ppjson(claims_found_json[S_KEY['GREEN']])))
+    assert set([*sri_display_pruned_filt_post_hoc]) == sri_claim_uuids_filt
+    assert len(sri_display_pruned_filt_post_hoc) == 1
+
+    sri_claims_found_all = json.loads(sri_claims_found_all_json)
+    # sri_claim_uuids_all
+    sri_req_attrs4sri_req_claims = {}
+    for attr_uuid in sri_claims_found_all['attrs']:
+        sri_req_attrs4sri_req_claims[attr_uuid] = [sri_claims_found_all['attrs'][attr_uuid][0]['claim_uuid'], True]
+
+    # 16. PSPC Org Book agent (as HolderProver) creates proof for multiple claims
     sri_requested_claims = {
         'self_attested_attributes': {},
-        'requested_attrs': {
-            attr: [sri_claim_uuid, True]
-                for attr in sri_claims_found['attrs']
-        },
-        'requested_predicates': {
-        }
+        'requested_attrs': sri_req_attrs4sri_req_claims,
+        'requested_predicates': {}
     }
     sri_proof_json = await pspcobag.create_proof(
-        json.dumps(sri_by_attr),
-        sri_schema,
-        json.loads(sri_claim_def_json),
+        find_req_sri_all,
+        sri_claims_found_all,
         sri_requested_claims)
-    print('\n\n== 17 == PSPC Org Book proof on claim-uuid={} {}'.format(sri_claim_uuid, ppjson(sri_proof_json)))
+    print('\n\n== 21 == PSPC Org Book proof on claim-uuid={} {}'.format(sri_claim_uuids_all, ppjson(sri_proof_json)))
+    sri_proof = json.loads(sri_proof_json)
 
-    # 16. SRI (as Verifier) verify proof
+    # 17. SRI (as Verifier) verify proof
     rc_json = await sag.verify_proof(
-        json.dumps(sri_by_attr),
-        json.loads(sri_proof_json),
-        sri_schema,
-        json.loads(sri_claim_def_json))
-    print('\n\n== 18 == the SRI agent verifies the PSPC Org Book proof by claim-uuid={} as {}'.format(
-        sri_claim_uuid,
+        find_req_sri_all,
+        sri_proof)
+
+    print('\n\n== 22 == the SRI agent verifies the PSPC Org Book proof by claim-uuid={} as {}'.format(
+        sri_claim_uuids_all,
         ppjson(rc_json)))
     assert json.loads(rc_json)
 
@@ -472,6 +659,12 @@ async def test_agents_process_forms_local(
 
         assert p.handle is not None
 
+        # print('TAG DID {}'.format(tag.did))            # V4SG...
+        # print('SAG DID {}'.format(sag.did))            # FaBA...
+        # print('PSPCOBAG DID {}'.format(pspcobag.did))  # 45Ue...
+        # print('BCOBAG DID {}'.format(bcobag.did))      # Rzra...
+        # print('BCRAG DID {}'.format(bcrag.did))        # Q4zq...
+
         # 2. Publish agent particulars to ledger if not yet present
         for ag in (tag, sag, pspcobag, bcobag, bcrag):
             nym_lookup_form = {
@@ -530,79 +723,164 @@ async def test_agents_process_forms_local(
             pass
 
         # 3. Publish schema to ledger if not yet present; get from ledger
-        bc_schema_data = {
-            'name': 'bc-reg',
-            'version': '1.0',
-            'attr_names': [
-                'id',
-                'busId',
-                'orgTypeId',
-                'jurisdictionId',
-                'legalName',
-                'effectiveDate',
-                'endDate'
-            ]
+        S_KEY = {
+            'BC': SchemaKey(bcrag, 'bc-reg', '1.0'),
+            'SRI-1.0': SchemaKey(sag, 'sri', '1.0'),
+            'SRI-1.1': SchemaKey(sag, 'sri', '1.1'),
+            'GREEN': SchemaKey(sag, 'green', '1.0'),
         }
 
-        bc_schema_lookup_form = {
-            'type': 'schema-lookup',
-            'data': {
-                'schema': {
-                    'origin-did': bcrag.did,
-                    'name': bc_schema_data['name'],
-                    'version': 'xxxx'
-                }
+        schema_data = {
+            S_KEY['BC']: {
+                'name': S_KEY['BC'].name,
+                'version': S_KEY['BC'].version,
+                'attr-names': [
+                    'id',
+                    'busId',
+                    'orgTypeId',
+                    'jurisdictionId',
+                    'legalName',
+                    'effectiveDate',
+                    'endDate'
+                ]
+            },
+            S_KEY['SRI-1.0']: {
+                'name': S_KEY['SRI-1.0'].name,
+                'version': S_KEY['SRI-1.0'].version,
+                'attr-names': [
+                    'legalName',
+                    'jurisdictionId',
+                    'sriRegDate'
+                ]
+            },
+            S_KEY['SRI-1.1']: {
+                'name': S_KEY['SRI-1.1'].name,
+                'version': S_KEY['SRI-1.1'].version,
+                'attr-names': [
+                    'legalName',
+                    'jurisdictionId',
+                    'businessLang',
+                    'sriRegDate'
+                ]
+            },
+            S_KEY['GREEN']: {
+                'name': S_KEY['GREEN'].name,
+                'version': S_KEY['GREEN'].version,
+                'attr-names': [
+                    'legalName',
+                    'greenLevel',
+                    'auditDate'
+                ]
             }
         }
 
-        sri_schema_data = {
-            'name': 'sri',
-            'version': '1.0',
-            'attr_names': [
-                'legalName',
-                'jurisdictionId',
-                'sriRegDate'
-            ]
+        # index by transaction number
+        seq_no2schema = {}
+        seq_no2schema_key = {}
+
+        # index by SchemaKey
+        schema_lookup_form = {}
+        schema_json = {}
+        schema = {}
+        claim_def_json = {}
+        claim_def = {}
+        claim_data = {}
+        claim_req = {}
+        claim_req_json = {}
+        claim = {}
+        claim_json = {}
+        find_req = {}
+        claims_found = {}
+        claims_found_json = {}
+
+        holder_prover = {
+            bcrag: bcobag,
+            sag: pspcobag
         }
 
-        sri_schema_lookup_form = {
-            'type': 'schema-lookup',
-            'data': {
-                'schema': {
-                    'origin-did': sag.did,
-                    'name': sri_schema_data['name'],
-                    'version': sri_schema_data['version']
+        schema_lookup_form = {
+            S_KEY['BC']: {
+                'type': 'schema-lookup',
+                'data': {
+                    'schema': {
+                        'origin-did': bcrag.did,
+                        'name': S_KEY['BC'].name,
+                        'version': S_KEY['BC'].version
+                    }
+                }
+            },
+            S_KEY['SRI-1.0']: {
+                'type': 'schema-lookup',
+                'data': {
+                    'schema': {
+                        'origin-did': sag.did,
+                        'name': S_KEY['SRI-1.0'].name,
+                        'version': S_KEY['SRI-1.0'].version
+                    }
+                }
+            },
+            S_KEY['SRI-1.1']: {
+                'type': 'schema-lookup',
+                'data': {
+                    'schema': {
+                        'origin-did': sag.did,
+                        'name': S_KEY['SRI-1.1'].name,
+                        'version': S_KEY['SRI-1.1'].version
+                    }
+                }
+            },
+            S_KEY['GREEN']: {
+                'type': 'schema-lookup',
+                'data': {
+                    'schema': {
+                        'origin-did': sag.did,
+                        'name': S_KEY['GREEN'].name,
+                        'version': S_KEY['GREEN'].version
+                    }
                 }
             }
         }
 
         try:
-            schema_json = await bcrag.process_post(bc_schema_lookup_form)  # Bad version number
+            schema_lookup_form[S_KEY['BC']]['data']['schema']['version'] = 'xxx'
+            schema_json = await bcrag.process_post(schema_lookup_form[S_KEY['BC']])  # Bad version number
             assert False
         except IndyError:
             pass
 
-        bc_schema_lookup_form['data']['schema']['version'] = '999.999'
-        assert not json.loads(await bcrag.process_post(bc_schema_lookup_form))  # ought not exist
-        bc_schema_lookup_form['data']['schema']['version'] = '1.0'
-        bc_schema_json = await bcrag.process_post(bc_schema_lookup_form)  # may exist
-        if not json.loads(bc_schema_json):
-            bc_schema_send = json.loads(await bcrag.process_post({
-                'type': 'schema-send',
-                'data': {
-                    'schema': {
-                        'origin-did': bcrag.did,
-                        'name': bc_schema_data['name'],
-                        'version': bc_schema_data['version']
-                    },
-                    'attr-names': bc_schema_data['attr_names']
-                }
-            }))
-            assert bc_schema_send
-        bc_schema_json = await bcrag.process_post(bc_schema_lookup_form)
-        bc_schema = json.loads(bc_schema_json)  # should exist now
-        assert bc_schema
-        print('\n\n== 2 == BC SCHEMA {}'.format(ppjson(bc_schema)))
+        schema_lookup_form[S_KEY['BC']]['data']['schema']['version'] = '999.999'
+        assert not json.loads(await bcrag.process_post(schema_lookup_form[S_KEY['BC']]))  # ought not exist
+        schema_lookup_form[S_KEY['BC']]['data']['schema']['version'] = schema_data[S_KEY['BC']]['version']  # restore
+
+        i = 0
+        for s_key in schema_data:
+            swab_json = await bcrag.get_schema(  # may exist
+                s_key.origin.did,
+                s_key.name,
+                s_key.version)
+            if not json.loads(swab_json):
+                await s_key.origin.send_schema(json.dumps(schema_data[s_key]))
+                await s_key.origin.process_post({
+                    'type': 'schema-send',
+                    'data': {
+                        'schema': {
+                            'origin-did': s_key.origin.did,
+                            'name': s_key.name,
+                            'version': s_key.version
+                        },
+                        'attr_names': schema_data[s_key]['attr-names']
+                    }
+                })
+            schema_json[s_key] = await s_key.origin.get_schema(
+                s_key.origin.did,
+                s_key.name,
+                s_key.version)  # should exist now
+            schema[s_key] = json.loads(schema_json[s_key])
+            assert schema[s_key]
+            seq_no2schema_key[schema[s_key]['seqNo']] = s_key
+            seq_no2schema[schema[s_key]['seqNo']] = schema[s_key]
+            print('\n\n== 2.{} == SCHEMA [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_key])))
+            i += 1
 
         for ag in (pspcobag, bcobag):
             try:  # Make sure only an origin can send a schema
@@ -611,10 +889,10 @@ async def test_agents_process_forms_local(
                     'data': {
                         'schema': {
                             'origin-did': ag.did,
-                            'name': bc_schema_data['name'],
-                            'version': bc_schema_data['version']
+                            'name': S_KEY['BC'].name,
+                            'version': S_KEY['BC'].version
                         },
-                        'attr-names': bc_schema_data['attr_names']
+                        'attr_names': schema_data[S_KEY['BC']]['attr-names']
                     }
                 })
                 assert False
@@ -622,28 +900,30 @@ async def test_agents_process_forms_local(
                 pass
 
         # 4. BC Registrar and SRI agents (as Issuers) create, store,  and publish claim def to ledger
-        # print('TAG DID {}'.format(tag.did))            # V4SG...
-        # print('SAG DID {}'.format(sag.did))            # FaBA...
-        # print('PSPCOBAG DID {}'.format(pspcobag.did))  # 45Ue...
-        # print('BCOBAG DID {}'.format(bcobag.did))      # Rzra...
-        # print('BCRAG DID {}'.format(bcrag.did))        # Q4zq...
-
-        bc_claim_def_send_form = {
-            'type': 'claim-def-send',
-            'data': {
-                'schema': {
-                    'origin-did': bcrag.did,
-                    'name': bc_schema_data['name'],
-                    'version': bc_schema_data['version']
+        i = 0
+        for s_key in schema_data:
+            claim_def_send_form = {
+                'type': 'claim-def-send',
+                'data': {
+                    'schema': {
+                        'origin-did': s_key.origin.did,
+                        'name': s_key.name,
+                        'version': s_key.version
+                    }
                 }
             }
-        }
-
-        await bcrag.process_post(bc_claim_def_send_form)
-        bc_claim_def_json = await bcobag.get_claim_def(
-            bc_schema['seqNo'],
-            bcrag.did)  # ought to exist now (short-circuit to low-level API)
-        assert json.loads(bc_claim_def_json)['ref'] == bc_schema['seqNo']
+            await s_key.origin.process_post(claim_def_send_form)
+            claim_def_json[s_key] = await holder_prover[s_key.origin].get_claim_def(
+                schema[s_key]['seqNo'],
+                s_key.origin.did)  # ought to exist now (short-circuit to low-level API)
+            claim_def[s_key] = json.loads(claim_def_json[s_key])
+            print('\n\n== 3.{} == Claim def [{} v{}]: {}'.format(
+                i,
+                s_key.name,
+                s_key.version,
+                ppjson(json.loads(claim_def_json[s_key]))))
+            assert json.loads(claim_def_json[s_key])['ref'] == schema[s_key]['seqNo']
+            i += 1
 
         # 5. Setup master secrets, claim reqs at HolderProver agents
         master_secret_set_form = {
@@ -652,167 +932,224 @@ async def test_agents_process_forms_local(
                 'label': 'maestro'
             }
         }
-        bc_claim_hello_form = {
-            'type': 'claim-hello',
-            'data': {
-                'issuer-did': bcrag.did
-            }
+        claim_hello_form = {
+            s_key: {
+                'type': 'claim-hello',
+                'data': {
+                    'issuer-did': s_key.origin.did,
+                    'schema': {
+                        'origin-did': s_key.origin.did,
+                        'name': s_key.name,
+                        'version': s_key.version
+                    }
+                }
+            } for s_key in schema_data
         }
 
         try:  # master secret unspecified, ought to fail
-            await bcobag.process_post(bc_claim_hello_form)
+            await bcobag.process_post(claim_hello_form[S_KEY['BC']])
         except ValueError:
             pass
 
         await bcobag.process_post(master_secret_set_form)
-
-        try:  # schema unspecified, ought to fail
-            bc_claim_req_json = await bcobag.process_post(bc_claim_hello_form)
-        except ValueError:
-            pass
+        master_secret_set_form['data']['label'] = 'shhhhhhh'
+        await pspcobag.process_post(master_secret_set_form)
 
         claims_reset_form = {
             'type': 'claims-reset',
-            'data': {
-            }
+            'data': {}
         }
-        claims_reset_resp = json.loads(await bcobag.process_post(claims_reset_form))
-        assert not claims_reset_resp  # make sure later ops are OK on reset wallet -- response is {} if OK
+        for ag in (bcobag, pspcobag):  # reset all HolderProvers
+            assert not json.loads(await bcobag.process_post(claims_reset_form))  # response is {} if OK
 
-        bc_claim_hello_form['data']['schema'] = {
-            'origin-did': bcrag.did,
-            'name': bc_schema_data['name'],
-            'version': bc_schema_data['version']
-        }
-        bc_claim_req_json = await bcobag.process_post(bc_claim_hello_form)
-        bc_claim_req = json.loads(bc_claim_req_json)
-        assert bc_claim_req
+        i = 0
+        for s_key in schema_data:
+            claim_req_json[s_key] = await holder_prover[s_key.origin].process_post(claim_hello_form[s_key])
+            claim_req[s_key] = json.loads(claim_req_json[s_key])
+            assert claim_req[s_key]
 
         # 6. BC Reg agent (as Issuer) issues claims and stores at HolderProver: get claim req, create claim, store claim
-        bc_claims = [
-            {
-                'id': 1,
-                'busId': 11121398,
-                'orgTypeId': 2,
-                'jurisdictionId': 1,
-                'legalName': 'The Original House of Pies',
-                'effectiveDate': '2010-10-10',
-                'endDate': None
-            },
-            {
-                'id': 2,
-                'busId': 11133333,
-                'orgTypeId': 1,
-                'jurisdictionId': 1,
-                'legalName': 'Planet Cake',
-                'effectiveDate': '2011-10-01',
-                'endDate': None
-            },
-            {
-                'id': 3,
-                'busId': 11144444,
-                'orgTypeId': 2,
-                'jurisdictionId': 1,
-                'legalName': 'Tart City',
-                'effectiveDate': '2012-12-01',
-                'endDate': None
-            }
-        ]
-        for c in bc_claims:
-            bc_claim_json = await bcrag.process_post({
-                'type': 'claim-create',
-                'data': {
-                    'claim-req': bc_claim_req,
-                    'claim-attrs': c
+        claim_data = {
+            S_KEY['BC']: [
+                {
+                    'id': '1',
+                    'busId': '11121398',
+                    'orgTypeId': '2',
+                    'jurisdictionId': '1',
+                    'legalName': 'The Original House of Pies',
+                    'effectiveDate': '2010-10-10',
+                    'endDate': None
+                },
+                {
+                    'id': '2',
+                    'busId': '11133333',
+                    'orgTypeId': '1',
+                    'jurisdictionId': '1',
+                    'legalName': 'Planet Cake',
+                    'effectiveDate': '2011-10-01',
+                    'endDate': None
+                },
+                {
+                    'id': '3',
+                    'busId': '11144444',
+                    'orgTypeId': '2',
+                    'jurisdictionId': '1',
+                    'legalName': 'Tart City',
+                    'effectiveDate': '2012-12-01',
+                    'endDate': None
                 }
-            })
-            await bcobag.process_post({
-                'type': 'claim-store',
-                'data': {
-                    'claim': json.loads(bc_claim_json)
-                }
-            })
+            ],
+            S_KEY['SRI-1.0']: [],
+            S_KEY['SRI-1.1']: [],
+            S_KEY['GREEN']: []
+        }
+        for s_key in claim_data:
+            for c in claim_data[s_key]:
+                claim_json[s_key] = await s_key.origin.process_post({
+                    'type': 'claim-create',
+                    'data': {
+                        'claim-req': claim_req[s_key],
+                        'claim-attrs': c
+                    }
+                })
+                claim[s_key] = json.loads(claim_json[s_key])
+                assert claim[s_key]
+                await holder_prover[s_key.origin].process_post({
+                    'type': 'claim-store',
+                    'data': {
+                        'claim': claim[s_key]
+                    }
+                })
 
-        # 7. BC Org Book agent (as HolderProver) finds claims
-        bc_by_attr = {
-            'nonce': '1234',
-            'name': 'proof_req',
+        # 7. BC Org Book agent (as HolderProver) finds claims; actuator filters post hoc
+        find_req[S_KEY['BC']] = {
+            'nonce': '2000',
+            'name': 'bc_proof_req',
             'version': '0',
             'requested_attrs': {
-                '{}_uuid'.format(attr): {
-                    'schema_seq_no': bc_schema['seqNo'],
+                '{}_{}_uuid'.format(schema[S_KEY['BC']]['seqNo'], attr): {
+                    'schema_seq_no': schema[S_KEY['BC']]['seqNo'],
                     'name': attr
-                } for attr in bc_claims[0]
+                } for attr in claim_data[S_KEY['BC']][0]
             },
-            'requested_predicates': {
-            },
-        } 
-        bc_claims_all = json.loads(await bcobag.process_post({
+            'requested_predicates': {}
+        }
+        claims_found[S_KEY['BC']] = json.loads(await bcobag.process_post({
             'type': 'claim-request',
             'data': {
-                'schema': {
-                    'origin-did': bcrag.did,
-                    'name': bc_schema_data['name'],
-                    'version': bc_schema_data['version']
-                },
+                'schemata': [
+                    {
+                        'origin-did': bcrag.did,
+                        'name': S_KEY['BC'].name,
+                        'version': S_KEY['BC'].version
+                    }
+                ],
                 'claim-filter': {
-                    'attr-match': {
-                    },
-                    'predicate-match': [
-                    ]
-                }
+                    'attr-match': {},
+                    'predicate-match': [],
+                },
+                'requested-attrs': []
             }
         }))
-        print('\n\n== 3 == BC claims by attr, no filter, process-post {}'.format(ppjson(bc_claims_all)))
-        bc_display_pruned_postfilt = claims_for(bc_claims_all['claims'], {'legalName': bc_claims[2]['legalName']})
-        print('\n\n== 4 == display BC claims filtered post-hoc matching {}: {}'.format(
-            bc_claims[2]['legalName'],
-            ppjson(bc_display_pruned_postfilt)))
-        bc_display_pruned = prune_claims_json({k for k in bc_display_pruned_postfilt}, bc_claims_all['claims'])
-        print('\n\n== 5 == BC claims, stripped down {}'.format(ppjson(bc_display_pruned)))
+
+        print('\n\n== 4 == All BC claims, no filter: {}'.format(ppjson(claims_found[S_KEY['BC']])))
+        bc_display_pruned_filt_post_hoc = claims_for(
+            claims_found[S_KEY['BC']]['claims'],
+            [{
+                'schema_seq_no': schema[S_KEY['BC']]['seqNo'],
+                'match': {
+                    'legalName': claim_data[S_KEY['BC']][2]['legalName']
+                }
+            }])
+
+        try:  # exercise proof restriction to one claim per attribute
+            await bcobag.process_post({
+                'type': 'proof-request',
+                'data': {
+                    'schemata': [
+                        {
+                            'origin-did': bcrag.did,
+                            'name': S_KEY['BC'].name,
+                            'version': S_KEY['BC'].version
+                        }
+                    ],
+                    'claim-filter': {
+                        'attr-match': [],
+                        'predicate-match': [],
+                    },
+                    'requested-attrs': []
+                }
+            })
+            assert False
+        except ValueError:
+            pass  # carry on: proof supports at most one claim per attribute
+
+        print('\n\n== 5 == display BC claims filtered post hoc matching {}: {}'.format(
+            claim_data[S_KEY['BC']][2]['legalName'],
+            ppjson(bc_display_pruned_filt_post_hoc)))
+        bc_display_pruned = prune_claims_json(
+            claims_found[S_KEY['BC']]['claims'],
+            {k for k in bc_display_pruned_filt_post_hoc})
+        print('\n\n== 6 == BC claims, stripped down {}'.format(ppjson(bc_display_pruned)))
 
         bc_claims_prefilt_json = await bcobag.process_post({
             'type': 'claim-request',
             'data': {
-                'schema': {
+                'schemata': [{
                     'origin-did': bcrag.did,
-                    'name': bc_schema_data['name'],
-                    'version': bc_schema_data['version']
-                },
+                    'name': S_KEY['BC'].name,
+                    'version': S_KEY['BC'].version
+                }],
                 'claim-filter': {
-                    'attr-match': {
-                        k: bc_claims[2][k] for k in bc_claims[2] if k in ('jurisdictionId', 'busId')
-                    },
-                    'predicate-match': [
-                    ]
-                }
+                    'attr-match': [{
+                        'schema': {
+                            'origin-did': bcrag.did,
+                            'name': S_KEY['BC'].name,
+                            'version': S_KEY['BC'].version
+                        },
+                        'match': {
+                            k: claim_data[S_KEY['BC']][2][k] for k in claim_data[S_KEY['BC']][2]
+                                if k in ('jurisdictionId', 'busId')
+                        }
+                    }],
+                    'predicate-match': []
+                },
+                'requested-attrs': []
             }
         })
         bc_claims_prefilt = json.loads(bc_claims_prefilt_json)
-        print('\n\n== 6 == BC claims by attr, with filter a priori, process-post {}'.format(ppjson(bc_claims_prefilt)))
+        print('\n\n== 6 == BC claims, with filter a priori, process-post {}'.format(ppjson(bc_claims_prefilt)))
         bc_display_pruned_prefilt = claims_for(bc_claims_prefilt['claims'])
         print('\n\n== 7 == BC display claims filtered a priori matching {}: {}'.format(
-            bc_claims[2]['legalName'],
+            claim_data[S_KEY['BC']][2]['legalName'],
             ppjson(bc_display_pruned_prefilt)))
-        assert set([*bc_display_pruned_postfilt]) == set([*bc_display_pruned_prefilt])
-        assert len(bc_display_pruned_postfilt) == 1
+        assert set([*bc_display_pruned_filt_post_hoc]) == set([*bc_display_pruned_prefilt])
+        assert len(bc_display_pruned_filt_post_hoc) == 1
 
-        # 8. BC Org Book (as HolderProver) creates proof (by filter)
+        # 8. BC Org Book agent (as HolderProver) creates proof (by filter)
         bc_proof_resp = json.loads(await bcobag.process_post({
             'type': 'proof-request',
             'data': {
-                'schema': {
+                'schemata': [{
                     'origin-did': bcrag.did,
-                    'name': bc_schema_data['name'],
-                    'version': bc_schema_data['version']
-                },
+                    'name': S_KEY['BC'].name,
+                    'version': S_KEY['BC'].version
+                }],
                 'claim-filter': {
-                    'attr-match': {
-                        k: bc_claims[2][k] for k in bc_claims[2] if k in ('jurisdictionId', 'busId')
-                    },
-                    'predicate-match': [
-                    ]
-                }
+                    'attr-match': [{
+                        'schema': {
+                            'origin-did': bcrag.did,
+                            'name': S_KEY['BC'].name,
+                            'version': S_KEY['BC'].version
+                        },
+                        'match': {
+                            k: claim_data[S_KEY['BC']][2][k] for k in claim_data[S_KEY['BC']][2]
+                                if k in ('jurisdictionId', 'busId')
+                        }
+                    }],
+                    'predicate-match': []
+                },
+                'requested-attrs': []
             }
         }))
         print('\n\n== 8 == BC proof response (by filter) {}'.format(ppjson(bc_proof_resp)))
@@ -820,44 +1157,45 @@ async def test_agents_process_forms_local(
         # 9. SRI agent (as Verifier) verifies proof (by filter)
         rc_json = await sag.process_post({
             'type': 'verification-request',
-            'data': {**bc_proof_resp,
-                'schema': {
-                    'origin-did': bcrag.did,
-                    'name': bc_schema_data['name'],
-                    'version': bc_schema_data['version']
-                }
-            }
+            'data': bc_proof_resp
         })
         print('\n\n== 9 == the SRI agent verifies the BC proof (by filter) as {}'.format(ppjson(rc_json)))
         assert json.loads(rc_json)
 
-        # 10. BC Org Book (as HolderProver) creates proof (by claim-uuid)
+        # 10. BC Org Book agent (as HolderProver) creates proof (by claim-uuid)
         bc_claim_uuid = set([*bc_display_pruned_prefilt]).pop()
+        seq_no = set(schema_seq_nos_for(bc_claims_prefilt['claims'], {bc_claim_uuid}).values()).pop()  # it's unique
         bc_proof_resp = json.loads(await bcobag.process_post({
             'type': 'proof-request-by-claim-uuid',
             'data': {
-                'schema': {
-                    'origin-did': bcrag.did,
-                    'name': bc_schema_data['name'],
-                    'version': bc_schema_data['version']
-                },
-                'claim-uuid': bc_claim_uuid
+                'schemata': [{
+                    'origin-did': seq_no2schema_key[seq_no].origin.did,
+                    'name': seq_no2schema_key[seq_no].name,
+                    'version': seq_no2schema_key[seq_no].version
+                }],
+                'claim-uuids': [
+                    bc_claim_uuid
+                ],
+                'requested-attrs': []
             }
         }))
         print('\n\n== 10 == BC proof response by claim-uuid={}: {}'.format(bc_claim_uuid, ppjson(bc_proof_resp)))
 
-        # 11. BC Org Book (HolderProver) creates non-proof (by non-claim-uuid)
+        # 11. BC Org Book agent (HolderProver) creates non-proof (by non-claim-uuid)
         bc_non_claim_uuid = 'claim::ffffffff-ffff-ffff-ffff-ffffffffffff'
         try:
             json.loads(await bcobag.process_post({
                 'type': 'proof-request-by-claim-uuid',
                 'data': {
-                    'schema': {
-                        'origin-did': bcrag.did,
-                        'name': bc_schema_data['name'],
-                        'version': bc_schema_data['version']
-                    },
-                    'claim-uuid': bc_non_claim_uuid
+                    'schemata': [{
+                        'origin-did': seq_no2schema_key[seq_no].origin.did,
+                        'name': seq_no2schema_key[seq_no].name,
+                        'version': seq_no2schema_key[seq_no].version
+                    }],
+                    'claim-uuids': [
+                        bc_non_claim_uuid
+                    ],
+                    'requested-attrs': []
                 }
             }))
             assert False
@@ -867,156 +1205,228 @@ async def test_agents_process_forms_local(
         # 12. SRI agent (as Verifier) verifies proof (by claim-uuid)
         rc_json = await sag.process_post({
             'type': 'verification-request',
-            'data': {**bc_proof_resp,
-                'schema': {
-                    'origin-did': bcrag.did,
-                    'name': bc_schema_data['name'],
-                    'version': bc_schema_data['version']
-                }
-            }
+            'data': bc_proof_resp
         })
         print('\n\n== 12 == SRI agent verifies BC proof by claim_uuid={} as {}'.format(
             bc_claim_uuid,
             ppjson(rc_json)))
         assert json.loads(rc_json)
 
-        # 13. Finish bootstrapping SRI agent as Origin and Issuer, PSPC Org Book agent as HolderProver
-        sri_schema_json = await sag.process_post(sri_schema_lookup_form)  # may exist
-        if not json.loads(sri_schema_json):
-            sri_schema_send = json.loads(await sag.process_post({
-                'type': 'schema-send',
+        # 13. Create and store SRI registration completion claims, green claims from verified proof + extra data
+        revealed = revealed_attrs(bc_proof_resp['proof'])
+        claim_data[S_KEY['SRI-1.0']].append({
+            **{k: revealed[k] for k in revealed if k in schema_data[S_KEY['SRI-1.0']]['attr-names']},
+            'sriRegDate': datetime.date.today().strftime('%Y-%m-%d')
+        })
+        claim_data[S_KEY['SRI-1.1']].append({
+            **{k: revealed[k] for k in revealed if k in schema_data[S_KEY['SRI-1.1']]['attr-names']},
+            'sriRegDate': datetime.date.today().strftime('%Y-%m-%d'),
+            'businessLang': 'EN-CA'
+        })
+        claim_data[S_KEY['GREEN']].append({
+            **{k: revealed[k] for k in revealed if k in schema_data[S_KEY['GREEN']]['attr-names']},
+            'greenLevel': 'Silver',
+            'auditDate': datetime.date.today().strftime('%Y-%m-%d')
+        })
+
+        i = 0
+        for s_key in claim_data:
+            if s_key == S_KEY['BC']:
+                continue
+            for c in claim_data[s_key]:
+                print('\n\n== 13.{} == Data for SRI claim on [{} v{}]: {}'.format(
+                    claim_data[s_key].index(c),
+                    s_key.name,
+                    s_key.version,
+                    ppjson(c)))
+                claim_json[s_key] = await s_key.origin.process_post({
+                    'type': 'claim-create',
+                    'data': {
+                        'claim-req': claim_req[s_key],
+                        'claim-attrs': c
+                    }
+                })
+                claim[s_key] = json.loads(claim_json[s_key])
+                assert claim[s_key]
+                await holder_prover[s_key.origin].process_post({
+                    'type': 'claim-store',
+                    'data': {
+                        'claim': claim[s_key]
+                    }
+                })
+                i += 1
+
+        # 14. PSPC Org Book agent (as HolderProver) finds all claims, one schema at a time
+        i = 0
+        for s_key in schema:
+            if s_key == S_KEY['BC']:
+                continue
+            sri_claim = json.loads(await holder_prover[s_key.origin].process_post({
+                'type': 'claim-request',
                 'data': {
-                    'schema': {
-                        'origin-did': sag.did,
-                        'name': sri_schema_data['name'],
-                        'version': sri_schema_data['version']
+                    'schemata': [{
+                        'origin-did': s_key.origin.did,
+                        'name': s_key.name,
+                        'version': s_key.version
+                    }],
+                    'claim-filter': {
+                        'attr-match': [],
+                        'predicate-match': []
                     },
-                    'attr-names': sri_schema_data['attr_names']
+                    'requested-attrs': []
                 }
             }))
-            assert bc_schema_send
-        sri_schema_json = await sag.process_post(sri_schema_lookup_form)
-        sri_schema = json.loads(sri_schema_json)  # should exist now
-        assert sri_schema
-        print('\n\n== 13 == SRI SCHEMA {}'.format(ppjson(sri_schema)))
+            print('\n\n== 14.{} == SRI claims on [{} v{}], no filter: {}'.format(
+                i,
+                s_key.name,
+                s_key.version,
+                ppjson(sri_claim)))
+            i += 1
 
-        sri_claim_def_send_form = {
-            'type': 'claim-def-send',
-            'data': {
-                'schema': {
-                    'origin-did': sag.did,
-                    'name': sri_schema_data['name'],
-                    'version': sri_schema_data['version']
-                }
-            }
-        }
-
-        await sag.process_post(sri_claim_def_send_form)
-        sri_claim_def_json = await pspcobag.get_claim_def(
-            sri_schema['seqNo'],
-            sag.did)  # ought to exist now (short-circuit to low-level API)
-        assert json.loads(sri_claim_def_json)['ref'] == sri_schema['seqNo']
-
-        master_secret_set_form['data']['label'] = 'shhhh'
-        await pspcobag.process_post(master_secret_set_form)
-        sri_claims_reset_resp = json.loads(await pspcobag.process_post(claims_reset_form))
-        assert not sri_claims_reset_resp  # make sure later ops are OK on reset wallet -- response is {} if OK
-
-        # 14. Create and store SRI registration completion claim from verified proof
-        sri_claim_hello_form = {
-            'type': 'claim-hello',
-            'data': {
-                'issuer-did': sag.did,
-                'schema': {
-                    'origin-did': sag.did,
-                    'name': sri_schema_data['name'],
-                    'version': sri_schema_data['version']
-                }
-            }
-        }
-        sri_claim_req_json = await pspcobag.process_post(sri_claim_hello_form)
-        sri_claim_req = json.loads(sri_claim_req_json)
-        assert sri_claim_req
-
-        revealed = revealed_attrs(bc_proof_resp['proof'])
-        sri_claim = {k: claim_value_pair(revealed[k]) for k in revealed if k in sri_schema_data['attr_names']}
-        yyyy_mm_dd = datetime.date.today().strftime('%Y-%m-%d')
-        sri_claim['sriRegDate'] = claim_value_pair(yyyy_mm_dd)
-        print('\n\n== 14 == sri_claim: {}'.format(ppjson(sri_claim)))
-
-        sri_claim_json = await sag.process_post({
-            'type': 'claim-create',
-            'data': {
-                'claim-req': sri_claim_req,
-                'claim-attrs': sri_claim
-            }
-        })
-        await pspcobag.process_post({
-            'type': 'claim-store',
-            'data': {
-                'claim': json.loads(sri_claim_json)
-            }
-        })
-        assert json.loads(sri_claim_json)
-
-        # 15. PSPC Org Book (as HolderProver) finds claim
+        # 15. PSPC Org Book agent (as HolderProver) finds all claims, for all schemata at once, on first attr per schema
         sri_claims_all = json.loads(await pspcobag.process_post({
             'type': 'claim-request',
             'data': {
-                'schema': {
-                    'origin-did': sag.did,
-                    'name': sri_schema_data['name'],
-                    'version': sri_schema_data['version']
-                },
+                'schemata': [{
+                    'origin-did': s_key.origin.did,
+                    'name': s_key.name,
+                    'version': s_key.version
+                } for s_key in schema_data if s_key != S_KEY['BC']],
                 'claim-filter': {
                     'attr-match': {
                     },
                     'predicate-match': [
                     ]
-                }
+                },
+                'requested-attrs': [{
+                    'schema': {
+                        'origin-did': s_key.origin.did,
+                        'name': s_key.name,
+                        'version': s_key.version
+                    },
+                    'names': [
+                        schema_data[s_key]['attr-names'][0]
+                    ]
+                } for s_key in schema_data if s_key != S_KEY['BC']]
             }
         }))
-        print('\n\n== 15 == SRI claim {}'.format(ppjson(sri_claims_all)))
+        print('\n\n== 15 == All SRI claims at PSPC Org Book, first attr only: {}'.format(ppjson(sri_claims_all)))
+        assert len(sri_claims_all['claims']['attrs']) == (len(schema_data) - 1)  # all schema_data except BC
 
-        # 16. PSPC Org Book (as HolderProver) creates proof
+        # 16. PSPC Org Book agent (as HolderProver) finds all claims on all schemata at once
+        sri_claims_all = json.loads(await pspcobag.process_post({
+            'type': 'claim-request',
+            'data': {
+                'schemata': [{
+                    'origin-did': s_key.origin.did,
+                    'name': s_key.name,
+                    'version': s_key.version
+                } for s_key in schema_data if s_key != S_KEY['BC']],
+                'claim-filter': {
+                    'attr-match': [],
+                    'predicate-match': []
+                },
+                'requested-attrs': []
+            }
+        }))
+        print('\n\n== 16 == All SRI claims at PSPC Org Book: {}'.format(ppjson(sri_claims_all)))
         sri_display = claims_for(sri_claims_all['claims'])
-        sri_claim_uuid = set([*sri_display]).pop()
+        print('\n\n== 17 == All SRI claims at PSPC Org Book by claim-uuid: {}'.format(ppjson(sri_display)))
+
+        # 17. PSPC Org Book agent (as HolderProver) creates (multi-claim) proof
+        sri_proof_resp = json.loads(await pspcobag.process_post({
+            'type': 'proof-request',
+            'data': {
+                'schemata': [{
+                    'origin-did': s_key.origin.did,
+                    'name': s_key.name,
+                    'version': s_key.version
+                } for s_key in schema_data if s_key != S_KEY['BC']],
+                'claim-filter': {
+                    'attr-match': [],
+                    'predicate-match': []
+                },
+                'requested-attrs': []
+            }
+        }))
+        print('\n\n== 18 == SRI proof to all-claims response: {}'.format(ppjson(sri_proof_resp)))
+
+        # 18. SRI (as Verifier) verifies proof
+        rc_json = await sag.process_post({
+            'type': 'verification-request',
+            'data': sri_proof_resp
+        })
+        print('\n\n== 19 == SRI agent verifies SRI proof as {}'.format(ppjson(rc_json)))
+        assert json.loads(rc_json)
+
+        # 19. PSPC Org Book Agent (as HolderProver) creates (multi-claim) proof by claim-uuid
+        seq_nos = schema_seq_nos_for(sri_claims_all['claims'], {k for k in sri_display})
+        sri_proof_resp = json.loads(await pspcobag.process_post({
+            'type': 'proof-request-by-claim-uuid',
+                'data': {
+                    'schemata': [{
+                        'origin-did': seq_no2schema_key[seq_nos[claim_uuid]].origin.did,
+                        'name': seq_no2schema_key[seq_nos[claim_uuid]].name,
+                        'version': seq_no2schema_key[seq_nos[claim_uuid]].version
+                    } for claim_uuid in sri_display],
+                'claim-uuids': [
+                    claim_uuid for claim_uuid in sri_display
+                ],
+                'requested-attrs': []
+            }
+        }))
+        print('\n\n== 20 == SRI proof to all-claims on claim-uuids {}: {}'.format(
+            [claim_uuid for claim_uuid in sri_display],
+            ppjson(sri_proof_resp)))
+
+        # 20. SRI (as Verifier) verifies proof
+        rc_json = await sag.process_post({
+            'type': 'verification-request',
+            'data': sri_proof_resp
+        })
+        print('\n\n== 21 == SRI agent verifies SRI proof as {}'.format(ppjson(rc_json)))
+        assert json.loads(rc_json)
+
+        # 21. PSPC Org Book Agent (as HolderProver) creates (multi-claim) proof by claim-uuid, schemata implicit
+        seq_nos = schema_seq_nos_for(sri_claims_all['claims'], {k for k in sri_display})
         sri_proof_resp = json.loads(await pspcobag.process_post({
             'type': 'proof-request-by-claim-uuid',
             'data': {
-                'schema': {
-                    'origin-did': sag.did,
-                    'name': sri_schema_data['name'],
-                    'version': sri_schema_data['version']
-                },
-                'claim-uuid': sri_claim_uuid
+                'schemata': [],
+                'claim-uuids': [
+                    claim_uuid for claim_uuid in sri_display
+                ],
+                'requested-attrs': [{
+                    'schema': {
+                        'origin-did': s_key.origin.did,
+                        'name': s_key.name,
+                        'version': s_key.version
+                    },
+                    'names': [
+                        schema_data[s_key]['attr-names'][0]
+                    ]
+                } for s_key in schema_data if s_key != S_KEY['BC']]
             }
         }))
-        print('\n\n== 16 == SRI proof response by claim-uuid={}: {}'.format(sri_claim_uuid, ppjson(sri_proof_resp)))
+        print('\n\n== 22 == SRI proof to all-claims on claim-uuids, first attrs only, schemata implicit {}: {}'.format(
+            [claim_uuid for claim_uuid in sri_display],
+            ppjson(sri_proof_resp)))
 
-        # 17. SRI (as Verifier) verifies proof
+        # 22. SRI (as Verifier) verifies proof
         rc_json = await sag.process_post({
             'type': 'verification-request',
-            'data': {**sri_proof_resp,
-                'schema': {
-                    'origin-did': sag.did,
-                    'name': sri_schema_data['name'],
-                    'version': sri_schema_data['version']
-                }
-            }
+            'data': sri_proof_resp
         })
-        print('\n\n== 17 == SRI agent verifies SRI proof by claim_uuid={} as {}'.format(
-            sri_claim_uuid,
-            ppjson(rc_json)))
+        print('\n\n== 23 == SRI agent verifies SRI proof as {}'.format(ppjson(rc_json)))
         assert json.loads(rc_json)
 
-        # 18. Exercise helper GET calls
-        txn_json = await sag.process_get_txn(sri_schema['seqNo'])
-        print('\n\n== 18 == SRI schema by txn #{}: {}'.format(sri_schema['seqNo'], ppjson(txn_json)))
+        # 23. Exercise helper GET calls
+        txn_json = await sag.process_get_txn(schema[S_KEY['GREEN']]['seqNo'])
+        print('\n\n== 24 == GREEN schema by txn #{}: {}'.format(schema[S_KEY['GREEN']]['seqNo'], ppjson(txn_json)))
         assert json.loads(txn_json)
         txn_json = await sag.process_get_txn(99999)  # ought not exist
         assert not json.loads(txn_json)
 
         did_json = await bcrag.process_get_did()
-        print('\n\n== 19 == BC Registrar agent did: {}'.format(ppjson(did_json)))
+        print('\n\n== 25 == BC Registrar agent did: {}'.format(ppjson(did_json)))
         assert json.loads(did_json)

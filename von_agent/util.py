@@ -1,5 +1,5 @@
 """
-Copyright 2017 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+Copyright 2017-2018 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 from binascii import hexlify, unhexlify
+from copy import deepcopy
 from math import ceil, log
 
 import json
@@ -74,12 +75,13 @@ def decode(value: str):
     return ibytes.decode()
 
 
-def claims_for(claims: dict, filt: dict = {}) -> dict:
+def claims_for(claims: dict, filt: list = []) -> dict:
     """
-    Find indy-sdk claims matching input attribute-value dict from within input claims structure,
+    Find indy-sdk claims matching input filter from within input claims structure,
     json-loaded as returned via agent get_claims().
 
-    :param claims: claims structure via get_claims();
+    :param claims: claims structure returned by (HolderProver agent) get_claims(), or (equivalently)
+        response json structure at ['claims'] to response to POST 'claims-request' message type;
         e.g., {
             "attrs": {
                 "attr0_uuid": [
@@ -150,36 +152,81 @@ def claims_for(claims: dict, filt: dict = {}) -> dict:
                 ]
             }
         }
-    :param filt: attributes and values to match from claims structure
+    :param filt: filter for matching attributes and values; list of dict per schema in play, with:
+        - schema sequence number (an agent should have retrieved it by now)
+        - attribute name(s) as dict property key(s), (decoded) value(s) as property value(s);
+        specify empty list for no filter. E.g.,
+        [
+            {
+                'schema_seq_no': 21,
+                'match': {
+                    'attr0': '1',
+                    'attr1': 'Nice'
+                }
+            },
+            ...
+        ]
     :return: human-legible dict mapping claim uuid to claim attributes for claims matching input filter
     """
 
-    uuid2claims = claims['attrs']
-    filt_str = {k: str(filt[k]) for k in filt}
     rv = {}
+    uuid2claims = claims['attrs']
     for claims in uuid2claims.values():
         for claim in claims:
-            if claim['claim_uuid'] not in rv and (filt_str.items() <= claim['attrs'].items()):
+            if claim['claim_uuid'] in rv:
+                continue
+            if not filt:
+                rv[claim['claim_uuid']] = claim['attrs']
+            if any(f['schema_seq_no'] == claim['schema_seq_no'] and
+                    {k: str(f['match'][k]) for k in f['match']}.items() <= claim['attrs'].items()
+                        for f in filt):
                 rv[claim['claim_uuid']] = claim['attrs']
 
     return rv
 
 
-def prune_claims_json(claim_uuids: set, claims: dict) -> str:
+def schema_seq_nos_for(claims: dict, claim_uuids: list) -> dict:
+    """
+    Given a claims structure and a (wallet) claim-uuid, return dict mapping each claim-uuid to its
+    corresponding schema sequence number.
+
+    :param claims: claims structure returned by (HolderProver agent) get_claims(), or (equivalently)
+        response json structure at ['claims'] to response to POST 'claims-request' message type
+    :param claim_uuids: list of claim-uuid for which to find corresponding schema sequence number
+    :return: sequence number of schema on distributed ledger (empty dict if claim-uuid not present)
+    """
+
+    rv = {}
+    uuid2claims = claims['attrs']
+    for claims in uuid2claims.values():
+        for claim in claims:
+            claim_uuid = claim['claim_uuid']
+            if (claim_uuid not in rv) and (claim_uuid in claim_uuids):
+                rv[claim_uuid] = claim['schema_seq_no']
+
+    return rv
+
+
+def prune_claims_json(claims: dict, claim_uuids: set) -> str:
     """
     Strip all claims out of the input json structure that do not match any of the input claim uuids.
 
-    :param claim_uuids: the set of claim uuids, as specified in claims json structure returned from get_claims,
-        showing up as dict keys that claims_for() returns
     :param claims: claims structure returned by (HolderProver agent) get_claims(), or (equivalently)
-        response json structure at ['claims'] to response to POST claims-request message type
+        response json structure at ['claims'] to response to POST 'claims-request' message type
+    :param claim_uuids: the set of claim uuids, as specified in claims json structure returned from get_claims(),
+        showing up as dict keys that claims_for() returns
     :return: the reduced claims json
     """
 
-    for attr_uuid, claims_by_uuid in claims['attrs'].items():
-        claims['attrs'][attr_uuid] = [claim for claim in claims_by_uuid if claim['claim_uuid'] in claim_uuids]
+    rv = deepcopy(claims)
+    for attr_uuid, claims_by_uuid in rv['attrs'].items():
+        rv['attrs'][attr_uuid] = [claim for claim in claims_by_uuid if claim['claim_uuid'] in claim_uuids]
 
-    return json.dumps(claims)
+    empties = [attr_uuid for attr_uuid in rv['attrs'] if not rv['attrs'][attr_uuid]]
+    for attr_uuid in empties:
+        del rv['attrs'][attr_uuid]
+
+    return json.dumps(rv)
 
 
 def revealed_attrs(proof: dict) -> dict:
