@@ -19,7 +19,7 @@ from indy import agent, anoncreds, ledger, signus, pool, wallet, IndyError
 from indy.error import ErrorCode
 from von_agent.demo_agents import TrustAnchorAgent, SRIAgent, OrgBookAgent, BCRegistrarAgent
 from von_agent.nodepool import NodePool
-from von_agent.schema_key import SchemaKey
+from von_agent.schema import SchemaKey
 from von_agent.util import decode, encode, revealed_attrs, claims_for, prune_claims_json, schema_seq_nos_for, ppjson
 
 import datetime
@@ -32,8 +32,8 @@ def claim_value_pair(plain):
 
 
 #noinspection PyUnusedLocal
-# @pytest.mark.asyncio
-async def x_test_agents_direct(
+@pytest.mark.asyncio
+async def test_agents_direct(
         pool_name,
         pool_genesis_txn_path,
         seed_trustee1,
@@ -734,7 +734,7 @@ async def test_agents_process_forms_local(
             S_KEY['BC']: {
                 'name': S_KEY['BC'].name,
                 'version': S_KEY['BC'].version,
-                'attr-names': [
+                'attr_names': [
                     'id',
                     'busId',
                     'orgTypeId',
@@ -747,7 +747,7 @@ async def test_agents_process_forms_local(
             S_KEY['SRI-1.0']: {
                 'name': S_KEY['SRI-1.0'].name,
                 'version': S_KEY['SRI-1.0'].version,
-                'attr-names': [
+                'attr_names': [
                     'legalName',
                     'jurisdictionId',
                     'sriRegDate'
@@ -756,7 +756,7 @@ async def test_agents_process_forms_local(
             S_KEY['SRI-1.1']: {
                 'name': S_KEY['SRI-1.1'].name,
                 'version': S_KEY['SRI-1.1'].version,
-                'attr-names': [
+                'attr_names': [
                     'legalName',
                     'jurisdictionId',
                     'businessLang',
@@ -766,7 +766,7 @@ async def test_agents_process_forms_local(
             S_KEY['GREEN']: {
                 'name': S_KEY['GREEN'].name,
                 'version': S_KEY['GREEN'].version,
-                'attr-names': [
+                'attr_names': [
                     'legalName',
                     'greenLevel',
                     'auditDate'
@@ -868,7 +868,7 @@ async def test_agents_process_forms_local(
                             'name': s_key.name,
                             'version': s_key.version
                         },
-                        'attr_names': schema_data[s_key]['attr-names']
+                        'attr-names': schema_data[s_key]['attr_names']
                     }
                 })
             schema_json[s_key] = await s_key.origin.get_schema(
@@ -892,7 +892,7 @@ async def test_agents_process_forms_local(
                             'name': S_KEY['BC'].name,
                             'version': S_KEY['BC'].version
                         },
-                        'attr_names': schema_data[S_KEY['BC']]['attr-names']
+                        'attr-names': schema_data[S_KEY['BC']]['attr_names']
                     }
                 })
                 assert False
@@ -1215,16 +1215,16 @@ async def test_agents_process_forms_local(
         # 13. Create and store SRI registration completion claims, green claims from verified proof + extra data
         revealed = revealed_attrs(bc_proof_resp['proof'])
         claim_data[S_KEY['SRI-1.0']].append({
-            **{k: revealed[k] for k in revealed if k in schema_data[S_KEY['SRI-1.0']]['attr-names']},
+            **{k: revealed[k] for k in revealed if k in schema_data[S_KEY['SRI-1.0']]['attr_names']},
             'sriRegDate': datetime.date.today().strftime('%Y-%m-%d')
         })
         claim_data[S_KEY['SRI-1.1']].append({
-            **{k: revealed[k] for k in revealed if k in schema_data[S_KEY['SRI-1.1']]['attr-names']},
+            **{k: revealed[k] for k in revealed if k in schema_data[S_KEY['SRI-1.1']]['attr_names']},
             'sriRegDate': datetime.date.today().strftime('%Y-%m-%d'),
             'businessLang': 'EN-CA'
         })
         claim_data[S_KEY['GREEN']].append({
-            **{k: revealed[k] for k in revealed if k in schema_data[S_KEY['GREEN']]['attr-names']},
+            **{k: revealed[k] for k in revealed if k in schema_data[S_KEY['GREEN']]['attr_names']},
             'greenLevel': 'Silver',
             'auditDate': datetime.date.today().strftime('%Y-%m-%d')
         })
@@ -1305,7 +1305,7 @@ async def test_agents_process_forms_local(
                         'version': s_key.version
                     },
                     'names': [
-                        schema_data[s_key]['attr-names'][0]
+                        schema_data[s_key]['attr_names'][0]
                     ]
                 } for s_key in schema_data if s_key != S_KEY['BC']]
             }
@@ -1403,7 +1403,7 @@ async def test_agents_process_forms_local(
                         'version': s_key.version
                     },
                     'names': [
-                        schema_data[s_key]['attr-names'][0]
+                        schema_data[s_key]['attr_names'][0]
                     ]
                 } for s_key in schema_data if s_key != S_KEY['BC']]
             }

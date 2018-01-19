@@ -5,8 +5,8 @@ The current state of the project aims to fulfil a demonstration use case enablin
 
 The demonstration defines the following agents:
   - the Trust Anchor agent as:
-    - a schema originator
     - the agent registrar on the distributed ledger
+    - a schema originator (purely academically, for the demonstration)
   - the BC Registrar agent as:
     - a schema originator for its own claims
     - an issuer of claims
