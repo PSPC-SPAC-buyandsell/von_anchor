@@ -1541,11 +1541,12 @@ class HolderProver(BaseListeningAgent):
             req_attrs = {}
             if form['data']['requested-attrs']:
                 for req_attr in form['data']['requested-attrs']:
-                    seq_no = self._schema_store[SchemaKey(
+                    schema = self._schema_store[SchemaKey(
                         req_attr['schema']['origin-did'],
                         req_attr['schema']['name'],
-                        req_attr['schema']['version'])]['seqNo']
-                    for name in req_attr['names']:
+                        req_attr['schema']['version'])]
+                    seq_no = schema['seqNo']
+                    for name in req_attr['names'] or schema['data']['attr_names']:
                         req_attrs['{}_{}_uuid'.format(seq_no, name)] = {
                             'schema_seq_no': seq_no,
                             'name': name
@@ -1638,11 +1639,12 @@ class HolderProver(BaseListeningAgent):
             req_attrs = {}
             if form['data']['requested-attrs']:
                 for req_attr in form['data']['requested-attrs']:
-                    seq_no = self._schema_store[SchemaKey(
+                    schema = self._schema_store[SchemaKey(
                         req_attr['schema']['origin-did'],
                         req_attr['schema']['name'],
-                        req_attr['schema']['version'])]['seqNo']
-                    for name in req_attr['names']:
+                        req_attr['schema']['version'])]
+                    seq_no = schema['seqNo']
+                    for name in req_attr['names'] or schema['data']['attr_names']:
                         req_attrs['{}_{}_uuid'.format(seq_no, name)] = {
                             'schema_seq_no': seq_no,
                             'name': name

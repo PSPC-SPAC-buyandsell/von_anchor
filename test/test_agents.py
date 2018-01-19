@@ -1283,7 +1283,7 @@ async def test_agents_process_forms_local(
                 ppjson(sri_claim)))
             i += 1
 
-        # 15. PSPC Org Book agent (as HolderProver) finds all claims, for all schemata at once, on first attr per schema
+        # 15. PSPC Org Book agent (as HolderProver) finds all claims, for all schemata, on first attr per schema
         sri_claims_all = json.loads(await pspcobag.process_post({
             'type': 'claim-request',
             'data': {
@@ -1349,14 +1349,15 @@ async def test_agents_process_forms_local(
                 'requested-attrs': []
             }
         }))
-        print('\n\n== 18 == SRI proof to all-claims response: {}'.format(ppjson(sri_proof_resp)))
+        print('\n\n== 18 == PSPC org book proof to all-claims response: {}'.format(ppjson(sri_proof_resp)))
+        assert len(sri_proof_resp['proof']['proofs']) == len(sri_display)
 
         # 18. SRI (as Verifier) verifies proof
         rc_json = await sag.process_post({
             'type': 'verification-request',
             'data': sri_proof_resp
         })
-        print('\n\n== 19 == SRI agent verifies SRI proof as {}'.format(ppjson(rc_json)))
+        print('\n\n== 19 == SRI agent verifies PSPC org book proof as {}'.format(ppjson(rc_json)))
         assert json.loads(rc_json)
 
         # 19. PSPC Org Book Agent (as HolderProver) creates (multi-claim) proof by claim-uuid
@@ -1375,19 +1376,20 @@ async def test_agents_process_forms_local(
                 'requested-attrs': []
             }
         }))
-        print('\n\n== 20 == SRI proof to all-claims on claim-uuids {}: {}'.format(
+        print('\n\n== 20 == PSPC org book proof to all-claims on claim-uuids {}: {}'.format(
             [claim_uuid for claim_uuid in sri_display],
             ppjson(sri_proof_resp)))
+        assert len(sri_proof_resp['proof']['proofs']) == len(sri_display)
 
         # 20. SRI (as Verifier) verifies proof
         rc_json = await sag.process_post({
             'type': 'verification-request',
             'data': sri_proof_resp
         })
-        print('\n\n== 21 == SRI agent verifies SRI proof as {}'.format(ppjson(rc_json)))
+        print('\n\n== 21 == SRI agent verifies PSPC org book proof as {}'.format(ppjson(rc_json)))
         assert json.loads(rc_json)
 
-        # 21. PSPC Org Book Agent (as HolderProver) creates (multi-claim) proof by claim-uuid, schemata implicit
+        # 21. PSPC Org Book Agent (as HolderProver) creates multi-claim proof, schemata implicit, first attrs only
         seq_nos = schema_seq_nos_for(sri_claims_all['claims'], {k for k in sri_display})
         sri_proof_resp = json.loads(await pspcobag.process_post({
             'type': 'proof-request-by-claim-uuid',
@@ -1408,25 +1410,60 @@ async def test_agents_process_forms_local(
                 } for s_key in schema_data if s_key != S_KEY['BC']]
             }
         }))
-        print('\n\n== 22 == SRI proof to all-claims on claim-uuids, first attrs only, schemata implicit {}: {}'.format(
-            [claim_uuid for claim_uuid in sri_display],
-            ppjson(sri_proof_resp)))
+        print('\n\n== 22 == PSPC org book proof to all claims by claim-uuid, first attrs, schemata implicit {}: {}'
+            .format(
+                [claim_uuid for claim_uuid in sri_display],
+                ppjson(sri_proof_resp)))
+        assert {sri_proof_resp['proof-req']['requested_attrs'][k]['name']
+            for k in sri_proof_resp['proof-req']['requested_attrs']} == {
+                schema_data[s_key]['attr_names'][0] for s_key in schema_data if s_key != S_KEY['BC']}
 
         # 22. SRI (as Verifier) verifies proof
         rc_json = await sag.process_post({
             'type': 'verification-request',
             'data': sri_proof_resp
         })
-        print('\n\n== 23 == SRI agent verifies SRI proof as {}'.format(ppjson(rc_json)))
+        print('\n\n== 23 == SRI agent verifies PSPC org book proof as {}'.format(ppjson(rc_json)))
         assert json.loads(rc_json)
 
-        # 23. Exercise helper GET calls
+        # 23. PSPC Org Book agent (as HolderProver) creates proof on req-attrs for all green schema attrs
+        sri_proof_resp = json.loads(await pspcobag.process_post({
+            'type': 'proof-request',
+            'data': {
+                'schemata': [],
+                'claim-filter': {
+                    'attr-match': [],
+                    'predicate-match': []
+                },
+                'requested-attrs': [{
+                    'schema': {
+                        'origin-did': S_KEY['GREEN'].origin.did,
+                        'name': S_KEY['GREEN'].name,
+                        'version': S_KEY['GREEN'].version
+                    },
+                    'names': []
+                }]
+            }
+        }))
+        print('\n\n== 24 == PSPC org book proof to green claims response: {}'.format(ppjson(sri_proof_resp)))
+        assert {sri_proof_resp['proof-req']['requested_attrs'][k]['name']
+            for k in sri_proof_resp['proof-req']['requested_attrs']} == set(schema_data[S_KEY['GREEN']]['attr_names'])
+
+        # 24. SRI (as Verifier) verifies proof
+        rc_json = await sag.process_post({
+            'type': 'verification-request',
+            'data': sri_proof_resp
+        })
+        print('\n\n== 25 == SRI agent verifies PSPC Org Book proof as {}'.format(ppjson(rc_json)))
+        assert json.loads(rc_json)
+
+        # 25. Exercise helper GET calls
         txn_json = await sag.process_get_txn(schema[S_KEY['GREEN']]['seqNo'])
-        print('\n\n== 24 == GREEN schema by txn #{}: {}'.format(schema[S_KEY['GREEN']]['seqNo'], ppjson(txn_json)))
+        print('\n\n== 26 == GREEN schema by txn #{}: {}'.format(schema[S_KEY['GREEN']]['seqNo'], ppjson(txn_json)))
         assert json.loads(txn_json)
         txn_json = await sag.process_get_txn(99999)  # ought not exist
         assert not json.loads(txn_json)
 
         did_json = await bcrag.process_get_did()
-        print('\n\n== 25 == BC Registrar agent did: {}'.format(ppjson(did_json)))
+        print('\n\n== 27 == BC Registrar agent did: {}'.format(ppjson(did_json)))
         assert json.loads(did_json)
