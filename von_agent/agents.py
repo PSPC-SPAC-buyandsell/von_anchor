@@ -1532,11 +1532,15 @@ class HolderProver(BaseListeningAgent):
                     hint='schema')
 
             # base listening agent code handles all proxied requests: it's local, carry on
+            form_schema_seq_nos = []
             for schema_key in (form['data']['schemata'] +
                     [attr_matcher['schema'] for attr_matcher in form['data']['claim-filter']['attr-match']] +
                     [pred_matcher['schema'] for pred_matcher in form['data']['claim-filter']['predicate-match']] +
                     [r_attr['schema'] for r_attr in form['data']['requested-attrs']]):
-                await self.get_schema(schema_key['origin-did'], schema_key['name'], schema_key['version'])  # pre-cache
+                form_schema_seq_nos.append(json.loads(await self.get_schema(
+                    schema_key['origin-did'],
+                    schema_key['name'],
+                    schema_key['version']))['seqNo'])  # pre-cache
 
             req_attrs = {}
             if form['data']['requested-attrs']:
@@ -1552,7 +1556,7 @@ class HolderProver(BaseListeningAgent):
                             'name': name
                         }
             else:
-                for seq_no in self._schema_store.index():
+                for seq_no in form_schema_seq_nos:
                     schema = self._schema_store[seq_no]
                     for attr_name in schema['data']['attr_names']:
                         req_attrs['{}_{}_uuid'.format(seq_no, attr_name)] = {
@@ -1632,9 +1636,13 @@ class HolderProver(BaseListeningAgent):
                     hint='schema')
 
             # base listening agent code handles all proxied requests: it's local, carry on
+            form_schema_seq_nos = []
             for schema_key in (form['data']['schemata'] +
                     [r_attr['schema'] for r_attr in form['data']['requested-attrs']]):
-                await self.get_schema(schema_key['origin-did'], schema_key['name'], schema_key['version'])  # pre-cache
+                form_schema_seq_nos.append(json.loads(await self.get_schema(
+                    schema_key['origin-did'],
+                    schema_key['name'],
+                    schema_key['version']))['seqNo'])  # pre-cache
 
             req_attrs = {}
             if form['data']['requested-attrs']:
@@ -1650,7 +1658,7 @@ class HolderProver(BaseListeningAgent):
                             'name': name
                         }
             else:
-                for seq_no in self._schema_store.index():
+                for seq_no in form_schema_seq_nos:
                     schema = self._schema_store[seq_no]
                     for attr_name in schema['data']['attr_names']:
                         req_attrs['{}_{}_uuid'.format(seq_no, attr_name)] = {

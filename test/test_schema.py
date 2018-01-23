@@ -19,7 +19,6 @@ from von_agent.util import ppjson
 
 import pytest
 
-from pprint import pprint
 
 #noinspection PyUnusedLocal
 @pytest.mark.asyncio
