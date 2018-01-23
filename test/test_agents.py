@@ -1045,7 +1045,7 @@ async def test_agents_process_forms_local(
                     }
                 ],
                 'claim-filter': {
-                    'attr-match': {},
+                    'attr-match': [],
                     'predicate-match': [],
                 },
                 'requested-attrs': []
@@ -1293,8 +1293,7 @@ async def test_agents_process_forms_local(
                     'version': s_key.version
                 } for s_key in schema_data if s_key != S_KEY['BC']],
                 'claim-filter': {
-                    'attr-match': {
-                    },
+                    'attr-match': [],
                     'predicate-match': [
                     ]
                 },
