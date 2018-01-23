@@ -140,4 +140,22 @@ class SchemaStore:
         logger.debug('SchemaStore.schema_key_for: <<< {}'.format(rv))
         return rv
 
+    def dict(self) -> dict:
+        """
+        Return flat dict with schemata stored.
 
+        :return: flat dict, indexed by sequence number plus schema key data
+        """
+
+        return {'{}; {}'.format(seq_no, tuple(self._seq_no2schema_key[seq_no])):
+                self._schema_key2schema[self._seq_no2schema_key[seq_no]]
+                    for seq_no in self._seq_no2schema_key}
+
+    def __str__(self) -> str:
+        """
+        Return string pretty-print.
+
+        :return: string pretty-print
+        """
+
+        return 'SchemaStore({})'.format(self.dict())
