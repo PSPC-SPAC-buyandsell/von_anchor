@@ -20,12 +20,12 @@ from typing import Union
 import logging
 
 
-SchemaKey = namedtuple('SchemaKey', 'origin name version')
+SchemaKey = namedtuple('SchemaKey', 'origin_did name version')
 
 
 class SchemaStore:
     """
-    Retains schemata and fetches by key (origin, name, version) or by sequence number.
+    Retains schemata and fetches by key (origin_did, name, version) or by sequence number.
     """
 
     def __init__(self) -> None:

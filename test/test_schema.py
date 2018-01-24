@@ -31,7 +31,7 @@ async def test_schema_store():
         s_key.append(SchemaKey('did.{}'.format(i), 'schema-{}'.format(i//5), '{}'.format(i%5)))
         schema.append({
             'seqNo': i,
-            'identifier': s_key[i].origin,
+            'identifier': s_key[i].origin_did,
             'data': {
                 'name': s_key[i].name,
                 'version': s_key[i].version

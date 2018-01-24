@@ -231,13 +231,15 @@ def prune_claims_json(claims: dict, claim_uuids: set) -> str:
 
 def revealed_attrs(proof: dict) -> dict:
     """
-    Fetch revealed attributes from input proof and return dict mapping attribute names to (decoded) values,
-    for processing as further claims downstream.
+    Fetch revealed attributes from input proof and return dict mapping claim-uuids to dicts mapping
+    attribute names to (decoded) values, for processing as further claims downstream.
 
     :param: indy-sdk proof as dict (proving exactly one claim)
-    :return: dict mapping revealed attribute names to decoded values
+    :return: dict mapping claim uuids to dicts mapping revealed attribute names to decoded values
     """
 
-    revealed = proof['proofs'][set(proof['proofs']).pop()]['proof']['primary_proof']['eq_proof']['revealed_attrs']
-    rv = {attr: decode(revealed[attr]) for attr in revealed}
+    rv = {}
+    for claim_uuid in proof['proofs']:
+        revealed = proof['proofs'][claim_uuid]['proof']['primary_proof']['eq_proof']['revealed_attrs']
+        rv[claim_uuid] = {attr: decode(revealed[attr]) for attr in revealed}
     return rv

@@ -159,7 +159,7 @@ class BaseAgent:
 
     async def get_nym(self, did: str) -> str:
         """
-        Get cryptonym (including current verification key) for input (agent) DID from ledger.
+        Get json cryptonym (including current verification key) for input (agent) DID from ledger.
 
         :param did: DID of cryptonym to fetch
         :return: cryptonym json
@@ -257,7 +257,7 @@ class BaseAgent:
 
     async def get_endpoint(self, did: str) -> str:
         """
-        Get endpoint for agent having input DID
+        Get json endpoint for agent having input DID
 
         :param did: DID for agent whose endpoint to find
         :return: json endpoint data for agent having input DID
