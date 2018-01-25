@@ -19,13 +19,15 @@ from setuptools import setup
 
 
 pkg_name = 'von_agent'
-version = '0.1.4'
+version = '0.1.5'
 
 
 setup(
     name=pkg_name,
-    packages=[pkg_name],
-    package_dir={pkg_name: pkg_name},
+    packages=[
+        pkg_name,
+        '{}.proto'.format(pkg_name)
+    ],
     version=version,
     description='VON agents',
     license='Apache Software License',
@@ -47,6 +49,7 @@ setup(
         'python3-indy',
         'requests',
         'chardet',
-        'certifi'
+        'certifi',
+        'jsonschema'
     ],
 )
