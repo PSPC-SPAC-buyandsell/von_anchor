@@ -20,7 +20,7 @@ from von_agent.demo_agents import TrustAnchorAgent, SRIAgent, OrgBookAgent, BCRe
 from von_agent.nodepool import NodePool
 from von_agent.schema import SchemaKey
 from von_agent.util import decode, encode, revealed_attrs, claims_for, prune_claims_json, schema_seq_nos_for, ppjson
-from von_agent.proto_util import attr_match, list_schemata, req_attrs
+from von_agent.proto.proto_util import attr_match, list_schemata, req_attrs
 
 import datetime
 import pytest
@@ -48,7 +48,7 @@ async def test_agents_direct(
     tag = TrustAnchorAgent(
         p,
         seed_trustee1,
-        'trustee_wallet',
+        'trustee-wallet',
         None,
         '127.0.0.1',
         8000,
@@ -621,7 +621,7 @@ async def test_agents_process_forms_local(
             TrustAnchorAgent(
                 p,
                 seed_trustee1,
-                'trustee_wallet',
+                'trustee-wallet',
                 None,
                 '127.0.0.1',
                 '8000',
@@ -661,11 +661,13 @@ async def test_agents_process_forms_local(
 
         assert p.handle is not None
 
-        # print('TAG DID {}'.format(tag.did))            # V4SG...
-        # print('SAG DID {}'.format(sag.did))            # FaBA...
-        # print('PSPCOBAG DID {}'.format(pspcobag.did))  # 45Ue...
-        # print('BCOBAG DID {}'.format(bcobag.did))      # Rzra...
-        # print('BCRAG DID {}'.format(bcrag.did))        # Q4zq...
+        # TAG DID: V4SG...
+        # SAG DID: FaBA...
+        # PSPCOBAG DID: 45Ue...
+        # BCOBAG DID: Rzra...
+        # BCRAG DID: Q4zq...
+        print('\n\n== 1 == Agent DIDs: {}'.format(ppjson(
+            {ag.wallet.base_name.replace('-wallet',''): ag.did for ag in (tag, sag, pspcobag, bcobag, bcrag)})))
 
         # 2. Publish agent particulars to ledger if not yet present
         did2ag = {}

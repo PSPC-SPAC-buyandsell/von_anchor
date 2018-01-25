@@ -21,6 +21,7 @@ from time import time
 from typing import Set
 
 from .nodepool import NodePool
+from .proto.validate import validate
 from .schema import SchemaKey, SchemaStore
 from .util import encode, decode, prune_claims_json, ppjson
 from .wallet import Wallet
@@ -363,17 +364,6 @@ class BaseListeningAgent(BaseAgent):
     def agent_api_path(self):
         return self._agent_api_path
 
-    def _vet_keys(must: Set[str], have: Set[str], hint: str = '') -> None:
-        logger = logging.getLogger(__name__)
-        logger.debug('BaseListeningAgent._vet_keys: >>> must: {}, have: {}, hint: {}'.format(must, have, hint))
-
-        if not must.issubset(have):
-            x = ValueError('Bad token:{} missing keys {}'.format(' ' + hint, must - have))
-            logger.error(x)
-            raise x
-
-        logger.debug('BaseListeningAgent._vet_keys: <<<')
-
     async def send_endpoint(self) -> str:
         """
         Sends agent endpoint attribute to ledger. Returns endpoint json as written
@@ -489,41 +479,19 @@ class BaseListeningAgent(BaseAgent):
         logger = logging.getLogger(__name__)
         logger.debug('BaseListeningAgent.process_post: >>> form: {}'.format(form))
 
-        self.__class__._vet_keys({'type', 'data'}, set(form.keys()))  # all tokens need type and data
+        validate(form)
 
-        if form['type'] == 'agent-nym-lookup':  # local only, no use case for proxying
-            # get agent nym from ledger (if present)
-            self.__class__._vet_keys(
-                {'agent-nym',},
-                set(form['data'].keys()),
-                hint='data')
-            self.__class__._vet_keys(
-                {'did'},
-                set(form['data']['agent-nym'].keys()),
-                hint='agent-nym')
-
+        if form['type'] == 'agent-nym-lookup':  # agent-local only, no use case for proxying
             rv = await self.get_nym(form['data']['agent-nym']['did'])
             logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
             return rv
 
-        elif form['type'] == 'agent-endpoint-lookup':  # local only, no use case for proxying
-            # get agent endpoint from ledger (if present)
-            self.__class__._vet_keys(
-                {'agent-endpoint'},
-                set(form['data'].keys()),
-                hint='data')
-            self.__class__._vet_keys(
-                {'did'},
-                set(form['data']['agent-endpoint'].keys()),
-                hint='agent-endpoint')
-
+        elif form['type'] == 'agent-endpoint-lookup':  # agent-local only, no use case for proxying
             rv = await self.get_endpoint(form['data']['agent-endpoint']['did'])
             logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
             return rv
 
         elif form['type'] == 'agent-endpoint-send':
-            # send to agent endpoint to ledger
-
             resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
                 return resp_proxy_json  # it's proxied
@@ -533,22 +501,12 @@ class BaseListeningAgent(BaseAgent):
             logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
             return rv
 
-        elif form['type'] == 'schema-lookup':  # local only, no use case for proxying
-            # init schema from ledger
-            self.__class__._vet_keys(
-                {'schema'},
-                set(form['data'].keys()),
-                hint='data')
-            self.__class__._vet_keys(
-                {'origin-did', 'name', 'version'},
-                set(form['data']['schema'].keys()),
-                hint='schema')
+        elif form['type'] == 'schema-lookup':  # agent-local only, no use case for proxying
             schema_json = await self.get_schema(
                 form['data']['schema']['origin-did'], 
                 form['data']['schema']['name'],
                 form['data']['schema']['version'])
             schema = json.loads(schema_json)
-
             if not schema:
                 rv = schema_json
                 logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
@@ -559,125 +517,64 @@ class BaseListeningAgent(BaseAgent):
             return rv
 
         elif form['type'] in ('claim-request', 'proof-request'):
-            self.__class__._vet_keys(
-                {'schemata', 'claim-filter', 'requested-attrs'},
-                set(form['data'].keys()),
-                hint='data')
-            for schema in form['data']['schemata']:
-                self.__class__._vet_keys(
-                    {'origin-did', 'name', 'version'},
-                    set(schema.keys()),
-                    hint='schemata')
-            self.__class__._vet_keys(
-                {'attr-match', 'predicate-match'},
-                set(form['data']['claim-filter'].keys()),
-                hint='claim-filter')
-            # TODO: predicate-match
-            for req_attr in form['data']['requested-attrs']:
-                self.__class__._vet_keys(
-                    {'schema', 'names'},
-                    set(req_attr.keys()),
-                    hint='requested-attrs')
-                self.__class__._vet_keys(
-                    {'origin-did', 'name', 'version'},
-                    set(req_attr['schema'].keys()),
-                    hint='schema')
-
             resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
                 rv = resp_proxy_json  # it's proxied
                 logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
                 return rv
 
-            # it's local: base listening agent doesn't do this work
+            # base listening agent doesn't do this work
             logger.debug('BaseListeningAgent.process_post: <!< not this form type: {}'.format(form['type']))
             raise NotImplementedError(
-                '{} does not respond locally to token type {}'.format(self.__class__.__name__, form['type']))
+                '{} does not respond to token type {}'.format(self.__class__.__name__, form['type']))
 
         elif form['type'] == 'proof-request-by-claim-uuid':
-            self.__class__._vet_keys(
-                {'schemata', 'claim-uuids', 'requested-attrs'},
-                set(form['data'].keys()),
-                hint='data')
-            for schema in form['data']['schemata']:
-                self.__class__._vet_keys(
-                    {'origin-did', 'name', 'version'},
-                    set(schema.keys()),
-                    hint='schemata')
-            for req_attr in form['data']['requested-attrs']:
-                self.__class__._vet_keys(
-                    {'schema', 'names'},
-                    set(req_attr.keys()),
-                    hint='requested-attrs')
-                self.__class__._vet_keys(
-                    {'origin-did', 'name', 'version'},
-                    set(req_attr['schema'].keys()),
-                    hint='schema')
-
             resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
                 rv = resp_proxy_json  # it's proxied
                 logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
                 return rv
 
-            # it's local: base listening agent doesn't do this work
+            # base listening agent doesn't do this work
             logger.debug('BaseListeningAgent.process_post: <!< not this form type: {}'.format(form['type']))
             raise NotImplementedError(
-                '{} does not respond locally to token type {}'.format(self.__class__.__name__, form['type']))
+                '{} does not respond to token type {}'.format(self.__class__.__name__, form['type']))
 
         elif form['type'] == 'verification-request':
-            self.__class__._vet_keys(
-                {'proof-req', 'proof'},
-                set(form['data'].keys()),
-                hint='data')
-
             resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
                 rv = resp_proxy_json  # it's proxied
                 logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
                 return rv
 
-            # it's local: base listening agent doesn't do this work
+            # base listening agent doesn't do this work
             logger.debug('BaseListeningAgent.process_post: <!< not this form type: {}'.format(form['type']))
             raise NotImplementedError(
-                '{} does not respond locally to token type {}'.format(self.__class__.__name__, form['type']))
+                '{} does not respond to token type {}'.format(self.__class__.__name__, form['type']))
 
         elif form['type'] == 'claim-hello':
-            self.__class__._vet_keys(
-                {'schema', 'issuer-did'},
-                set(form['data'].keys()),
-                hint='data')
-            self.__class__._vet_keys(
-                {'origin-did', 'name', 'version'},
-                set(form['data']['schema'].keys()),
-                hint='schema')
             resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
                 rv = resp_proxy_json  # it's proxied
                 logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
                 return rv
 
-            # it's local: base listening agent doesn't do this work
+            # base listening agent doesn't do this work
             logger.debug('BaseListeningAgent.process_post: <!< not this form type: {}'.format(form['type']))
             raise NotImplementedError(
-                '{} does not respond locally to token type {}'.format(self.__class__.__name__, form['type']))
+                '{} does not respond to token type {}'.format(self.__class__.__name__, form['type']))
 
         elif form['type'] == 'claim-store':
-            self.__class__._vet_keys(
-                {'claim'},
-                set(form['data'].keys()),
-                hint='data')
-
             resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
                 rv = resp_proxy_json  # it's proxied
                 logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
                 return rv
 
-            # it's local: base listening agent doesn't do this work
+            # base listening agent doesn't do this work
             logger.debug('BaseListeningAgent.process_post: <!< not this form type: {}'.format(form['type']))
             raise NotImplementedError(
-                '{} does not respond locally to token type {}'.format(self.__class__.__name__, form['type']))
+                '{} does not respond to token type {}'.format(self.__class__.__name__, form['type']))
 
         # unknown token type
         logger.debug('BaseListeningAgent.process_post: <!< not this form type: {}'.format(form['type']))
@@ -773,9 +670,7 @@ class AgentRegistrar(BaseListeningAgent):
         logger = logging.getLogger(__name__)
         logger.debug('AgentRegistrar.process_post: >>> form: {}'.format(form))
 
-        self.__class__._vet_keys({'type', 'data'}, set(form.keys()))  # all tokens need type and data
-
-        # Try each responder code base from BaseListeningAgent up before trying locally
+        # Try dispatching to each ancestor from BaseListeningAgent first
         mro = AgentRegistrar._mro_dispatch()
         for ResponderClass in mro:
             try:
@@ -786,17 +681,7 @@ class AgentRegistrar(BaseListeningAgent):
                 pass
 
         if form['type'] == 'agent-nym-send':
-            # write agent nym to ledger
-            self.__class__._vet_keys(
-                {'agent-nym',},
-                set(form['data'].keys()),
-                hint='data')
-            self.__class__._vet_keys(
-                {'did', 'verkey'},
-                set(form['data']['agent-nym'].keys()),
-                hint='agent-nym')
-
-            # base listening agent code handles all proxied requests: it's local, carry on
+            # base listening agent code handles all proxied requests: it's agent-local, carry on
             await self.send_nym(form['data']['agent-nym']['did'], form['data']['agent-nym']['verkey'])
             rv = json.dumps({})
             logger.debug('AgentRegistrar.process_post: <<< {}'.format(rv))
@@ -849,9 +734,7 @@ class Origin(BaseListeningAgent):
         logger = logging.getLogger(__name__)
         logger.debug('Origin.process_post: >>> form: {}'.format(form))
 
-        self.__class__._vet_keys({'type', 'data'}, set(form.keys()))  # all tokens need type and data
-
-        # Try each responder code base from BaseListeningAgent up before trying locally
+        # Try dispatching to each ancestor from BaseListeningAgent first
         mro = Origin._mro_dispatch()
         for ResponderClass in mro:
             try:
@@ -862,16 +745,6 @@ class Origin(BaseListeningAgent):
                 pass
 
         if form['type'] == 'schema-send':
-            # write schema to ledger
-            self.__class__._vet_keys(
-                {'schema', 'attr-names'},
-                set(form['data'].keys()),
-                hint='data')
-            self.__class__._vet_keys(
-                {'origin-did', 'name', 'version'},
-                set(form['data']['schema'].keys()),
-                hint='schema')
-
             rv = await self.send_schema(json.dumps({
                 'name': form['data']['schema']['name'],
                 'version': form['data']['schema']['version'],
@@ -966,9 +839,7 @@ class Issuer(Origin):
         logger = logging.getLogger(__name__)
         logger.debug('Issuer.process_post: >>> form: {}'.format(form))
 
-        self.__class__._vet_keys({'type', 'data'}, set(form.keys()))  # all tokens need type and data
-
-        # Try each responder code base from BaseListeningAgent up before trying locally
+        # Try dispatching to each ancestor from BaseListeningAgent first
         mro = Issuer._mro_dispatch()
         for ResponderClass in mro:
             try:
@@ -979,17 +850,7 @@ class Issuer(Origin):
                 pass
 
         if form['type'] == 'claim-def-send':
-            # create claim def, store in wallet, send to ledger
-            self.__class__._vet_keys(
-                {'schema'},
-                set(form['data'].keys()),
-                hint='data')
-            self.__class__._vet_keys(
-                {'origin-did', 'name', 'version'},
-                set(form['data']['schema'].keys()),
-                hint='schema')
-
-            # it's local, carry on (no use case for proxying)
+            # it's agent-local, carry on (no use case for proxying)
             schema_json = await self.get_schema(
                 form['data']['schema']['origin-did'],
                 form['data']['schema']['name'],
@@ -1000,12 +861,7 @@ class Issuer(Origin):
             return rv
 
         elif form['type'] == 'claim-create':
-            self.__class__._vet_keys(
-                {'claim-req', 'claim-attrs'},
-                set(form['data'].keys()),
-                hint='data')
-
-            # it's local, carry on (no use case for proxying)
+            # it's agent-local, carry on (no use case for proxying)
             _, rv = await self.create_claim(
                 json.dumps(form['data']['claim-req']),
                 {k:
@@ -1449,9 +1305,7 @@ class HolderProver(BaseListeningAgent):
         logger = logging.getLogger(__name__)
         logger.debug('HolderProver.process_post: >>> form: {}'.format(form))
 
-        self.__class__._vet_keys({'type', 'data'}, set(form.keys()))  # all tokens need type and data
-
-        # Try each responder code base from BaseListeningAgent up before trying locally
+        # Try dispatching to each ancestor from BaseListeningAgent first
         mro = HolderProver._mro_dispatch()
         for ResponderClass in mro:
             try:
@@ -1462,11 +1316,7 @@ class HolderProver(BaseListeningAgent):
                 pass
 
         if form['type'] == 'master-secret-set':
-            # it's local, carry on (no use case for proxying)
-            self.__class__._vet_keys(
-                {'label'},
-                set(form['data'].keys()),
-                hint='data')
+            # it's agent-local, carry on (no use case for proxying)
             await self.create_master_secret(form['data']['label'])
 
             rv = json.dumps({})
@@ -1474,16 +1324,7 @@ class HolderProver(BaseListeningAgent):
             return rv
 
         elif form['type'] == 'claim-hello':
-            self.__class__._vet_keys(
-                {'issuer-did', 'schema'},
-                set(form['data'].keys()),
-                hint='data')
-            self.__class__._vet_keys(
-                {'origin-did', 'name', 'version'},
-                set(form['data']['schema'].keys()),
-                hint='schema')
-
-            # base listening agent code handles all proxied requests: it's local, carry on
+            # base listening agent code handles all proxied requests: it's agent-local, carry on
             schema_json = await self.get_schema(
                 form['data']['schema']['origin-did'],
                 form['data']['schema']['name'],
@@ -1498,40 +1339,7 @@ class HolderProver(BaseListeningAgent):
             return rv
 
         elif form['type'] in ('claim-request', 'proof-request'):
-            self.__class__._vet_keys(
-                {'schemata', 'claim-filter', 'requested-attrs'},
-                set(form['data'].keys()),
-                hint='data')
-            for schema in form['data']['schemata']:
-                self.__class__._vet_keys(
-                    {'origin-did', 'name', 'version'},
-                    set(schema.keys()),
-                    hint='schemata')
-            self.__class__._vet_keys(
-                {'attr-match', 'predicate-match'},
-                set(form['data']['claim-filter'].keys()),
-                hint='claim-filter')
-            for attr_matcher in form['data']['claim-filter']['attr-match']:
-                self.__class__._vet_keys(
-                    {'schema', 'match'},
-                    set(attr_matcher.keys()),
-                    hint='attr-match')
-                self.__class__._vet_keys(
-                    {'origin-did', 'name', 'version'},
-                    set(attr_matcher['schema'].keys()),
-                    hint='schema')
-            # TODO: predicates
-            for req_attr in form['data']['requested-attrs']:
-                self.__class__._vet_keys(
-                    {'schema', 'names'},
-                    set(req_attr.keys()),
-                    hint='requested-attrs')
-                self.__class__._vet_keys(
-                    {'origin-did', 'name', 'version'},
-                    set(req_attr['schema'].keys()),
-                    hint='schema')
-
-            # base listening agent code handles all proxied requests: it's local, carry on
+            # base listening agent code handles all proxied requests: it's agent-local, carry on
             form_schema_seq_nos = []
             for schema_key in (form['data']['schemata'] +
                     [attr_matcher['schema'] for attr_matcher in form['data']['claim-filter']['attr-match']] +
@@ -1616,26 +1424,7 @@ class HolderProver(BaseListeningAgent):
             return rv
 
         elif form['type'] == 'proof-request-by-claim-uuid':
-            self.__class__._vet_keys(
-                {'schemata', 'claim-uuids', 'requested-attrs'},
-                set(form['data'].keys()),
-                hint='data')
-            for schema in form['data']['schemata']:
-                self.__class__._vet_keys(
-                    {'origin-did', 'name', 'version'},
-                    set(schema.keys()),
-                    hint='schemata')
-            for req_attr in form['data']['requested-attrs']:
-                self.__class__._vet_keys(
-                    {'schema', 'names'},
-                    set(req_attr.keys()),
-                    hint='requested-attrs')
-                self.__class__._vet_keys(
-                    {'origin-did', 'name', 'version'},
-                    set(req_attr['schema'].keys()),
-                    hint='schema')
-
-            # base listening agent code handles all proxied requests: it's local, carry on
+            # base listening agent code handles all proxied requests: it's agent-local, carry on
             form_schema_seq_nos = []
             for schema_key in (form['data']['schemata'] +
                     [r_attr['schema'] for r_attr in form['data']['requested-attrs']]):
@@ -1715,12 +1504,7 @@ class HolderProver(BaseListeningAgent):
             return rv
 
         elif form['type'] == 'claim-store':
-            self.__class__._vet_keys(
-                {'claim'},
-                set(form['data'].keys()),
-                hint='data')
-
-            # base listening agent code handles all proxied requests: it's local, carry on
+            # base listening agent code handles all proxied requests: it's agent-local, carry on
             await self.store_claim(json.dumps(form['data']['claim']))
 
             rv = json.dumps({})
@@ -1728,7 +1512,7 @@ class HolderProver(BaseListeningAgent):
             return rv
 
         elif form['type'] == 'claims-reset':
-            # it's local, carry on (no use case for proxying)
+            # it's agent-local, carry on (no use case for proxying)
             await self.reset_wallet()
 
             rv = json.dumps({})
@@ -1817,9 +1601,7 @@ class Verifier(BaseListeningAgent):
         logger = logging.getLogger(__name__)
         logger.debug('HolderProver.process_post: >>> form: {}'.format(form))
 
-        self.__class__._vet_keys({'type', 'data'}, set(form.keys()))  # all tokens need type and data
-
-        # Try each responder code base from BaseListeningAgent up before trying locally
+        # Try dispatching to each ancestor from BaseListeningAgent first
         mro = Verifier._mro_dispatch()
         for ResponderClass in mro:
             try:
@@ -1830,12 +1612,7 @@ class Verifier(BaseListeningAgent):
                 pass
 
         if form['type'] == 'verification-request':
-            self.__class__._vet_keys(
-                {'proof-req', 'proof'},
-                set(form['data'].keys()),
-                hint='data')
-
-            # base listening agent code handles all proxied requests: it's local, carry on
+            # base listening agent code handles all proxied requests: it's agent-local, carry on
             rv = await self.verify_proof(
                 form['data']['proof-req'],
                 form['data']['proof'])

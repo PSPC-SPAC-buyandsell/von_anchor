@@ -39,9 +39,7 @@ class TrustAnchorAgent(AgentRegistrar, Origin):
         logger = logging.getLogger(__name__)
         logger.debug('TrustAnchorAgent.process_post: >>> form: {}'.format(form))
 
-        self.__class__._vet_keys({'type', 'data'}, set(form.keys()))  # all tokens need type and data
-
-        # Try each responder code base from BaseListeningAgent up before trying locally
+        # Try dispatching to each ancestor from BaseListeningAgent first
         mro = TrustAnchorAgent._mro_dispatch()
         for ResponderClass in mro:
             try:
@@ -77,9 +75,7 @@ class SRIAgent(Verifier, Issuer):
         logger = logging.getLogger(__name__)
         logger.debug('SRIAgent.process_post: >>> form: {}'.format(form))
 
-        self.__class__._vet_keys({'type', 'data'}, set(form.keys()))  # all tokens need type and data
-
-        # Try each responder code base from BaseListeningAgent up before trying locally
+        # Try dispatching to each ancestor from BaseListeningAgent first
         mro = SRIAgent._mro_dispatch()
         for ResponderClass in mro:
             try:
@@ -111,9 +107,7 @@ class BCRegistrarAgent(Issuer):
         logger = logging.getLogger(__name__)
         logger.debug('BCRegistrarAgent.process_post: >>> form: {}'.format(form))
 
-        self.__class__._vet_keys({'type', 'data'}, set(form.keys()))  # all tokens need type and data
-
-        # Try each responder code base from BaseListeningAgent up before trying locally
+        # Try dispatching to each ancestor from BaseListeningAgent first
         mro = SRIAgent._mro_dispatch()
         for ResponderClass in mro:
             try:
@@ -146,9 +140,7 @@ class OrgBookAgent(HolderProver):
         logger = logging.getLogger(__name__)
         logger.debug('OrgBookAgent.process_post: >>> form: {}'.format(form))
 
-        self.__class__._vet_keys({'type', 'data'}, set(form.keys()))  # all tokens need type and data
-
-        # Try each responder code base from BaseListeningAgent up before trying locally
+        # Try dispatching to each ancestor from BaseListeningAgent first
         mro = OrgBookAgent._mro_dispatch()
         for ResponderClass in mro:
             try:
