@@ -266,7 +266,6 @@ def revealed_attrs(proof: dict) -> dict:
     """
 
     rv = {}
-    print('\n\nXXXX -- revealed attrs proof: {}'.format(ppjson(proof)))
     for claim_uuid in proof['proof']['proofs']:
         revealed = proof['proof']['proofs'][claim_uuid]['primary_proof']['eq_proof']['revealed_attrs']
         rv[claim_uuid] = {attr: decode(revealed[attr]) for attr in revealed}
