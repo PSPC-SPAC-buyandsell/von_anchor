@@ -220,6 +220,8 @@ async def test_agents_direct(
         print('\n\n== 2.{} == SCHEMA [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_key])))
         assert schema[s_key]
         i += 1
+    assert not json.loads(await did2ag[S_KEY['BC'].origin_did].send_schema(
+        json.dumps(schema_data[S_KEY['BC']])))  # forbid multiple write of multiple schema on same key
 
     # 4. BC Registrar and SRI agents (as Issuers) create, store, and publish claim definitions to ledger
     non_claim_def_json = await bcobag.get_claim_def(999999, bcrag.did)  # ought not exist
@@ -465,9 +467,9 @@ async def test_agents_direct(
                 s_key.name,
                 s_key.version,
                 ppjson(claim_json[s_key])))
-            i += 1
             assert json.loads(claim_json[s_key])
             await holder_prover[s_key.origin_did].store_claim(claim_json[s_key])
+            i += 1
 
     # 14. PSPC Org Book agent (as HolderProver) finds all claims, one schema at a time
     i = 0
@@ -1198,7 +1200,7 @@ async def test_agents_process_forms_local(
                 continue
             for c in claim_data[s_key]:
                 print('\n\n== 13.{} == Data for SRI claim on [{} v{}]: {}'.format(
-                    claim_data[s_key].index(c),
+                    i,
                     s_key.name,
                     s_key.version,
                     ppjson(c)))

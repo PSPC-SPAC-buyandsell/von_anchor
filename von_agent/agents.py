@@ -707,17 +707,26 @@ class Origin(BaseListeningAgent):
         logger.debug('Origin.send_schema: >>> schema_data_json: {}'.format(schema_data_json))
 
         rv = json.dumps({})
-        req_json = await ledger.build_schema_request(self.did, schema_data_json)
-        resp_json = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
-        resp = json.loads(resp_json)
-        if ('op' in resp) and (resp['op'] == 'REQNACK'):
-            logger.error('BaseAgent.send_schema: {}'.format(resp['reason']))
+
+        schema_data = json.loads(schema_data_json)
+        if (json.loads(await self.get_schema(SchemaKey(self.did, schema_data['name'], schema_data['version'])))):
+            logger.error('Schema {} version {} already exists on ledger for origin-did {}: not sending'.format(
+                schema_data['name'],
+                schema_data['version'],
+                self.did))
+
         else:
-            resp_result = (json.loads(resp_json))['result']
-            rv = await self.get_schema(SchemaKey(
-                resp_result['identifier'],
-                resp_result['data']['name'],
-                resp_result['data']['version']))  # adds to store
+            req_json = await ledger.build_schema_request(self.did, schema_data_json)
+            resp_json = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
+            resp = json.loads(resp_json)
+            if ('op' in resp) and (resp['op'] == 'REQNACK'):
+                logger.error('BaseAgent.send_schema: {}'.format(resp['reason']))
+            else:
+                resp_result = (json.loads(resp_json))['result']
+                rv = await self.get_schema(SchemaKey(
+                    resp_result['identifier'],
+                    resp_result['data']['name'],
+                    resp_result['data']['version']))  # adds to store
 
         logger.debug('Origin.send_schema: <<< {}'.format(rv))
         return rv
@@ -1498,7 +1507,7 @@ class HolderProver(BaseListeningAgent):
 
             # kick out early if no matching claims
             if (not claims_found['attrs']) and (not claims_found['predicates']):
-                x = ValueError('No claim has referent {}'.format(form['data']['referents']))
+                x = ValueError('No such referent claim: {}'.format(form['data']['referents']))
                 logger.error(x)
                 raise x
 
