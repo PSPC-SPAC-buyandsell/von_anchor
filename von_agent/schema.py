@@ -23,9 +23,29 @@ import logging
 SchemaKey = namedtuple('SchemaKey', 'origin_did name version')
 
 
+def schema_key_for(spec: dict) -> SchemaKey:
+    """
+    Given schema key specifier in protocol (on keys origin-did, name, version) or indy-sdk API
+    (on keys did/issuer/identifier/etc., name, version), return corresponding SchemaKey namedtuple.
+
+    Raise ValueError on bad schema key specification.
+
+    :param spec: schema key specifier
+    :return: SchemaKey
+    """
+
+    if (len(spec) == 3) and 'name' in spec and 'version' in spec:
+        return SchemaKey(
+            name=spec['name'],
+            version=spec['version'],
+            origin_did=spec[set(spec.keys() - {'name', 'version'}).pop()])
+
+    raise ValueError('Bad schema key specification {}'.format(spec))
+
+
 class SchemaStore:
     """
-    Retains schemata and fetches by key (origin_did, name, version) or by sequence number.
+    Retain schemata and fetch by key (origin_did, name, version) or by sequence number.
     """
 
     def __init__(self) -> None:

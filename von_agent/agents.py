@@ -18,11 +18,11 @@ from indy import anoncreds, ledger
 from re import match
 from requests import post
 from time import time
-from typing import Set
+from typing import Set, Union
 
 from .nodepool import NodePool
 from .proto.validate import validate
-from .schema import SchemaKey, SchemaStore
+from .schema import SchemaKey, SchemaStore, schema_key_for
 from .util import encode, decode, prune_claims_json, ppjson
 from .wallet import Wallet
 
@@ -169,89 +169,69 @@ class BaseAgent:
         logger = logging.getLogger(__name__)
         logger.debug('BaseAgent.get_nym: >>> did: {}'.format(did))
 
+        rv = json.dumps({})
         get_nym_req = await ledger.build_get_nym_request(
             self.did,
             did)
         resp_json = await ledger.submit_request(self.pool.handle, get_nym_req)
         data_json = (json.loads(resp_json))['result']['data']  # it's double-encoded on the ledger
-        if data_json is None:
-            return json.dumps({})
+        if data_json:
+            rv = data_json
 
-        rv = data_json
         logger.debug('BaseAgent.get_nym: <<< {}'.format(rv))
         return rv
 
-    async def get_schema_by_seq_no(self, seq_no: int) -> str:
+    async def get_schema(self, index: Union[SchemaKey, int]) -> str:
         """
-        Method for agent to get schema from ledger by sequence (transaction) number; empty production {}
-        for no such schema, IndyError with error_code = ErrorCode.LedgerInvalidTransaction for bad request.
+        Method for agent to get schema from ledger by origin DID, name, and version; empty production {} for none.
 
         The operation retrieves the schema from the agent's schema store if it has it, and caches it
         en passant if it does not (and there is a corresponding schema on the ledger).
 
-        :param seq_no: schema sequence (transaction) number
-
+        :param index: schema key (origin DID, name, version) or sequence number
         :return: schema json as retrieved from ledger
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('BaseAgent.get_schema_by_seq_no: >>> seq_no: {}'.format(seq_no))
+        logger.debug('BaseAgent.get_schema: >>> index: {}'.format(index))
 
-        rv = None
-        if self._schema_store.contains(seq_no):
-            rv = json.dumps(self._schema_store[seq_no])
-        else:
-            req_json = await ledger.build_get_txn_request(self.did, seq_no)
-            resp = json.loads(await ledger.submit_request(self.pool.handle, req_json))
-            if resp['result']['data'] and (resp['result']['data']['type'] == '101'):  # type '101' == schema
-                schema = resp['result']['data']
-                self._schema_store[seq_no] = schema
-                rv = json.dumps(schema)
+        rv = json.dumps({})
+
+        if isinstance(index, SchemaKey):
+            if self._schema_store.contains(index):
+                rv = json.dumps(self._schema_store[index])
             else:
-                rv = json.dumps({})
+                req_json = await ledger.build_get_schema_request(
+                    self.did,
+                    index.origin_did,
+                    json.dumps({'name': index.name, 'version': index.version}))
+                resp_json = await ledger.submit_request(self.pool.handle, req_json)
+                resp = json.loads(resp_json)
+                if ('op' in resp) and (resp['op'] == 'REQNACK'):
+                    logger.error('BaseAgent.get_schema: {}'.format(resp['reason']))
+                else:
+                    schema = resp['result']
+                    data_json = schema['data']  # response result data is double-encoded on the ledger
+                    if data_json and 'attr_names' in data_json:
+                        self._schema_store[index] = schema
+                        rv = json.dumps(schema)
+                    else:
+                        logger.info('BaseAgent.get_schema: ledger query returned response with no data')
 
-        logger.debug('BaseAgent.get_schema_by_seq_no: <<< {}'.format(rv))
-        return rv
-
-    async def get_schema(self, origin_did: str, name: str, version: str) -> str:
-        """
-        Method for agent to get schema from ledger by origin DID, name, and version; empty production {} for none,
-        IndyError with error_code = ErrorCode.LedgerInvalidTransaction for bad request.
-
-        The operation retrieves the schema from the agent's schema store if it has it, and caches it
-        en passant if it does not (and there is a corresponding schema on the ledger).
-
-        :param origin_did: DID of schema origin
-        :param name: schema name
-        :param version: schema version string
-
-        :return: schema json as retrieved from ledger
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('BaseAgent.get_schema: >>> origin_did: {}, name: {}, version: {}'.format(
-            origin_did,
-            name,
-            version))
-
-        rv = None
-        s_key = SchemaKey(origin_did, name, version)
-        if self._schema_store.contains(s_key):
-            rv = json.dumps(self._schema_store[s_key])
-        else:
-            req_json = await ledger.build_get_schema_request(
-                self.did,
-                origin_did,
-                json.dumps({'name': name, 'version': version}))
-            resp_json = await ledger.submit_request(self.pool.handle, req_json)
-            resp = json.loads(resp_json)
-            schema = resp['result']
-
-            data_json = schema['data']  # response result data is double-encoded on the ledger
-            if (not data_json) or ('attr_names' not in data_json):
-                return json.dumps({})  # not present, give back an empty production
-            self._schema_store[s_key] = schema
-            rv = json.dumps(schema)
+        elif isinstance(index, int):
+            if self._schema_store.contains(index):
+                rv = json.dumps(self._schema_store[index])
+            else:
+                req_json = await ledger.build_get_txn_request(self.did, index)
+                resp = json.loads(await ledger.submit_request(self.pool.handle, req_json))
+                if ('op' in resp) and (resp['op'] == 'REQNACK'):
+                    logger.error('BaseAgent.get_schema: {}'.format(resp['reason']))
+                elif resp['result']['data'] and (resp['result']['data']['type'] == '101'):  # type '101' == schema
+                    # getting it as a transaction misses the 'dest' field: look it up from schema key data
+                    rv = await self.get_schema(SchemaKey(
+                        resp['result']['data']['identifier'],
+                        resp['result']['data']['data']['name'],
+                        resp['result']['data']['data']['version']))
 
         logger.debug('BaseAgent.get_schema: <<< {}'.format(rv))
         return rv
@@ -267,17 +247,22 @@ class BaseAgent:
         logger = logging.getLogger(__name__)
         logger.debug('BaseAgent.get_endpoint: >>> did: {}'.format(did))
 
+        rv = json.dumps({})
         req_json = await ledger.build_get_attrib_request(
             self.did,
             did,
             'endpoint')
         resp_json = await ledger.submit_request(self.pool.handle, req_json)
-        data_json = (json.loads(resp_json))['result']['data']  # it's double-encoded on the ledger
-        if data_json is None:
-            return json.dumps({})
-        endpoint = json.loads(data_json)['endpoint']
+        resp = json.loads(resp_json)
+        if ('op' in resp) and (resp['op'] == 'REQNACK'):
+            logger.error('BaseAgent.get_endpoint: {}'.format(resp['reason']))
+        else:
+            data_json = (json.loads(resp_json))['result']['data']  # it's double-encoded on the ledger
+            if data_json:
+                rv = json.dumps(json.loads(data_json)['endpoint'])
+            else:
+                logger.info('BaseAgent.get_endpoint: ledger query returned response with no data')
 
-        rv = json.dumps(endpoint)
         logger.debug('BaseAgent.get_endpoint: <<< {}'.format(rv))
         return rv
 
@@ -403,6 +388,7 @@ class BaseListeningAgent(BaseAgent):
             schema_seq_no,
             issuer_did))
 
+        rv = json.dumps({})
         req_json = await ledger.build_get_claim_def_txn(
             self.did,
             schema_seq_no,
@@ -410,16 +396,17 @@ class BaseListeningAgent(BaseAgent):
             issuer_did)
 
         resp_json = await ledger.submit_request(self.pool.handle, req_json)
-
         resp = json.loads(resp_json)
-        data_json = (json.loads(resp_json))['result']['data']
-        if data_json is None:
-            return json.dumps({})  # not present, give back an empty production
+        if ('op' in resp) and (resp['op'] == 'REQNACK'):
+            logger.error('BaseAgent.get_claim_def: {}'.format(resp['reason']))
+        elif 'result' in resp and 'data' in resp['result'] and resp['result']['data']:
+            data = resp['result']['data']
+            if 'revocation' in data and data['revocation'] is not None:
+                resp['result']['data']['revocation'] = None  #TODO: support revocation
+            rv = json.dumps(resp['result'])
+        else:
+            logger.info('BaseAgent.get_claim_def: ledger query returned response with no data')
 
-        if resp['result']['data']['revocation'] is not None:
-            resp['result']['data']['revocation'] = None  #TODO: support revocation
-
-        rv = json.dumps(resp['result'])
         logger.debug('BaseListeningAgent.get_claim_def: <<< {}'.format(rv))
         return rv
 
@@ -494,7 +481,9 @@ class BaseListeningAgent(BaseAgent):
         elif form['type'] == 'agent-endpoint-send':
             resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
-                return resp_proxy_json  # it's proxied
+                rv = resp_proxy_json  # it's proxied
+                logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
+                return rv
 
             resp_json = await self.send_endpoint()
             rv = json.dumps({})
@@ -502,10 +491,8 @@ class BaseListeningAgent(BaseAgent):
             return rv
 
         elif form['type'] == 'schema-lookup':  # agent-local only, no use case for proxying
-            schema_json = await self.get_schema(
-                form['data']['schema']['origin-did'], 
-                form['data']['schema']['name'],
-                form['data']['schema']['version'])
+            s_key = schema_key_for(form['data']['schema'])
+            schema_json = await self.get_schema(s_key)
             schema = json.loads(schema_json)
             if not schema:
                 rv = schema_json
@@ -528,7 +515,7 @@ class BaseListeningAgent(BaseAgent):
             raise NotImplementedError(
                 '{} does not respond to token type {}'.format(self.__class__.__name__, form['type']))
 
-        elif form['type'] == 'proof-request-by-claim-uuid':
+        elif form['type'] == 'proof-request-by-referent':
             resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
                 rv = resp_proxy_json  # it's proxied
@@ -591,10 +578,15 @@ class BaseListeningAgent(BaseAgent):
         logger = logging.getLogger(__name__)
         logger.debug('BaseListeningAgent.process_get_txn: >>> txn: {}'.format(txn))
 
+        rv = json.dumps({})
         req_json = await ledger.build_get_txn_request(self.did, txn)
         resp = json.loads(await ledger.submit_request(self.pool.handle, req_json))
 
-        rv = json.dumps(resp['result']['data'] or {})
+        if ('op' in resp) and (resp['op'] == 'REQNACK'):
+            logger.error('BaseAgent.process_get_txn: {}'.format(resp['reason']))
+        else:
+            rv = json.dumps(resp['result']['data'] or {})
+
         logger.debug('BaseListeningAgent.process_get_txn: <<< {}'.format(rv))
         return rv
 
@@ -708,17 +700,25 @@ class Origin(BaseListeningAgent):
                 'version': '1.234',
                 'attr_names': ['favourite_drink', 'height', 'last_visit_date']
             }
-        :return: schema json as written to ledger
+        :return: schema json as written to ledger, empty production for None
         """
 
         logger = logging.getLogger(__name__)
         logger.debug('Origin.send_schema: >>> schema_data_json: {}'.format(schema_data_json))
 
+        rv = json.dumps({})
         req_json = await ledger.build_schema_request(self.did, schema_data_json)
         resp_json = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
-        resp = (json.loads(resp_json))['result']
+        resp = json.loads(resp_json)
+        if ('op' in resp) and (resp['op'] == 'REQNACK'):
+            logger.error('BaseAgent.send_schema: {}'.format(resp['reason']))
+        else:
+            resp_result = (json.loads(resp_json))['result']
+            rv = await self.get_schema(SchemaKey(
+                resp_result['identifier'],
+                resp_result['data']['name'],
+                resp_result['data']['version']))  # adds to store
 
-        rv = await self.get_schema(resp['identifier'], resp['data']['name'], resp['data']['version'])  # adds to store
         logger.debug('Origin.send_schema: <<< {}'.format(rv))
         return rv
 
@@ -768,12 +768,13 @@ class Issuer(Origin):
         Method for Issuer to create a claim definition, store it in its wallet, and send it to the ledger.
 
         :param schema_json: schema as it appears on ledger via get_schema()
-        :return: json claim definition as it appears on ledger
+        :return: json claim definition as it appears on ledger, empty production for None
         """
 
         logger = logging.getLogger(__name__)
         logger.debug('Issuer.send_claim_def: >>> schema_json: {}'.format(schema_json))
 
+        rv = json.dumps({})
         schema = json.loads(schema_json)
         claim_def_json = await anoncreds.issuer_create_and_store_claim_def(
             self.wallet.handle,
@@ -781,7 +782,6 @@ class Issuer(Origin):
             schema_json,
             'CL',
             False)
-
         req_json = await ledger.build_claim_def_txn(
             self.did,
             schema['seqNo'],
@@ -792,12 +792,16 @@ class Issuer(Origin):
             self.wallet.handle,
             self.did,
             req_json)
-        data = (json.loads(resp_json))['result']['data']
-
-        if data is None:
-            rv = json.dumps({})
+        resp = json.loads(resp_json)
+        if ('op' in resp) and (resp['op'] == 'REQNACK'):
+            logger.error('BaseAgent.send_claim_def: {}'.format(resp['reason']))
         else:
-            rv = json.dumps(data)
+            data = resp['result']['data']
+            if data:
+                rv = json.dumps(data)
+            else:
+                logger.info('BaseAgent.send_claim_def: ledger query returned response with no data')
+
         logger.debug('Issuer.send_claim_def: <<< {}'.format(rv))
         return rv
 
@@ -851,10 +855,7 @@ class Issuer(Origin):
 
         if form['type'] == 'claim-def-send':
             # it's agent-local, carry on (no use case for proxying)
-            schema_json = await self.get_schema(
-                form['data']['schema']['origin-did'],
-                form['data']['schema']['name'],
-                form['data']['schema']['version'])
+            schema_json = await self.get_schema(schema_key_for(form['data']['schema']))
             await self.send_claim_def(schema_json)
             rv = json.dumps({})
             logger.debug('Issuer.process_post: <<< {}'.format(rv))
@@ -944,21 +945,26 @@ class HolderProver(BaseListeningAgent):
         self._master_secret = master_secret
         logger.debug('HolderProver.create_master_secret: <<<')
 
-    async def store_claim_offer(self, issuer_did: str, schema_seq_no: int) -> None:
+    async def store_claim_offer(self, issuer_did: str, s_key: SchemaKey) -> None:
         """
         Method for HolderProver to store a claim offer in its wallet.
+
+        :param issuer_did: DID of claim issuer
+        :param s_key: schema key (origin DID, name, version)
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.store_claim_offer: >>> issuer_did: {}, schema_seq_no: {}'.format(
-            issuer_did,
-            schema_seq_no))
+        logger.debug('HolderProver.store_claim_offer: >>> issuer_did: {}, s_key: {}'.format(issuer_did, s_key))
 
         await anoncreds.prover_store_claim_offer(
             self.wallet.handle,
             json.dumps({
                 'issuer_did': issuer_did,
-                'schema_seq_no': schema_seq_no
+                'schema_key': {
+                    'did': s_key.origin_did,
+                    'name': s_key.name,
+                    'version': s_key.version
+                }
             }))
 
         logger.debug('HolderProver.store_claim_offer: <<<')
@@ -983,12 +989,19 @@ class HolderProver(BaseListeningAgent):
             logger.error(x)
             raise x
 
+        schema_seq_no = json.loads(claim_def_json)['ref']  # = schema seq no in claim def
+        await self.get_schema(schema_seq_no)  # update schema store if need be
+        s_key = self._schema_store.schema_key_for(schema_seq_no)
         rv = await anoncreds.prover_create_and_store_claim_req(
             self.wallet.handle,
             self.did,
             json.dumps({
                 'issuer_did': issuer_did,
-                'schema_seq_no': json.loads(claim_def_json)['ref']  # = schema seq no
+                'schema_key': {
+                    'did': s_key.origin_did,
+                    'name': s_key.name,
+                    'version': s_key.version
+                }
             }),
             claim_def_json,
             self._master_secret);
@@ -1007,7 +1020,10 @@ class HolderProver(BaseListeningAgent):
         logger = logging.getLogger(__name__)
         logger.debug('HolderProver.store_claim: >>> claim_json: {}'.format(claim_json))
 
-        await anoncreds.prover_store_claim(self.wallet.handle, claim_json)
+        await anoncreds.prover_store_claim(
+            self.wallet.handle,
+            claim_json,
+            None)  # rev_reg_json - TODO: revocation
         logger.debug('HolderProver.store_claim: <<<')
 
     async def create_proof(self, proof_req: dict, claims: dict, requested_claims: dict = None) -> str:
@@ -1022,24 +1038,44 @@ class HolderProver(BaseListeningAgent):
                 'version': '1.0',  # for Verifier info, not HolderProver matching
                 'requested_attrs': {
                     'attr1_uuid': {
-                        'schema_seq_no': 57,
-                        'name': 'favourite_drink'
+                        'name': 'favourite_drink',
+                        'restrictions' [
+                            {
+                                'schema_key': {
+                                    'did': 'Vx4E82R17q...',
+                                    'name': 'friendlies',
+                                    'version': '1.0'
+                                }
+                            }
+                        ]
                     },
                     'attr2_uuid': {
-                        'schema_seq_no': 57,
-                        'name': 'height'
+                        'name': 'height',
+                        'restrictions' [
+                            {
+                                'schema_key': {
+                                    'did': 'R17v42T4pk...',
+                                    'name': 'patient-records',
+                                    'version': '2.1'
+                                }
+                            }
+                        ]
                     },
                     'attr3_uuid': {
-                        'schema_seq_no': 57,
-                        'name': 'last_visit_date'
+                        'name': 'last_visit_date',
+                        'restrictions' [
+                            {
+                                'schema_key': {
+                                    'did': 'R17v42T4pk...',
+                                    'name': 'patient-records',
+                                    'version': '4.2'
+                                }
+                            }
+                        ]
                     },
                 },
                 'requested_predicates': {
-                    'predicate1_uuid': {
-                        'attr_name': 'age',
-                        'p_type': 'GE',
-                        'value': 19
-                    }
+                    ...  # TODO: predicates
                 }
             }
         :param claims: claims to prove
@@ -1080,48 +1116,32 @@ class HolderProver(BaseListeningAgent):
             logger.error(x)
             raise x
 
-        wallet_claim_uuid2schema = {}
-        wallet_claim_uuid2claim_def = {}
+        referent2schema = {}
+        referent2claim_def = {}
         for attr_uuid in claims['attrs']:
-            wallet_claim_uuid2schema[claims['attrs'][attr_uuid][0]['claim_uuid']] = (
-                json.loads(await self.get_schema_by_seq_no(claims['attrs'][attr_uuid][0]['schema_seq_no'])))
-            wallet_claim_uuid2claim_def[claims['attrs'][attr_uuid][0]['claim_uuid']] = (
+            s_key = schema_key_for(claims['attrs'][attr_uuid][0]['schema_key'])
+            schema = json.loads(await self.get_schema(s_key))  # make sure it's in the schema store
+            referent2schema[claims['attrs'][attr_uuid][0]['referent']] = schema
+            referent2claim_def[claims['attrs'][attr_uuid][0]['referent']] = (
                 json.loads(await self.get_claim_def(
-                    claims['attrs'][attr_uuid][0]['schema_seq_no'],
+                    schema['seqNo'],
                     claims['attrs'][attr_uuid][0]['issuer_did'])))
-
-        # print('\n\n** 01 ** proof_req: {}'.format(ppjson(proof_req)))
-        # print('\n\n** 02 ** requested_claims: {}'.format(ppjson(requested_claims)))
-        # print('\n\n** 03 ** wallet_claim_uuid2schema: {}'.format(ppjson(wallet_claim_uuid2schema)))
-        # print('\n\n** 04 ** wallet_claim_uuid2claim_def: {}'.format(ppjson(wallet_claim_uuid2claim_def)))
 
         rv = await anoncreds.prover_create_proof(
             self.wallet.handle,
             json.dumps(proof_req),
             json.dumps(requested_claims),
-            json.dumps(wallet_claim_uuid2schema),
+            json.dumps(referent2schema),
             self._master_secret,
-            json.dumps(wallet_claim_uuid2claim_def),
+            json.dumps(referent2claim_def),
             json.dumps({}))  # revoc_regs_json
         logger.debug('HolderProver.create_proof: <<< {}'.format(rv))
-
-        """
-            # json.dumps({  # schemas_json
-            #     claim_uuid[0]: schema
-            #         for claim_uuid in requested_claims['requested_attrs'].values()
-            # }),
-
-            # json.dumps({  # claim_defs_json
-            #     claim_uuid[0]: claim_def
-            #         for claim_uuid in requested_claims['requested_attrs'].values()
-            # }),
-        """
         return rv
 
-    async def get_claims(self, proof_req_json: str, filt: list = []) -> (Set[str], str):
+    async def get_claims(self, proof_req_json: str, filt: dict = {}) -> (Set[str], str):
         """
         Method for HolderProver to get claims (from wallet) corresponding to proof request; empty set and
-        empty production for no such claim or erroneous filter.
+        empty production for no such claim.
 
         :param proof_req_json: proof request json as Verifier creates; has entries for proof request's
             nonce, name, and version; plus claim's requested attributes, requested predicates. E.g.,
@@ -1131,102 +1151,104 @@ class HolderProver(BaseListeningAgent):
                 'version': '1.0',  # for Verifier info, not HolderProver matching
                 'requested_attrs': {
                     'attr1_uuid': {
-                        'schema_seq_no': 57,
-                        'name': 'favourite_drink'
+                        'name': 'favourite_drink',
+                        'restrictions' [
+                            {
+                                'schema_key': {
+                                    'did': 'Vx4E82R17q...',
+                                    'name': 'friendlies',
+                                    'version': '1.0'
+                                }
+                            }
+                        ]
                     },
                     'attr2_uuid': {
-                        'schema_seq_no': 54,
-                        'name': 'height'
+                        'name': 'height',
+                        'restrictions' [
+                            {
+                                'schema_key': {
+                                    'did': 'R17v42T4pk...',
+                                    'name': 'patient-records',
+                                    'version': '2.1'
+                                }
+                            }
+                        ]
                     },
                     'attr3_uuid': {
-                        'schema_seq_no': 57,
-                        'name': 'last_visit_date'
+                        'name': 'last_visit_date',
+                        'restrictions' [
+                            {
+                                'schema_key': {
+                                    'did': 'R17v42T4pk...',
+                                    'name': 'patient-records',
+                                    'version': '4.2'
+                                }
+                            }
+                        ]
                     },
                 },
                 'requested_predicates': {
-                    'predicate1_uuid': {
-                        'attr_name': 'age',
-                        'p_type': 'GE',
-                        'value': 19
-                    }
+                    ...  # TODO: predicates
                 }
             }
-        :param filt: filter for matching attributes and values; list of dict per schema in play, with:
-            - schema specification (origin-did, name, version)
-            - attribute name(s) as dict property key(s), (decoded) value(s) as property value(s);
-            specify empty list or None for no filter; e.g.,
-            [
-                {
-                    'schema': {
-                        'origin-did': 'Vx4E82R17q...',
-                        'name': 'friendlies',
-                        'version': '1.0'
-                    },
-                    'match': {
-                        'name': 'Alex',
-                        'sex': 'M',
-                        'favouriteDrink': None
-                    }
+        :param filt: filter for matching attributes and values; dict mapping each SchemaKey to
+            dict mapping attributes to values to match (specify empty dict for no filter). E.g.,
+            {
+                SchemaKey('Vx4E82R17q...', 'friendlies', '1.0'): {
+                    'name': 'Alex',
+                    'sex': 'M',
+                    'favouriteDrink': None
                 },
-                {
-                    'schema': {
-                        'origin-did': 'R17v42T4pk...',
-                        'name': 'tombstone',
-                        'version': '2.1'
-                    },
-                    'match': {
-                        'height': 175,
-                        'birthdate': '1975-11-15'
-                    }
-                }
+                SchemaKey('R17v42T4pk...', 'tombstone', '2.1'): {
+                    'height': 175,
+                    'birthdate': '1975-11-15'
+                },
+                ...
             ]
-        :return: tuple with (set of claim-uuids, claims json for input proof request); empty set and production
-            for no such claim or erroneous filter
+        :return: tuple with (set of referents, claims json for input proof request); empty set and production
+            for no such claim
         """
 
         logger = logging.getLogger(__name__)
         logger.debug('HolderProver.get_claims: >>> proof_req_json: {}, filt: {}'.format(proof_req_json, filt))
 
         rv = None
-        claims_for_proof_json = await anoncreds.prover_get_claims_for_proof_req(self.wallet.handle, proof_req_json)
-        claims_for_proof = json.loads(claims_for_proof_json)
-        claim_uuids = set()
+        claims_json = await anoncreds.prover_get_claims_for_proof_req(self.wallet.handle, proof_req_json)
+        claims = json.loads(claims_json)
+        referents = set()
 
-        # retain only claim(s) of interest: find corresponding claim-uuid(s)
+        # retain only claim(s) of interest: find corresponding referent(s)
 
         if filt:
-            for f in filt:  # augment with schema seq no or short-circuit on filter citing no such schema
-                schema = json.loads(await self.get_schema(
-                    f['schema']['origin-did'],
-                    f['schema']['name'],
-                    f['schema']['version']))
+            for s_key in filt:
+                schema = json.loads(await self.get_schema(s_key))
                 if not schema:
-                    rv = (set(), json.dumps({}))
-                    logger.debug('HolderProver.get_claims: <<< {}'.format(rv))
-                    return rv
-                f['schema']['seq_no'] = schema['seqNo']
+                    logger.warn('HolderProver.get_claims: ignoring filter criterion, no schema on {}'.format(s_key))
+                    filt.pop(s_key)
 
-        for attr_uuid in claims_for_proof['attrs']:
-            for candidate in claims_for_proof['attrs'][attr_uuid]:
+        for attr_uuid in claims['attrs']:
+            for candidate in claims['attrs'][attr_uuid]:
                 if filt:
-                    if any(f['schema']['seq_no'] == candidate['schema_seq_no'] and
-                            {k: str(f['match'][k]) for k in f['match']}.items() <= candidate['attrs'].items()
-                                for f in filt):
-                        claim_uuids.add(candidate['claim_uuid'])
+                    claim_s_key = schema_key_for(candidate['schema_key'])
+                    if claim_s_key in filt:
+                        if {k: str(filt[claim_s_key][k])
+                                for k in filt[claim_s_key]}.items() <= candidate['attrs'].items():
+                            referents.add(candidate['referent'])
                 else:
-                    claim_uuids.add(candidate['claim_uuid'])
-        if filt:
-            claims_for_proof = json.loads(prune_claims_json(claims_for_proof, claim_uuids))
+                    referents.add(candidate['referent'])
 
-        rv = (claim_uuids, json.dumps(claims_for_proof))
+        if filt:
+            claims = json.loads(prune_claims_json(claims, referents))
+
+        rv = (referents, json.dumps(claims))
         logger.debug('HolderProver.get_claims: <<< {}'.format(rv))
         return rv
 
-    async def get_claim_by_claim_uuid(self, claim_uuids: set, requested_attrs: dict) -> str:
+    async def get_claim_by_referent(self, referents: set, requested_attrs: dict) -> str:
         """
-        Method for HolderProver to get claim (from wallet) by claim-uuid
+        Method for HolderProver to get claim (from wallet) by referent
 
-        :param claim_uuids: set of claim-uuids of interest
+        :param referents: set of referents of interest
         :param requested_attrs: requested attrs dict mapping uuid to schema sequence number and attribute name for
             each requested attribute; e.g.,
             {
@@ -1239,12 +1261,12 @@ class HolderProver(BaseListeningAgent):
                     'name': 'height'
                 },
             }
-        :return: json with claim for input claim-uuid
+        :return: json with claim(s) for input referent(s)
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.get_claim_by_claim_uuid: >>> claim_uuids: {}, requested_attrs: {}'.format(
-            claim_uuids,
+        logger.debug('HolderProver.get_claim_by_referent: >>> referents: {}, requested_attrs: {}'.format(
+            referents,
             requested_attrs))
 
         claim_req_json = json.dumps({
@@ -1255,11 +1277,11 @@ class HolderProver(BaseListeningAgent):
                 'requested_predicates': {}
             })
 
-        claims_for_proof_json = await anoncreds.prover_get_claims_for_proof_req(self.wallet.handle, claim_req_json)
+        claims_json = await anoncreds.prover_get_claims_for_proof_req(self.wallet.handle, claim_req_json)
 
-        # retain only claims of interest: find corresponding claim-uuids
-        rv = prune_claims_json(json.loads(claims_for_proof_json), claim_uuids)
-        logger.debug('HolderProver.get_claim_by_claim_uuid: <<< {}'.format(rv))
+        # retain only claims of interest: find corresponding referents
+        rv = prune_claims_json(json.loads(claims_json), referents)
+        logger.debug('HolderProver.get_claim_by_referent: <<< {}'.format(rv))
         return rv
 
     async def reset_wallet(self) -> int:
@@ -1325,14 +1347,13 @@ class HolderProver(BaseListeningAgent):
 
         elif form['type'] == 'claim-hello':
             # base listening agent code handles all proxied requests: it's agent-local, carry on
-            schema_json = await self.get_schema(
-                form['data']['schema']['origin-did'],
-                form['data']['schema']['name'],
-                form['data']['schema']['version'])
+            s_key = schema_key_for(form['data']['schema'])
+            issuer_did = form['data']['issuer-did']
+            schema_json = await self.get_schema(s_key)
             schema = json.loads(schema_json)
-            await self.store_claim_offer(form['data']['issuer-did'], schema['seqNo'])
-            claim_def_json = await self.get_claim_def(schema['seqNo'], form['data']['issuer-did'])
-            await self.store_claim_req(form['data']['issuer-did'], claim_def_json)
+            await self.store_claim_offer(issuer_did, s_key)
+            claim_def_json = await self.get_claim_def(schema['seqNo'], issuer_did)
+            await self.store_claim_req(issuer_did, claim_def_json)
 
             rv = self.claim_req_json
             logger.debug('HolderProver.process_post: <<< {}'.format(rv))
@@ -1340,36 +1361,44 @@ class HolderProver(BaseListeningAgent):
 
         elif form['type'] in ('claim-request', 'proof-request'):
             # base listening agent code handles all proxied requests: it's agent-local, carry on
-            form_schema_seq_nos = []
-            for schema_key in (form['data']['schemata'] +
+            form_schema_keys = []
+            for form_s_key_spec in (form['data']['schemata'] +
                     [attr_matcher['schema'] for attr_matcher in form['data']['claim-filter']['attr-match']] +
                     [pred_matcher['schema'] for pred_matcher in form['data']['claim-filter']['predicate-match']] +
                     [r_attr['schema'] for r_attr in form['data']['requested-attrs']]):
-                form_schema_seq_nos.append(json.loads(await self.get_schema(
-                    schema_key['origin-did'],
-                    schema_key['name'],
-                    schema_key['version']))['seqNo'])  # pre-cache
+                s_key = schema_key_for(form_s_key_spec)
+                await self.get_schema(s_key)  # add to store en passant
+                form_schema_keys.append(s_key)
 
             req_attrs = {}
             if form['data']['requested-attrs']:
                 for req_attr in form['data']['requested-attrs']:
-                    schema = self._schema_store[SchemaKey(
-                        req_attr['schema']['origin-did'],
-                        req_attr['schema']['name'],
-                        req_attr['schema']['version'])]
-                    seq_no = schema['seqNo']
+                    s_key = schema_key_for(req_attr['schema'])
+                    schema = self._schema_store[s_key]
                     for name in req_attr['names'] or schema['data']['attr_names']:
-                        req_attrs['{}_{}_uuid'.format(seq_no, name)] = {
-                            'schema_seq_no': seq_no,
-                            'name': name
+                        req_attrs['{}_{}_uuid'.format(schema['seqNo'], name)] = {
+                            'name': name,
+                            'restrictions': [{
+                                'schema_key': {
+                                    'did': s_key.origin_did,
+                                    'name': s_key.name,
+                                    'version': s_key.version
+                                }
+                            }]
                         }
             else:
-                for seq_no in form_schema_seq_nos:
-                    schema = self._schema_store[seq_no]
+                for s_key in form_schema_keys:
+                    schema = self._schema_store[s_key]
                     for attr_name in schema['data']['attr_names']:
-                        req_attrs['{}_{}_uuid'.format(seq_no, attr_name)] = {
-                            'schema_seq_no': seq_no,
-                            'name': attr_name
+                        req_attrs['{}_{}_uuid'.format(schema['seqNo'], attr_name)] = {
+                            'name': attr_name,
+                            'restrictions': [{
+                                'schema_key': {
+                                    'did': s_key.origin_did,
+                                    'name': s_key.name,
+                                    'version': s_key.version
+                                }
+                            }]
                         }
 
             find_req = {
@@ -1379,9 +1408,11 @@ class HolderProver(BaseListeningAgent):
                 'requested_attrs': req_attrs,
                 'requested_predicates': {}  # TODO: predicates
             }
-            (claim_uuids, claims_found_json) = await self.get_claims(
+            (referents, claims_found_json) = await self.get_claims(
                 json.dumps(find_req),
-                form['data']['claim-filter']['attr-match'])
+                {schema_key_for(attr_match['schema']): attr_match['match']
+                    for attr_match in form['data']['claim-filter']['attr-match']})
+                # form['data']['claim-filter']['attr-match'])
             claims_found = json.loads(claims_found_json)
 
             if form['type'] == 'claim-request':
@@ -1402,13 +1433,10 @@ class HolderProver(BaseListeningAgent):
             requested_claims = {
                 'self_attested_attributes': {},
                 'requested_attrs': {
-                    attr_uuid: [claims_found['attrs'][attr_uuid][0]['claim_uuid'], True]
+                    attr_uuid: [claims_found['attrs'][attr_uuid][0]['referent'], True]
                         for attr_uuid in claims_found['attrs']
                 },
-                'requested_predicates': {
-                    pred: claim_uuid
-                        for pred in find_req['requested_predicates']
-                }
+                'requested_predicates': {}  # TODO: predicates
             }
 
             proof_json = await self.create_proof(
@@ -1423,53 +1451,62 @@ class HolderProver(BaseListeningAgent):
             logger.debug('HolderProver.process_post: <<< {}'.format(rv))
             return rv
 
-        elif form['type'] == 'proof-request-by-claim-uuid':
+        elif form['type'] == 'proof-request-by-referent':
             # base listening agent code handles all proxied requests: it's agent-local, carry on
-            form_schema_seq_nos = []
-            for schema_key in (form['data']['schemata'] +
+            form_schema_keys = []
+            for form_s_key_spec in (form['data']['schemata'] +
                     [r_attr['schema'] for r_attr in form['data']['requested-attrs']]):
-                form_schema_seq_nos.append(json.loads(await self.get_schema(
-                    schema_key['origin-did'],
-                    schema_key['name'],
-                    schema_key['version']))['seqNo'])  # pre-cache
+                s_key = schema_key_for(form_s_key_spec)
+                await self.get_schema(s_key)  # add to store en passant
+                form_schema_keys.append(s_key)
 
             req_attrs = {}
             if form['data']['requested-attrs']:
                 for req_attr in form['data']['requested-attrs']:
-                    schema = self._schema_store[SchemaKey(
-                        req_attr['schema']['origin-did'],
-                        req_attr['schema']['name'],
-                        req_attr['schema']['version'])]
-                    seq_no = schema['seqNo']
+                    s_key = schema_key_for(req_attr['schema'])
+                    schema = self._schema_store[s_key]
                     for name in req_attr['names'] or schema['data']['attr_names']:
-                        req_attrs['{}_{}_uuid'.format(seq_no, name)] = {
-                            'schema_seq_no': seq_no,
-                            'name': name
+                        req_attrs['{}_{}_uuid'.format(schema['seqNo'], name)] = {
+                            'name': name,
+                            'restrictions': [{
+                                'schema_key': {
+                                    'did': s_key.origin_did,
+                                    'name': s_key.name,
+                                    'version': s_key.version
+                                }
+                            }]
                         }
             else:
-                for seq_no in form_schema_seq_nos:
-                    schema = self._schema_store[seq_no]
+                for s_key in form_schema_keys:
+                    schema = self._schema_store[s_key]
                     for attr_name in schema['data']['attr_names']:
-                        req_attrs['{}_{}_uuid'.format(seq_no, attr_name)] = {
-                            'schema_seq_no': seq_no,
-                            'name': attr_name
+                        req_attrs['{}_{}_uuid'.format(schema['seqNo'], attr_name)] = {
+                            'name': attr_name,
+                            'restrictions': [{
+                                'schema_key': {
+                                    'did': s_key.origin_did,
+                                    'name': s_key.name,
+                                    'version': s_key.version
+                                }
+                            }]
                         }
 
-            claims_found_json = await self.get_claim_by_claim_uuid(
-                {uuid for uuid in form['data']['claim-uuids']},
+            claims_found_json = await self.get_claim_by_referent(
+                {referent for referent in form['data']['referents']},
                 req_attrs)
             claims_found = json.loads(claims_found_json)
 
             # kick out early if no matching claims
             if (not claims_found['attrs']) and (not claims_found['predicates']):
-                x = ValueError('No claim has claim-uuid {}'.format(form['data']['claim-uuids']))
+                x = ValueError('No claim has referent {}'.format(form['data']['referents']))
                 logger.error(x)
                 raise x
 
             # forbid multiple matching claims for any claim-def in a proof
-            x_uuids = [attr_uuid for attr_uuid in claims_found['attrs'] if len(claims_found['attrs'][attr_uuid]) != 1]
-            if x_uuids:
-                x = ValueError('Proof request requires unique claims per attribute; violators: {}'.format(x_uuids))
+            x_referents = [attr_uuid for attr_uuid in claims_found['attrs']
+                if len(claims_found['attrs'][attr_uuid]) != 1]
+            if x_referents:
+                x = ValueError('Proof request requires unique claims per attribute; violators: {}'.format(x_referents))
                 logger.error(x)
                 raise x
 
@@ -1481,11 +1518,11 @@ class HolderProver(BaseListeningAgent):
                 'requested_predicates': {}  # TODO: predicates
             }
 
-            claim_uuids = form['data']['claim-uuids']
+            referents = form['data']['referents']
             requested_claims = {
                 'self_attested_attributes': {},
                 'requested_attrs': {
-                    attr_uuid: [claims_found['attrs'][attr_uuid][0]['claim_uuid'], True]
+                    attr_uuid: [claims_found['attrs'][attr_uuid][0]['referent'], True]
                         for attr_uuid in claims_found['attrs']
                 },
                 'requested_predicates': {}
@@ -1541,24 +1578,44 @@ class Verifier(BaseListeningAgent):
                 'version': '1.0',  # for Verifier info, not HolderProver matching
                 'requested_attrs': {
                     'attr1_uuid': {
-                        'schema_seq_no': 57,
-                        'name': 'favourite_drink'
+                        'name': 'favourite_drink',
+                        'restrictions' [
+                                {
+                                'schema_key': {
+                                    'did': 'Vx4E82R17q...',
+                                    'name': 'friendlies',
+                                    'version': '1.0'
+                                }
+                            }
+                        ]
                     },
                     'attr2_uuid': {
-                        'schema_seq_no': 57,
-                        'name': 'height'
+                        'name': 'height',
+                        'restrictions' [
+                            {
+                                'schema_key': {
+                                    'did': 'R17v42T4pk...',
+                                    'name': 'patient-records',
+                                    'version': '2.1'
+                                }
+                            }
+                        ]
                     },
                     'attr3_uuid': {
-                        'schema_seq_no': 57,
-                        'name': 'last_visit_date'
+                        'name': 'last_visit_date',
+                        'restrictions' [
+                            {
+                                'schema_key': {
+                                    'did': 'R17v42T4pk...',
+                                    'name': 'patient-records',
+                                    'version': '2.1'
+                                }
+                            }
+                        ]
                     },
                 },
                 'requested_predicates': {
-                    'predicate1_uuid': {
-                        'attr_name': 'age',
-                        'p_type': 'GE',
-                        'value': 19
-                    }
+                    ...  # TODO: predicates
                 }
             }
         :param proof: proof as HolderProver creates
@@ -1570,13 +1627,15 @@ class Verifier(BaseListeningAgent):
             proof_req,
             proof))
 
-        claims = proof['proofs']
+        claims = proof['identifiers']
         uuid2schema = {}
         uuid2claim_def = {}
         for claim_uuid in claims:
-            uuid2schema[claim_uuid] = json.loads(await self.get_schema_by_seq_no(claims[claim_uuid]['schema_seq_no']))
+            claim_s_key = schema_key_for(claims[claim_uuid]['schema_key'])
+            schema = json.loads(await self.get_schema(claim_s_key))
+            uuid2schema[claim_uuid] = schema
             uuid2claim_def[claim_uuid] = json.loads(await self.get_claim_def(
-                claims[claim_uuid]['schema_seq_no'],
+                schema['seqNo'],
                 claims[claim_uuid]['issuer_did']))
 
         rv = json.dumps(await anoncreds.verifier_verify_proof(

@@ -640,7 +640,7 @@ PROTO_MSG_JSON_SCHEMA = {
         'required': ['type', 'data']
     },
 
-    'proof-request-by-claim-uuid': {
+    'proof-request-by-referent': {
         '$schema': 'http://json-schema.org/draft-04/schema',
         'type': 'object',
         'properties': {
@@ -672,7 +672,7 @@ PROTO_MSG_JSON_SCHEMA = {
                         },
                         'minItems': 0
                     },
-                    'claim-uuids': {
+                    'referents': {
                         'type': 'array',
                         'items': {
                             'type': 'string'
@@ -712,7 +712,7 @@ PROTO_MSG_JSON_SCHEMA = {
                         'minItems': 0,
                     }
                 },
-                'required': ['schemata', 'claim-uuids', 'requested-attrs']
+                'required': ['schemata', 'referents', 'requested-attrs']
             }
         },
         'required': ['type', 'data']

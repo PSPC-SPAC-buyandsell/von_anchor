@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from indy import signus, wallet, IndyError
+from indy import did, wallet, IndyError
 from indy.error import ErrorCode
 
 import json
@@ -188,7 +188,7 @@ class Wallet:
         logger.info('Wallet.open: created and opened wallet {} on handle {}'.format(self.name, self.handle))
 
         (self._did, self._verkey) = (
-            await signus.create_and_store_my_did(self._handle, json.dumps({'seed': self._seed})))
+            await did.create_and_store_my_did(self._handle, json.dumps({'seed': self._seed})))
         logger.info('Wallet.open: stored {}, {}'.format(self._did, self._verkey))
 
         logger.debug('Wallet.open: <<<')

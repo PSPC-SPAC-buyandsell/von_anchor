@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from von_agent.schema import SchemaKey, SchemaStore
+from von_agent.schema import SchemaKey, SchemaStore, schema_key_for
 from von_agent.util import ppjson
 
 import pytest
@@ -59,3 +59,21 @@ async def test_schema_store():
         ss[-1]
     except KeyError:
         pass
+
+
+#noinspection PyUnusedLocal
+@pytest.mark.asyncio
+async def test_schema_key_for():
+    spec = {'origin-did-specifier-of-choice': 'o-did', 'name': 'schema-name', 'version': '1.0'}
+    assert schema_key_for(spec) == SchemaKey('o-did', 'schema-name', '1.0')
+
+    for x_spec in (
+            {},
+            {'origin-did': 'o-did', 'x-missing-name': 'schema-name', 'version': '1.0'},
+            {'name': 'schema-name', 'version': '1.0'},
+            {'origin-did': 'o-did', 'name': 'schema-name', 'version': '1.0', 'too-many-keys': ''}):
+        try:
+            schema_key_for(x_spec)
+            assert False
+        except ValueError:
+            pass

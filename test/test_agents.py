@@ -14,12 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from indy import agent, anoncreds, ledger, signus, pool, wallet, IndyError
+from indy import IndyError
 from indy.error import ErrorCode
 from von_agent.demo_agents import TrustAnchorAgent, SRIAgent, OrgBookAgent, BCRegistrarAgent
 from von_agent.nodepool import NodePool
 from von_agent.schema import SchemaKey
-from von_agent.util import decode, encode, revealed_attrs, claims_for, prune_claims_json, schema_seq_nos_for, ppjson
+from von_agent.util import decode, encode, revealed_attrs, claims_for, prune_claims_json, schema_keys_for, ppjson
 from von_agent.proto.proto_util import attr_match, list_schemata, req_attrs
 
 import datetime
@@ -205,23 +205,15 @@ async def test_agents_direct(
         sag.did: pspcobag
     }
 
-    try:
-        await tag.get_schema(tag.did, 'Xxxx', 'X.x')  # Bad version number
-    except IndyError as e:
-        assert ErrorCode.LedgerInvalidTransaction == e.error_code
+    x_json = await tag.get_schema(SchemaKey(tag.did, 'Xxxx', 'X.x'))  # Bad version number
+    assert not json.loads(x_json)
 
     i = 0
     for s_key in schema_data:
-        swab_json = await bcrag.get_schema(  # may exist
-            s_key.origin_did,
-            s_key.name,
-            s_key.version)
+        swab_json = await bcrag.get_schema(s_key)  # may exist
         if not json.loads(swab_json):
             await did2ag[s_key.origin_did].send_schema(json.dumps(schema_data[s_key]))
-        schema_json[s_key] = await did2ag[s_key.origin_did].get_schema(
-            s_key.origin_did,
-            s_key.name,
-            s_key.version)  # should exist now
+        schema_json[s_key] = await did2ag[s_key.origin_did].get_schema(s_key)  # should exist now
         schema[s_key] = json.loads(schema_json[s_key])
         seq_no2schema_key[schema[s_key]['seqNo']] = s_key
         seq_no2schema[schema[s_key]['seqNo']] = schema[s_key]
@@ -258,7 +250,7 @@ async def test_agents_direct(
 
     i = 0
     for s_key in schema_data:
-        await holder_prover[s_key.origin_did].store_claim_offer(s_key.origin_did, schema[s_key]['seqNo'])
+        await holder_prover[s_key.origin_did].store_claim_offer(s_key.origin_did, s_key)
         claim_req_json[s_key] = await holder_prover[s_key.origin_did].store_claim_req(
             s_key.origin_did,
             claim_def_json[s_key])
@@ -319,25 +311,30 @@ async def test_agents_direct(
         'version': '0',
         'requested_attrs': {
             '{}_{}_uuid'.format(schema[S_KEY['BC']]['seqNo'], attr): {
-                'schema_seq_no': schema[S_KEY['BC']]['seqNo'],
-                'name': attr
+                'name': attr,
+                'restrictions': [{
+                    'schema_key': {
+                        'did': S_KEY['BC'].origin_did,
+                        'name': S_KEY['BC'].name,
+                        'version':  S_KEY['BC'].version
+                    }
+                }]
             } for attr in claim_data[S_KEY['BC']][0]
         },
         'requested_predicates': {}
     }
-    (bc_claim_uuids_all, claims_found_json[S_KEY['BC']]) = await bcobag.get_claims(json.dumps(find_req[S_KEY['BC']]))
+    (bc_referents_all, claims_found_json[S_KEY['BC']]) = await bcobag.get_claims(json.dumps(find_req[S_KEY['BC']]))
     print('\n\n== 5 == All BC claims, no filter {}; {}'.format(
-        bc_claim_uuids_all,
+        bc_referents_all,
         ppjson(claims_found_json[S_KEY['BC']])))
     claims_found[S_KEY['BC']] = json.loads(claims_found_json[S_KEY['BC']])
     bc_display_pruned_filt_post_hoc = claims_for(
         claims_found[S_KEY['BC']],
-        [{
-            'schema_seq_no': schema[S_KEY['BC']]['seqNo'],
-            'match': {
+        {
+            S_KEY['BC']: {
                 'legalName': decode(claim_data[S_KEY['BC']][2]['legalName'][1])
             }
-        }])
+        })
     print('\n\n== 6 == BC claims display, filtered post hoc matching {}: {}'.format(
         decode(claim_data[S_KEY['BC']][2]['legalName'][1]),
         ppjson(bc_display_pruned_filt_post_hoc)))
@@ -346,50 +343,35 @@ async def test_agents_direct(
         {k for k in bc_display_pruned_filt_post_hoc})
     print('\n\n== 7 == BC claims, stripped down {}'.format(ppjson(bc_display_pruned)))
 
-    filt = [{
-        'schema': {
-            'origin-did': S_KEY['BC'].origin_did,
-            'name': S_KEY['BC'].name,
-            'version': S_KEY['BC'].version
-        },
-        'match': {
+    filt = {
+        S_KEY['BC']: {
             k: decode(claim_data[S_KEY['BC']][2][k][1]) for k in claim_data[S_KEY['BC']][2]
                 if k in ('jurisdictionId', 'busId')
         }
-    }]
-    (bc_claim_uuids_filt, claims_found_json[S_KEY['BC']]) = await bcobag.get_claims(
+    }
+    (bc_referents_filt, claims_found_json[S_KEY['BC']]) = await bcobag.get_claims(
         json.dumps(find_req[S_KEY['BC']]),
         filt)
     print('\n\n== 8 == BC claims, filtered a priori {}; {}'.format(
-        bc_claim_uuids_filt,
+        bc_referents_filt,
         ppjson(claims_found_json[S_KEY['BC']])))
-    assert set([*bc_display_pruned_filt_post_hoc]) == bc_claim_uuids_filt
+    assert set([*bc_display_pruned_filt_post_hoc]) == bc_referents_filt
     assert len(bc_display_pruned_filt_post_hoc) == 1
 
-    bc_claim_uuid = bc_claim_uuids_filt.pop()
+    bc_referent = bc_referents_filt.pop()
 
     # 8. BC Org Book agent (as HolderProver) creates proof for claim specified by filter
     claims_found[S_KEY['BC']] = json.loads(claims_found_json[S_KEY['BC']])
     bc_requested_claims = {
         'self_attested_attributes': {},
         'requested_attrs': {
-            attr: [bc_claim_uuid, True]
+            attr: [bc_referent, True]
                 for attr in find_req[S_KEY['BC']]['requested_attrs'] if attr in claims_found[S_KEY['BC']]['attrs']
         },
         'requested_predicates': {
-            pred: bc_claim_uuid
+            pred: bc_referent
                 for pred in find_req[S_KEY['BC']]['requested_predicates']
         }
-    }
-    wallet_claim_uuid2schema = {
-        claims_found[S_KEY['BC']]['attrs'][attr_uuid][0]['claim_uuid']:
-            seq_no2schema[claims_found[S_KEY['BC']]['attrs'][attr_uuid][0]['schema_seq_no']]
-                for attr_uuid in claims_found[S_KEY['BC']]['attrs']
-    }
-    wallet_claim_uuid2claim_def = {
-        claims_found[S_KEY['BC']]['attrs'][attr_uuid][0]['claim_uuid']:
-            claim_def[seq_no2schema_key[claims_found[S_KEY['BC']]['attrs'][attr_uuid][0]['schema_seq_no']]]
-                for attr_uuid in claims_found[S_KEY['BC']]['attrs']
     }
     bc_proof_json = await bcobag.create_proof(
         find_req[S_KEY['BC']],
@@ -404,53 +386,59 @@ async def test_agents_direct(
     print('\n\n== 10 == The SRI agent verifies the BC proof (by filter) as {}'.format(ppjson(rc_json)))
     assert json.loads(rc_json)
 
-    # 10. BC Org Book agent (as HolderProver) finds claim by claim-uuid, no claim by non-claim-uuid
-    seq_no = set(schema_seq_nos_for(claims_found[S_KEY['BC']], {bc_claim_uuid}).values()).pop()  # it's unique
+    # 10. BC Org Book agent (as HolderProver) finds claim by referent, no claim by non-referent
+    s_key = set(schema_keys_for(claims_found[S_KEY['BC']], {bc_referent}).values()).pop()  # it's unique
     req_attrs = {
-       '{}_{}_uuid'.format(seq_no, attr_name): {
-           'schema_seq_no': seq_no,
-           'name': attr_name
+       '{}_{}_uuid'.format(schema[s_key]['seqNo'], attr_name): {
+            'name': attr_name,
+            'restrictions': [{
+                'schema_key': {
+                    'did': s_key.origin_did,
+                    'name': s_key.name,
+                    'version': s_key.version
+                }
+            }]
        } for attr_name in schema_data[S_KEY['BC']]['attr_names']
     }
-    bc_claim_found_by_uuid = json.loads(await bcobag.get_claim_by_claim_uuid(bc_claim_uuid, req_attrs))
-    print('\n\n== 11 == BC claim by claim-uuid={}: {}'.format(
-        bc_claim_uuid,
-        ppjson(bc_claim_found_by_uuid)))
-    assert bc_claim_found_by_uuid
-    assert bc_claim_found_by_uuid['attrs']
+    bc_claim_found_by_referent = json.loads(await bcobag.get_claim_by_referent(bc_referent, req_attrs))
+    print('\n\n== 11 == BC claim by referent={}: {}'.format(
+        bc_referent,
+        ppjson(bc_claim_found_by_referent)))
+    assert bc_claim_found_by_referent
+    assert bc_claim_found_by_referent['attrs']
 
-    bc_non_claim_by_uuid = json.loads(await bcobag.get_claim_by_claim_uuid(
+    bc_non_claim_by_referent = json.loads(await bcobag.get_claim_by_referent(
         'claim::ffffffff-ffff-ffff-ffff-ffffffffffff',
         req_attrs))
-    print('\n\n== 12 == BC non-claim: {}'.format(ppjson(bc_non_claim_by_uuid)))
-    assert bc_non_claim_by_uuid
-    assert all(not bc_non_claim_by_uuid['attrs'][attr] for attr in bc_non_claim_by_uuid['attrs'])
+    print('\n\n== 12 == BC non-claim: {}'.format(ppjson(bc_non_claim_by_referent)))
+    assert bc_non_claim_by_referent
+    assert all(not bc_non_claim_by_referent['attrs'][attr] for attr in bc_non_claim_by_referent['attrs'])
 
-    # 11. BC Org Book agent (as HolderProver) creates proof for claim specified by claim-uuid
+    # 11. BC Org Book agent (as HolderProver) creates proof for claim specified by referent
     bc_requested_claims = {
         'self_attested_attributes': {},
         'requested_attrs': {
-            attr: [bc_claim_uuid, True]
-                for attr in bc_claim_found_by_uuid['attrs']
+            attr: [bc_referent, True]
+                for attr in bc_claim_found_by_referent['attrs']
         },
         'requested_predicates': {}
     }
     bc_proof_json = await bcobag.create_proof(
         find_req[S_KEY['BC']],
-        bc_claim_found_by_uuid,
+        bc_claim_found_by_referent,
         bc_requested_claims)
     bc_proof = json.loads(bc_proof_json)
-    print('\n\n== 13 == BC proof by claim-uuid={} {}'.format(bc_claim_uuid, ppjson(bc_proof_json)))
+    print('\n\n== 13 == BC proof by referent={} {}'.format(bc_referent, ppjson(bc_proof_json)))
 
-    # 12. SRI agent (as Verifier) verifies proof (by claim-uuid)
+    # 12. SRI agent (as Verifier) verifies proof (by referent)
     rc_json = await sag.verify_proof(
         find_req[S_KEY['BC']],
         bc_proof)
-    print('\n\n== 14 == SRI agent verifies BC proof by claim-uuid={} as: {}'.format(bc_claim_uuid, ppjson(rc_json)))
+    print('\n\n== 14 == SRI agent verifies BC proof by referent={} as: {}'.format(bc_referent, ppjson(rc_json)))
     assert json.loads(rc_json)
 
     # 13. Create and store SRI registration completion claims, green claim from verified proof + extra data
-    revealed = revealed_attrs(bc_proof)[bc_claim_uuid]
+    revealed = revealed_attrs(bc_proof)[bc_referent]
     claim_data[S_KEY['SRI-1.0']].append({
         **{k: claim_value_pair(revealed[k]) for k in revealed if k in schema_data[S_KEY['SRI-1.0']]['attr_names']},
         'sriRegDate': claim_value_pair(datetime.date.today().strftime('%Y-%m-%d'))
@@ -492,24 +480,30 @@ async def test_agents_direct(
             'version': '0',
             'requested_attrs': {
                 '{}_{}_uuid'.format(schema[s_key]['seqNo'], attr): {
-                    'schema_seq_no': schema[s_key]['seqNo'],
-                    'name': attr
+                    'name': attr,
+                    'restrictions': [{
+                        'schema_key': {
+                            'did': s_key.origin_did,
+                            'name': s_key.name,
+                            'version': s_key.version
+                        }
+                    }]
                 } for attr in claim_data[s_key][0]
             },
             'requested_predicates': {}
         }
 
-        (sri_claim_uuids, claims_found_json[s_key]) = await holder_prover[s_key.origin_did].get_claims(
+        (sri_referents, claims_found_json[s_key]) = await holder_prover[s_key.origin_did].get_claims(
             json.dumps(find_req[s_key]))
 
         print('\n\n== 16.{} == Claims on [{} v{}], no filter {}: {}'.format(
             i,
             s_key.name,
             s_key.version,
-            sri_claim_uuids,
+            sri_referents,
             ppjson(claims_found_json[s_key])))
         i += 1
-    
+
     # 15. PSPC Org Book agent (as HolderProver) finds all claims on all schemata at once; actuator filters post hoc
     req_attrs_sri_find_all = {}
     for s_key in schema_data:
@@ -518,8 +512,14 @@ async def test_agents_direct(
         seq_no = schema[s_key]['seqNo']
         for attr_name in schema_data[s_key]['attr_names']:
             req_attrs_sri_find_all['{}_{}_uuid'.format(seq_no, attr_name)] = {
-                'schema_seq_no': seq_no,
-                'name': attr_name
+                'name': attr_name,
+                'restrictions': [{
+                    'schema_key': {
+                        'did': s_key.origin_did,
+                        'name': s_key.name,
+                        'version': s_key.version
+                    }
+                }]
             }
     find_req_sri_all = {
         'nonce': '9999',
@@ -529,20 +529,19 @@ async def test_agents_direct(
         'requested_predicates': {}
     }
 
-    (sri_claim_uuids_all, sri_claims_found_all_json) = await pspcobag.get_claims(json.dumps(find_req_sri_all))
+    (sri_referents_all, sri_claims_found_all_json) = await pspcobag.get_claims(json.dumps(find_req_sri_all))
     print('\n\n== 17 == All SRI-issued claims (no filter) at PSPC Org Book {}: {}'.format(
-        sri_claim_uuids_all,
+        sri_referents_all,
         ppjson(sri_claims_found_all_json)))
 
     sri_claims_found_all = json.loads(sri_claims_found_all_json)
     sri_display_pruned_filt_post_hoc = claims_for(
         sri_claims_found_all,
-        [{
-            'schema_seq_no': schema[S_KEY['GREEN']]['seqNo'],
-            'match': {
+        {
+            S_KEY['GREEN']: {
                 'legalName': decode(claim_data[S_KEY['GREEN']][0]['legalName'][1])
             }
-        }])
+        })
     print('\n\n== 18 == SRI claims display, filtered post hoc matching {}: {}'.format(
         decode(claim_data[S_KEY['GREEN']][0]['legalName'][1]),
         ppjson(sri_display_pruned_filt_post_hoc)))
@@ -551,30 +550,24 @@ async def test_agents_direct(
         {k for k in sri_display_pruned_filt_post_hoc})
     print('\n\n== 19 == SRI claims, stripped down {}'.format(ppjson(sri_display_pruned)))
 
-    filt = [{
-        'schema': {
-            'origin-did': S_KEY['GREEN'].origin_did,
-            'name': S_KEY['GREEN'].name,
-            'version': S_KEY['GREEN'].version
-        },
-        'match': {
+    filt = {
+        S_KEY['GREEN']: {
             'legalName': decode(claim_data[S_KEY['GREEN']][0]['legalName'][1])
         }
-    }]
-    (sri_claim_uuids_filt, claims_found_json[S_KEY['GREEN']]) = await pspcobag.get_claims(
+    }
+    (sri_referents_filt, claims_found_json[S_KEY['GREEN']]) = await pspcobag.get_claims(
         json.dumps(find_req[S_KEY['GREEN']]),
         filt)
     print('\n\n== 20 == SRI claims, filtered a priori {}; {}'.format(
-        sri_claim_uuids_filt,
+        sri_referents_filt,
         ppjson(claims_found_json[S_KEY['GREEN']])))
-    assert set([*sri_display_pruned_filt_post_hoc]) == sri_claim_uuids_filt
+    assert set([*sri_display_pruned_filt_post_hoc]) == sri_referents_filt
     assert len(sri_display_pruned_filt_post_hoc) == 1
 
     sri_claims_found_all = json.loads(sri_claims_found_all_json)
-    # sri_claim_uuids_all
     sri_req_attrs4sri_req_claims = {}
     for attr_uuid in sri_claims_found_all['attrs']:
-        sri_req_attrs4sri_req_claims[attr_uuid] = [sri_claims_found_all['attrs'][attr_uuid][0]['claim_uuid'], True]
+        sri_req_attrs4sri_req_claims[attr_uuid] = [sri_claims_found_all['attrs'][attr_uuid][0]['referent'], True]
 
     # 16. PSPC Org Book agent (as HolderProver) creates proof for multiple claims
     sri_requested_claims = {
@@ -586,7 +579,7 @@ async def test_agents_direct(
         find_req_sri_all,
         sri_claims_found_all,
         sri_requested_claims)
-    print('\n\n== 21 == PSPC Org Book proof on claim-uuid={} {}'.format(sri_claim_uuids_all, ppjson(sri_proof_json)))
+    print('\n\n== 21 == PSPC Org Book proof on referent={} {}'.format(sri_referents_all, ppjson(sri_proof_json)))
     sri_proof = json.loads(sri_proof_json)
 
     # 17. SRI agent (as Verifier) verify proof
@@ -594,8 +587,8 @@ async def test_agents_direct(
         find_req_sri_all,
         sri_proof)
 
-    print('\n\n== 22 == the SRI agent verifies the PSPC Org Book proof by claim-uuid={} as {}'.format(
-        sri_claim_uuids_all,
+    print('\n\n== 22 == the SRI agent verifies the PSPC Org Book proof by referent={} as {}'.format(
+        sri_referents_all,
         ppjson(rc_json)))
     assert json.loads(rc_json)
 
@@ -847,12 +840,9 @@ async def test_agents_process_forms_local(
             }
         }
 
-        try:
-            schema_lookup_form[S_KEY['BC']]['data']['schema']['version'] = 'xxx'
-            schema_json = await bcrag.process_post(schema_lookup_form[S_KEY['BC']])  # Bad version number
-            assert False
-        except IndyError:
-            pass
+        schema_lookup_form[S_KEY['BC']]['data']['schema']['version'] = 'xxx'
+        x_json = await bcrag.process_post(schema_lookup_form[S_KEY['BC']])  # Bad version number
+        assert not json.loads(x_json)
 
         schema_lookup_form[S_KEY['BC']]['data']['schema']['version'] = '999.999'
         assert not json.loads(await bcrag.process_post(schema_lookup_form[S_KEY['BC']]))  # ought not exist
@@ -860,12 +850,8 @@ async def test_agents_process_forms_local(
 
         i = 0
         for s_key in schema_data:
-            swab_json = await bcrag.get_schema(  # may exist
-                s_key.origin_did,
-                s_key.name,
-                s_key.version)
+            swab_json = await bcrag.get_schema(s_key)  # may exist
             if not json.loads(swab_json):
-                await did2ag[s_key.origin_did].send_schema(json.dumps(schema_data[s_key]))
                 await did2ag[s_key.origin_did].process_post({
                     'type': 'schema-send',
                     'data': {
@@ -877,10 +863,8 @@ async def test_agents_process_forms_local(
                         'attr-names': schema_data[s_key]['attr_names']
                     }
                 })
-            schema_json[s_key] = await did2ag[s_key.origin_did].get_schema(
-                s_key.origin_did,
-                s_key.name,
-                s_key.version)  # should exist now
+            schema_json[s_key] = await did2ag[s_key.origin_did].process_post(
+                schema_lookup_form[s_key])  # should exist now
             schema[s_key] = json.loads(schema_json[s_key])
             assert schema[s_key]
             seq_no2schema_key[schema[s_key]['seqNo']] = s_key
@@ -1034,8 +1018,14 @@ async def test_agents_process_forms_local(
             'version': '0',
             'requested_attrs': {
                 '{}_{}_uuid'.format(schema[S_KEY['BC']]['seqNo'], attr): {
-                    'schema_seq_no': schema[S_KEY['BC']]['seqNo'],
-                    'name': attr
+                    'name': attr,
+                    'restrictions': [{
+                        'schema_key': {
+                            'did': S_KEY['BC'].origin_did,
+                            'name': S_KEY['BC'].name,
+                            'version': S_KEY['BC'].version
+                        }
+                    }]
                 } for attr in claim_data[S_KEY['BC']][0]
             },
             'requested_predicates': {}
@@ -1055,12 +1045,11 @@ async def test_agents_process_forms_local(
         print('\n\n== 4 == All BC claims, no filter: {}'.format(ppjson(claims_found[S_KEY['BC']])))
         bc_display_pruned_filt_post_hoc = claims_for(
             claims_found[S_KEY['BC']]['claims'],
-            [{
-                'schema_seq_no': schema[S_KEY['BC']]['seqNo'],
-                'match': {
+            {
+                S_KEY['BC']: {
                     'legalName': claim_data[S_KEY['BC']][2]['legalName']
                 }
-            }])
+            })
 
         try:  # exercise proof restriction to one claim per attribute
             await bcobag.process_post({
@@ -1144,30 +1133,30 @@ async def test_agents_process_forms_local(
         print('\n\n== 9 == the SRI agent verifies the BC proof (by filter) as {}'.format(ppjson(rc_json)))
         assert json.loads(rc_json)
 
-        # 10. BC Org Book agent (as HolderProver) creates proof (by claim-uuid)
-        bc_claim_uuid = set([*bc_display_pruned_prefilt]).pop()
-        seq_no = set(schema_seq_nos_for(bc_claims_prefilt['claims'], {bc_claim_uuid}).values()).pop()  # it's unique
+        # 10. BC Org Book agent (as HolderProver) creates proof (by referent)
+        bc_referent = set([*bc_display_pruned_prefilt]).pop()
+        s_key = set(schema_keys_for(bc_claims_prefilt['claims'], {bc_referent}).values()).pop()  # it's unique
         bc_proof_resp = json.loads(await bcobag.process_post({
-            'type': 'proof-request-by-claim-uuid',
+            'type': 'proof-request-by-referent',
             'data': {
-                'schemata': list_schemata([seq_no2schema_key[seq_no]]),
-                'claim-uuids': [
-                    bc_claim_uuid
+                'schemata': list_schemata([s_key]),
+                'referents': [
+                    bc_referent
                 ],
                 'requested-attrs': []
             }
         }))
-        print('\n\n== 10 == BC proof response by claim-uuid={}: {}'.format(bc_claim_uuid, ppjson(bc_proof_resp)))
+        print('\n\n== 10 == BC proof response by referent={}: {}'.format(bc_referent, ppjson(bc_proof_resp)))
 
-        # 11. BC Org Book agent (as HolderProver) creates non-proof (by non-claim-uuid)
-        bc_non_claim_uuid = 'claim::ffffffff-ffff-ffff-ffff-ffffffffffff'
+        # 11. BC Org Book agent (as HolderProver) creates non-proof (by non-referent)
+        bc_non_referent = 'claim::ffffffff-ffff-ffff-ffff-ffffffffffff'
         try:
             json.loads(await bcobag.process_post({
-                'type': 'proof-request-by-claim-uuid',
+                'type': 'proof-request-by-referent',
                 'data': {
-                    'schemata': list_schemata([seq_no2schema_key[seq_no]]),
-                    'claim-uuids': [
-                        bc_non_claim_uuid
+                    'schemata': list_schemata([s_key]),
+                    'referents': [
+                        bc_non_referent
                     ],
                     'requested-attrs': []
                 }
@@ -1176,18 +1165,18 @@ async def test_agents_process_forms_local(
         except ValueError:
             pass
 
-        # 12. SRI agent (as Verifier) verifies proof (by claim-uuid)
+        # 12. SRI agent (as Verifier) verifies proof (by referent)
         rc_json = await sag.process_post({
             'type': 'verification-request',
             'data': bc_proof_resp
         })
-        print('\n\n== 12 == SRI agent verifies BC proof by claim_uuid={} as {}'.format(
-            bc_claim_uuid,
+        print('\n\n== 12 == SRI agent verifies BC proof by referent={} as {}'.format(
+            bc_referent,
             ppjson(rc_json)))
         assert json.loads(rc_json)
 
         # 13. Create and store SRI registration completion claims, green claims from verified proof + extra data
-        revealed = revealed_attrs(bc_proof_resp['proof'])[bc_claim_uuid]
+        revealed = revealed_attrs(bc_proof_resp['proof'])[bc_referent]
         claim_data[S_KEY['SRI-1.0']].append({
             **{k: revealed[k] for k in revealed if k in schema_data[S_KEY['SRI-1.0']]['attr_names']},
             'sriRegDate': datetime.date.today().strftime('%Y-%m-%d')
@@ -1284,7 +1273,7 @@ async def test_agents_process_forms_local(
         }))
         print('\n\n== 16 == All SRI claims at PSPC Org Book: {}'.format(ppjson(sri_claims_all)))
         sri_display = claims_for(sri_claims_all['claims'])
-        print('\n\n== 17 == All SRI claims at PSPC Org Book by claim-uuid: {}'.format(ppjson(sri_display)))
+        print('\n\n== 17 == All SRI claims at PSPC Org Book by referent: {}'.format(ppjson(sri_display)))
 
         # 17. PSPC Org Book agent (as HolderProver) creates (multi-claim) proof
         sri_proof_resp = json.loads(await pspcobag.process_post({
@@ -1299,7 +1288,7 @@ async def test_agents_process_forms_local(
             }
         }))
         print('\n\n== 18 == PSPC org book proof to all-claims response: {}'.format(ppjson(sri_proof_resp)))
-        assert len(sri_proof_resp['proof']['proofs']) == len(sri_display)
+        assert len(sri_proof_resp['proof']['proof']['proofs']) == len(sri_display)
 
         # 18. SRI agent (as Verifier) verifies proof
         rc_json = await sag.process_post({
@@ -1309,22 +1298,22 @@ async def test_agents_process_forms_local(
         print('\n\n== 19 == SRI agent verifies PSPC org book proof as {}'.format(ppjson(rc_json)))
         assert json.loads(rc_json)
 
-        # 19. PSPC Org Book agent (as HolderProver) creates (multi-claim) proof by claim-uuid
-        seq_nos = schema_seq_nos_for(sri_claims_all['claims'], {k for k in sri_display})
+        # 19. PSPC Org Book agent (as HolderProver) creates (multi-claim) proof by referent
+        referent2schema_key = schema_keys_for(sri_claims_all['claims'], {k for k in sri_display})
         sri_proof_resp = json.loads(await pspcobag.process_post({
-            'type': 'proof-request-by-claim-uuid',
-                'data': {
-                    'schemata': list_schemata([seq_no2schema_key[seq_nos[claim_uuid]] for claim_uuid in sri_display]),
-                'claim-uuids': [
-                    claim_uuid for claim_uuid in sri_display
+            'type': 'proof-request-by-referent',
+            'data': {
+                'schemata': list_schemata([referent2schema_key[referent] for referent in sri_display]),
+                'referents': [
+                    referent for referent in sri_display
                 ],
                 'requested-attrs': []
             }
         }))
-        print('\n\n== 20 == PSPC org book proof to all-claims on claim-uuids {}: {}'.format(
-            [claim_uuid for claim_uuid in sri_display],
+        print('\n\n== 20 == PSPC org book proof to all-claims on referents {}: {}'.format(
+            [referent for referent in sri_display],
             ppjson(sri_proof_resp)))
-        assert len(sri_proof_resp['proof']['proofs']) == len(sri_display)
+        assert len(sri_proof_resp['proof']['proof']['proofs']) == len(sri_display)
 
         # 20. SRI agent (as Verifier) verifies proof
         rc_json = await sag.process_post({
@@ -1335,21 +1324,20 @@ async def test_agents_process_forms_local(
         assert json.loads(rc_json)
 
         # 21. PSPC Org Book agent (as HolderProver) creates multi-claim proof, schemata implicit, first attrs only
-        seq_nos = schema_seq_nos_for(sri_claims_all['claims'], {k for k in sri_display})
         sri_proof_resp = json.loads(await pspcobag.process_post({
-            'type': 'proof-request-by-claim-uuid',
+            'type': 'proof-request-by-referent',
             'data': {
                 'schemata': [],
-                'claim-uuids': [
-                    claim_uuid for claim_uuid in sri_display
+                'referents': [
+                    referent for referent in sri_display
                 ],
                 'requested-attrs': [req_attrs(s_key, [schema_data[s_key]['attr_names'][0]])
                     for s_key in schema_data if s_key != S_KEY['BC']]
             }
         }))
-        print('\n\n== 22 == PSPC org book proof to all claims by claim-uuid, first attrs, schemata implicit {}: {}'
+        print('\n\n== 22 == PSPC org book proof to all claims by referent, first attrs, schemata implicit {}: {}'
             .format(
-                [claim_uuid for claim_uuid in sri_display],
+                [referent for referent in sri_display],
                 ppjson(sri_proof_resp)))
         assert {sri_proof_resp['proof-req']['requested_attrs'][k]['name']
             for k in sri_proof_resp['proof-req']['requested_attrs']} == {

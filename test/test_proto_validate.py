@@ -324,8 +324,8 @@ GOOD = {
             ]
         }
     },
-    'proof-request-by-claim-uuid.proxy.schemata.req-attrs': {
-        'type': 'proof-request-by-claim-uuid',
+    'proof-request-by-referent.proxy.schemata.req-attrs': {
+        'type': 'proof-request-by-referent',
         'data': {
             'proxy-did': 'abcd1234',
             'schemata': [
@@ -340,7 +340,7 @@ GOOD = {
                     'version': '1.1'
                 }
             ],
-            'claim-uuids': [
+            'referents': [
                 'claim-0',
                 'claim-1'
             ],

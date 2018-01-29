@@ -23,6 +23,7 @@ def list_schemata(schema_keys: list) -> list:
     """
     Return list of schema key dicts for "schemata" specification in protocol tokens.
 
+    :param schema_keys: list of SchemaKey instances
     :return: list of schema key dicts for "schemata" specification in protocol tokens.
     """
 
