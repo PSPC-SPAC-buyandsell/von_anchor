@@ -19,21 +19,23 @@ from ..schema import SchemaKey
 SCHEMA_KEY_KEYS = ['origin-did', 'name', 'version']
 
 
-def list_schemata(schema_keys: list) -> list:
+def list_schemata(s_keys: list) -> list:
     """
     Return list of schema key dicts for "schemata" specification in protocol tokens.
 
-    :param schema_keys: list of SchemaKey instances
+    :param s_keys: list of SchemaKey instances
     :return: list of schema key dicts for "schemata" specification in protocol tokens.
     """
 
-    return [{k: v for k, v in zip(SCHEMA_KEY_KEYS, list(s_key))} for s_key in schema_keys]
+    return [{k: v for k, v in zip(SCHEMA_KEY_KEYS, list(s_key))} for s_key in s_keys]
 
 
 def attr_match(s_key: SchemaKey, matches: dict) -> dict:
     """
     Return attr-match list entry for specification in protocol tokens.
 
+    :param s_key: schema key
+    :param matches: dict of schema attributes and values to match
     :return: one (dict) entry for "attr-match" list specification in protocol tokens.
     """
 
@@ -47,6 +49,8 @@ def req_attrs(s_key: SchemaKey, attr_names: list) -> dict:
     """
     Return requested-attrs (dict) list entry for specification in protocol tokens.
 
+    :param s_key: schema key
+    :param attr_names: list of attribute names to match from schema
     :return: one (dict) entry for "requested-attrs" list of dicts within protocol tokens.
     """
 
