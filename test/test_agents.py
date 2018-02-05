@@ -18,9 +18,10 @@ from indy import IndyError
 from indy.error import ErrorCode
 from von_agent.demo_agents import TrustAnchorAgent, SRIAgent, OrgBookAgent, BCRegistrarAgent
 from von_agent.nodepool import NodePool
+from von_agent.proto.proto_util import attr_match, list_schemata, req_attrs
 from von_agent.schema import SchemaKey
 from von_agent.util import decode, encode, revealed_attrs, claims_for, prune_claims_json, schema_keys_for, ppjson
-from von_agent.proto.proto_util import attr_match, list_schemata, req_attrs
+from von_agent.wallet import Wallet
 
 import datetime
 import pytest
@@ -32,8 +33,8 @@ def claim_value_pair(plain):
 
 
 #noinspection PyUnusedLocal
-# @pytest.mark.asyncio
-async def x_test_agents_direct(
+@pytest.mark.asyncio
+async def test_agents_direct(
         pool_name,
         pool_genesis_txn_path,
         seed_trustee1,
@@ -41,47 +42,37 @@ async def x_test_agents_direct(
         path_home):
 
     # 1. Open pool, init agents
-    p = NodePool(pool_name, pool_genesis_txn_path)
+    p = NodePool(pool_name, pool_genesis_txn_path, {'auto_remove': True})
     await p.open()
     assert p.handle
 
     tag = TrustAnchorAgent(
         p,
-        seed_trustee1,
-        'trustee-wallet',
-        None,
+        Wallet(p.name, seed_trustee1, 'trustee-wallet'),
         '127.0.0.1',
         8000,
         'api/v0')
     sag = SRIAgent(
         p,
-        'SRI-Agent-0000000000000000000000',
-        'sri-agent-wallet',
-        None,
+        Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent-wallet'),
         '127.0.0.1',
         8001,
         'api/v0')
     pspcobag = OrgBookAgent(
         p,
-        'PSPC-Org-Book-Agent-000000000000',
-        'pspc-org-book-agent-wallet',
-        None,
+        Wallet(p.name, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent-wallet'),
         '127.0.0.1',
         8002,
         'api/v0')
     bcobag = OrgBookAgent(
         p,
-        'BC-Org-Book-Agent-00000000000000',
-        'bc-org-book-agent-wallet',
-        None,
+        Wallet(p.name, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent-wallet'),
         '127.0.0.1',
         8003,
         'api/v0')
     bcrag = BCRegistrarAgent(
         p,
-        'BC-Registrar-Agent-0000000000000',
-        'bc-registrar-agent-wallet',
-        None,
+        Wallet(p.name, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent-wallet'),
         '127.0.0.1',
         8004,
         'api/v0')
@@ -247,8 +238,8 @@ async def x_test_agents_direct(
     await pspcobag.create_master_secret('SecretMaster')
 
     for ag in (bcobag, pspcobag):
-        wallet_num = ag.wallet.num
-        assert (await ag.reset_wallet()) > wallet_num  # makes sure later ops are OK on reset wallet
+        wallet_name = ag.wallet.name
+        assert (await ag.reset_wallet()) == wallet_name
 
     i = 0
     for s_key in schema_data:
@@ -612,44 +603,34 @@ async def test_agents_process_forms_local(
         path_home):
 
     # 1. Open pool, init agents
-    async with NodePool(pool_name, pool_genesis_txn_path) as p, (
+    async with NodePool(pool_name, pool_genesis_txn_path, {'auto_remove': True}) as p, (
             TrustAnchorAgent(
                 p,
-                seed_trustee1,
-                'trustee-wallet',
-                None,
+                Wallet(p.name, seed_trustee1, 'trustee-wallet'),
                 '127.0.0.1',
                 '8000',
                 'api/v0')) as tag, (
             SRIAgent(
                 p,
-                'SRI-Agent-0000000000000000000000',
-                'sri-agent-wallet',
-                None,
+                Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent-wallet'),
                 '127.0.0.1',
                 8001,
                 'api/v0')) as sag, (
             OrgBookAgent(
                 p,
-                'PSPC-Org-Book-Agent-000000000000',
-                'pspc-org-book-agent-wallet',
-                None,
+                Wallet(p.name, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent-wallet'),
                 '127.0.0.1',
                 8003,
                 'api/v0')) as pspcobag, (
             OrgBookAgent(
                 p,
-                'BC-Org-Book-Agent-00000000000000',
-                'bc-org-book-agent-wallet',
-                None,
+                Wallet(p.name, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent-wallet'),
                 '127.0.0.1',
                 8003,
                 'api/v0')) as bcobag, (
             BCRegistrarAgent(
                 p,
-                'BC-Registrar-Agent-0000000000000',
-                'bc-reg-agent-wallet',
-                None,
+                Wallet(p.name, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent-wallet'),
                 '127.0.0.1',
                 8004,
                 'api/v0')) as bcrag:
@@ -662,7 +643,7 @@ async def test_agents_process_forms_local(
         # BCOBAG DID: Rzra...
         # BCRAG DID: Q4zq...
         print('\n\n== 1 == Agent DIDs: {}'.format(ppjson(
-            {ag.wallet.base_name.replace('-wallet',''): ag.did for ag in (tag, sag, pspcobag, bcobag, bcrag)})))
+            {ag.wallet.name.replace('-wallet',''): ag.did for ag in (tag, sag, pspcobag, bcobag, bcrag)})))
 
         # 2. Publish agent particulars to ledger if not yet present
         did2ag = {}

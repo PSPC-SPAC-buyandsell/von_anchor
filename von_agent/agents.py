@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from indy import anoncreds, ledger
+from indy import anoncreds, ledger, IndyError
 from re import match
 from requests import post
 from time import time
@@ -26,6 +26,7 @@ from .schema import SchemaKey, SchemaStore, schema_key_for
 from .util import encode, decode, prune_claims_json, ppjson
 from .wallet import Wallet
 
+import asyncio
 import json
 import logging
 
@@ -35,24 +36,19 @@ class BaseAgent:
     Base class for agent
     """
 
-    def __init__(self, pool: NodePool, seed: str, wallet_base_name: str, wallet_cfg_json: str) -> None:
+    def __init__(self, pool: NodePool, wallet: Wallet) -> None:
         """
-        Initializer for agent. Does not open its wallet, only retains input parameters.
+        Initializer for agent. Retain input parameters; do not open wallet.
 
         :param pool: node pool on which agent operates
-        :param seed: seed to bootstrap agent
-        :param wallet_base_name: (base) name of wallet that agent uses
-        :param wallet_cfg_json: wallet configuration json, None for default
+        :param wallet: wallet for agent use
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('BaseAgent.__init__: >>> pool {}, seed [SEED], wallet_base_name {}, wallet_cfg_json {}'.format(
-            pool,
-            wallet_base_name,
-            wallet_cfg_json))
+        logger.debug('BaseAgent.__init__: >>> pool: {}, wallet: {}'.format(pool, wallet))
 
         self._pool = pool
-        self._wallet = Wallet(pool.name, seed, wallet_base_name, 0, wallet_cfg_json)
+        self._wallet = wallet
         self._schema_store = SchemaStore()
 
         logger.debug('BaseAgent.__init__: <<<')
@@ -60,7 +56,7 @@ class BaseAgent:
     @property
     def pool(self) -> NodePool:
         """
-        Accessor for node pool
+        Accessor for node pool.
 
         :return: node pool
         """
@@ -70,7 +66,7 @@ class BaseAgent:
     @property
     def wallet(self) -> 'Wallet':
         """
-        Accessor for wallet
+        Accessor for wallet.
 
         :return: wallet
         """
@@ -80,7 +76,7 @@ class BaseAgent:
     @property
     def did(self) -> str:
         """
-        Accessor for agent DID
+        Accessor for agent DID.
 
         :return: agent DID
         """
@@ -90,7 +86,7 @@ class BaseAgent:
     @property
     def verkey(self) -> str:
         """
-        Accessor for agent verification key
+        Accessor for agent verification key.
 
         :return: agent verification key
         """
@@ -99,7 +95,7 @@ class BaseAgent:
 
     async def __aenter__(self) -> 'BaseAgent':
         """
-        Context manager entry. Opens wallet and stores agent DID in it.
+        Context manager entry. Open wallet and store agent DID in it.
         For use in monolithic call opening, using, and closing the agent.
 
         :return: current object
@@ -115,7 +111,7 @@ class BaseAgent:
 
     async def open(self) -> 'BaseAgent':
         """
-        Explicit entry. Opens wallet and stores agent DID in it.
+        Explicit entry. Open wallet and store agent DID in it.
         For use when keeping agent open across multiple calls.
 
         :return: current object
@@ -131,7 +127,7 @@ class BaseAgent:
 
     async def __aexit__(self, exc_type, exc, traceback) -> None:
         """
-        Context manager exit. Closes and deletes wallet.
+        Context manager exit. Close wallet.
         For use in monolithic call opening, using, and closing the agent.
 
         :param exc_type:
@@ -147,7 +143,7 @@ class BaseAgent:
 
     async def close(self) -> None:
         """
-        Explicit exit. Closes and deletes wallet.
+        Explicit exit. Close wallet.
         For use when keeping agent open across multiple calls.
         """
 
@@ -174,6 +170,8 @@ class BaseAgent:
             self.did,
             did)
         resp_json = await ledger.submit_request(self.pool.handle, get_nym_req)
+        await asyncio.sleep(0);
+
         data_json = (json.loads(resp_json))['result']['data']  # it's double-encoded on the ledger
         if data_json:
             rv = data_json
@@ -183,10 +181,10 @@ class BaseAgent:
 
     async def get_schema(self, index: Union[SchemaKey, int]) -> str:
         """
-        Method for agent to get schema from ledger by origin DID, name, and version; empty production {} for none.
+        Get schema from ledger by origin DID, name, and version; return empty production {} for none.
 
         The operation retrieves the schema from the agent's schema store if it has it, and caches it
-        en passant if it does not (and there is a corresponding schema on the ledger).
+        en passant if it does not (and if there is a corresponding schema on the ledger).
 
         :param index: schema key (origin DID, name, version) or sequence number
         :return: schema json as retrieved from ledger
@@ -206,6 +204,8 @@ class BaseAgent:
                     index.origin_did,
                     json.dumps({'name': index.name, 'version': index.version}))
                 resp_json = await ledger.submit_request(self.pool.handle, req_json)
+                await asyncio.sleep(0);
+
                 resp = json.loads(resp_json)
                 if ('op' in resp) and (resp['op'] == 'REQNACK'):
                     logger.error('BaseAgent.get_schema: {}'.format(resp['reason']))
@@ -224,6 +224,8 @@ class BaseAgent:
             else:
                 req_json = await ledger.build_get_txn_request(self.did, index)
                 resp = json.loads(await ledger.submit_request(self.pool.handle, req_json))
+                await asyncio.sleep(0);
+
                 if ('op' in resp) and (resp['op'] == 'REQNACK'):
                     logger.error('BaseAgent.get_schema: {}'.format(resp['reason']))
                 elif resp['result']['data'] and (resp['result']['data']['type'] == '101'):  # type '101' == schema
@@ -238,7 +240,7 @@ class BaseAgent:
 
     async def get_endpoint(self, did: str) -> str:
         """
-        Get json endpoint for agent having input DID
+        Get json endpoint for agent having input DID.
 
         :param did: DID for agent whose endpoint to find
         :return: json endpoint data for agent having input DID
@@ -253,6 +255,8 @@ class BaseAgent:
             did,
             'endpoint')
         resp_json = await ledger.submit_request(self.pool.handle, req_json)
+        await asyncio.sleep(0);
+
         resp = json.loads(resp_json)
         if ('op' in resp) and (resp['op'] == 'REQNACK'):
             logger.error('BaseAgent.get_endpoint: {}'.format(resp['reason']))
@@ -273,11 +277,7 @@ class BaseAgent:
         :return: representation for current object
         """
 
-        return '{}({}, [SEED], {}, {})'.format(
-            self.__class__.__name__,
-            repr(self.pool),
-            self.wallet.base_name,
-            self.wallet.cfg_json)
+        return '{}({}, {})'.format(self.__class__.__name__, repr(self.pool), self.wallet)
 
     def __str__(self) -> str:
         """
@@ -286,7 +286,7 @@ class BaseAgent:
         :return: string identifying current object
         """
 
-        return '{}({})'.format(self.__class__.__name__, self.wallet.base_name)
+        return '{}({})'.format(self.__class__.__name__, self.wallet)
 
 
 class BaseListeningAgent(BaseAgent):
@@ -302,35 +302,30 @@ class BaseListeningAgent(BaseAgent):
 
     def __init__(self,
             pool: NodePool,
-            seed: str,
-            wallet_base_name: str,
-            wallet_cfg_json: str,
+            wallet: Wallet,
             host: str,
             port: int,
             agent_api_path: str = '') -> None:
         """
-        Initializer for agent. Does not open its wallet, only retains input parameters.
+        Initializer for agent. Retain input parameters; do not open wallet.
 
         :pool: node pool on which agent operates
-        :seed: seed to bootstrap agent
-        :wallet_base_name: (base) name of wallet that agent uses
-        :wallet_cfg_json: wallet configuration json, None for default
+        :wallet: wallet for agent use
         :host: agent IP address
         :port: agent port
         :agent_api_path: URL path to agent API, for use in proxying to further agents
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('BaseListeningAgent.__init__: >>> ' +
-            'pool: {}, ' +
-            'seed: [SEED], ' +
-            'wallet_base_name: {}, ' +
-            'wallet_cfg_json: {}, ' +
-            'host: {}, ' +
-            'port: {}, ' +
-            'agent_api_path: {}'.format(pool, wallet_base_name, wallet_cfg_json, host, port, agent_api_path))
+        logger.debug(
+            'BaseListeningAgent.__init__: >>> pool: {}, wallet: {}, host: {}, port: {}, agent_api_path: {}'.format(
+                pool,
+                wallet,
+                host,
+                port,
+                agent_api_path))
 
-        super().__init__(pool, seed, wallet_base_name, wallet_cfg_json)
+        super().__init__(pool, wallet)
         self._host = host
         self._port = port
         self._agent_api_path = agent_api_path
@@ -351,7 +346,7 @@ class BaseListeningAgent(BaseAgent):
 
     async def send_endpoint(self) -> str:
         """
-        Sends agent endpoint attribute to ledger. Returns endpoint json as written
+        Send agent endpoint attribute to ledger. Return endpoint json as written
         (the process of writing the attribute to the ledger does not add any additional content).
 
         :return: endpoint attibute entry json with host and port
@@ -369,12 +364,14 @@ class BaseListeningAgent(BaseAgent):
         req_json = await ledger.build_attrib_request(self.did, self.did, None, raw_json, None)
 
         rv = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
+        await asyncio.sleep(0);
+
         logger.debug('BaseListeningAgent.send_endpoint: <<< {}'.format(rv))
         return rv
 
     async def get_claim_def(self, schema_seq_no: int, issuer_did: str) -> str:
         """
-        Method to get claim definition from ledger by its parent schema and issuer DID;
+        Get claim definition from ledger by its parent schema and issuer DID; return
         empty production {} for none, IndyError with error_code = ErrorCode.LedgerInvalidTransaction
         for bad request.
 
@@ -396,6 +393,8 @@ class BaseListeningAgent(BaseAgent):
             issuer_did)
 
         resp_json = await ledger.submit_request(self.pool.handle, req_json)
+        await asyncio.sleep(0);
+
         resp = json.loads(resp_json)
         if ('op' in resp) and (resp['op'] == 'REQNACK'):
             logger.error('BaseAgent.get_claim_def: {}'.format(resp['reason']))
@@ -412,7 +411,7 @@ class BaseListeningAgent(BaseAgent):
 
     async def _response_from_proxy(self, form: dict, proxy_marker_attr: str) -> 'Response':
         """
-        Get the response from the proxy, if the request form content identifies to do so
+        Get the response from the proxy, if the request form content identifies to do so.
 
         :param form: request form on which to operate
         :param proxy_marker_attr: attribute in dict at form['data'] identifying intent to proxy
@@ -456,8 +455,8 @@ class BaseListeningAgent(BaseAgent):
 
     async def process_post(self, form: dict) -> str:
         """
-        Takes a request from service wrapper POST and dispatches the applicable agent action.
-        Returns (json) response arising from processing.
+        Take a request from service wrapper POST and dispatch the applicable agent action.
+        Return (json) response arising from processing.
 
         :param form: request form on which to operate
         :return: json response
@@ -569,7 +568,7 @@ class BaseListeningAgent(BaseAgent):
 
     async def process_get_txn(self, txn: int) -> str:
         """
-        Takes a request to find a transaction on the distributed ledger by its sequence number.
+        Take a request to find a transaction on the distributed ledger by its sequence number.
 
         :param txn: transaction number
         :return: json sequence number of transaction, null for no match
@@ -581,6 +580,7 @@ class BaseListeningAgent(BaseAgent):
         rv = json.dumps({})
         req_json = await ledger.build_get_txn_request(self.did, txn)
         resp = json.loads(await ledger.submit_request(self.pool.handle, req_json))
+        await asyncio.sleep(0);
 
         if ('op' in resp) and (resp['op'] == 'REQNACK'):
             logger.error('BaseAgent.process_get_txn: {}'.format(resp['reason']))
@@ -592,7 +592,7 @@ class BaseListeningAgent(BaseAgent):
 
     async def process_get_did(self) -> str:
         """
-        Takes a request to get current agent's DID, returns json accordingly.
+        Take a request to get current agent's DID, return json accordingly.
 
         :return: json DID
         """
@@ -611,13 +611,16 @@ class BaseListeningAgent(BaseAgent):
         :return: representation for current object
         """
 
-        return '{}({}, [SEED], {}, {}, {}, {})'.format(
-            self.__class__.__name__,
-            repr(self.pool),
-            self.wallet.base_name,
-            self.wallet.cfg_json,
-            self.host,
-            self.port)
+        return '{}({}, {}, {}, {})'.format(self.__class__.__name__, repr(self.pool), self.wallet, self.host, self.port)
+
+    def __str__(self) -> str:
+        """
+        Return informal string identifying current object.
+
+        :return: string identifying current object
+        """
+
+        return '{}({}, {}, {})'.format(self.__class__.__name__, self.wallet, self.host, self.port)
 
 
 class AgentRegistrar(BaseListeningAgent):
@@ -647,13 +650,14 @@ class AgentRegistrar(BaseListeningAgent):
             self.wallet.handle,
             self.did,
             req_json)
+        await asyncio.sleep(0);
 
         logger.debug('AgentRegistrar.send_nym: <<<')
 
     async def process_post(self, form: dict) -> str:
         """
-        Takes a request from service wrapper POST and dispatches the applicable agent action.
-        Returns (json) response arising from processing.
+        Take a request from service wrapper POST and dispatch the applicable agent action.
+        Return (json) response arising from processing.
 
         :param form: request form on which to operate
         :return: json response
@@ -691,8 +695,7 @@ class Origin(BaseListeningAgent):
 
     async def send_schema(self, schema_data_json: str) -> str:
         """
-        Method for schema originator to send schema to ledger, then retrieve it as written
-        (and completed through the write process to the ledger) and return it.
+        Send schema to ledger, then retrieve it as written to the ledger and return it.
 
         :param schema_data_json: schema data json with name, version, attribute names; e.g.,:
             {
@@ -718,6 +721,8 @@ class Origin(BaseListeningAgent):
         else:
             req_json = await ledger.build_schema_request(self.did, schema_data_json)
             resp_json = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
+            await asyncio.sleep(0);
+
             resp = json.loads(resp_json)
             if ('op' in resp) and (resp['op'] == 'REQNACK'):
                 logger.error('BaseAgent.send_schema: {}'.format(resp['reason']))
@@ -733,8 +738,8 @@ class Origin(BaseListeningAgent):
 
     async def process_post(self, form: dict) -> str:
         """
-        Takes a request from service wrapper POST and dispatches the applicable agent action.
-        Returns (json) response arising from processing.
+        Take a request from service wrapper POST and dispatch the applicable agent action.
+        Return (json) response arising from processing.
 
         :param form: request form on which to operate
         :return: json response
@@ -774,7 +779,7 @@ class Issuer(Origin):
 
     async def send_claim_def(self, schema_json: str) -> str:
         """
-        Method for Issuer to create a claim definition, store it in its wallet, and send it to the ledger.
+        Create a claim definition as Issuer, store it in its wallet, and send it to the ledger.
 
         :param schema_json: schema as it appears on ledger via get_schema()
         :return: json claim definition as it appears on ledger, empty production for None
@@ -801,6 +806,8 @@ class Issuer(Origin):
             self.wallet.handle,
             self.did,
             req_json)
+        await asyncio.sleep(0);
+
         resp = json.loads(resp_json)
         if ('op' in resp) and (resp['op'] == 'REQNACK'):
             logger.error('BaseAgent.send_claim_def: {}'.format(resp['reason']))
@@ -816,7 +823,7 @@ class Issuer(Origin):
 
     async def create_claim(self, claim_req_json: str, claim: dict) -> (str, str):
         """
-        Method for Issuer to create claim out of claim request and dict of key:[value, encoding] entries
+        Create claim as Issuer out of claim request and dict of key:[value, encoding] entries
         for revealed attributes.
 
         :param claim_req_json: claim request as created by HolderProver
@@ -842,8 +849,8 @@ class Issuer(Origin):
 
     async def process_post(self, form: dict) -> str:
         """
-        Takes a request from service wrapper POST and dispatches the applicable agent action.
-        Returns (json) response arising from processing.
+        Take a request from service wrapper POST and dispatch the applicable agent action.
+        Return (json) response arising from processing.
 
         :param form: request form on which to operate
         :return: json response
@@ -896,35 +903,29 @@ class HolderProver(BaseListeningAgent):
 
     def __init__(self,
             pool: NodePool,
-            seed: str,
-            wallet_base_name: str,
-            wallet_cfg_json: str,
+            wallet: Wallet,
             host: str,
             port: int,
             agent_api_path: str = '') -> None:
         """
-        Initializer for agent. Does not open its wallet, only retains input parameters.
+        Initializer for agent. Retain input parameters; do not open wallet.
 
         :pool: node pool on which agent operates
-        :seed: seed to bootstrap agent
-        :wallet_base_name: (base) name of wallet that agent uses
-        :wallet_cfg_json: wallet configuration json, None for default
+        :wallet: wallet for agent use
         :host: agent IP address
         :port: agent port
         :agent_api_path: URL path to agent API, for use in proxying to further agents
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.__init__: >>> ' +
-            'pool: {}, ' +
-            'seed: [SEED], ' +
-            'wallet_base_name: {}, ' +
-            'wallet_cfg_json: {}, ' +
-            'host: {}, ' +
-            'port: {}, ' +
-            'agent_api_path: {}'.format(pool, wallet_base_name, wallet_cfg_json, host, port, agent_api_path))
+        logger.debug('HolderProver.__init__: >>> pool: {}, wallet: {}, host: {}, port: {}, agent_api_path: {}'.format(
+            pool,
+            wallet,
+            host,
+            port,
+            agent_api_path))
 
-        super().__init__(pool, seed, wallet_base_name, wallet_cfg_json, host, port, agent_api_path)
+        super().__init__(pool, wallet, host, port, agent_api_path)
         self._master_secret = None
         self._claim_req_json = None  # FIXME: support multiple schema, use dict: txn_no -> claim_req_json
 
@@ -933,7 +934,7 @@ class HolderProver(BaseListeningAgent):
     @property
     def claim_req_json(self) -> str:
         """
-        Accessor for (HolderProver) agent claim request json as stored in wallet
+        Accessor for (HolderProver) agent claim request json as stored in wallet.
 
         :return: agent claim request json as stored in wallet
         """
@@ -942,21 +943,29 @@ class HolderProver(BaseListeningAgent):
 
     async def create_master_secret(self, master_secret: str) -> None:
         """
-        Method for HolderProver to create a master secret used in proofs.
+        Create master secret used in proofs by HolderProver.
 
         :param master_secret: label for master secret; indy-sdk uses label to generate master secret
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.create_master_secret: >>> master_secret {}'.format(master_secret))
+        logger.debug('HolderProver.create_master_secret: >>> master_secret: {}'.format(master_secret))
 
-        await anoncreds.prover_create_master_secret(self.wallet.handle, master_secret)
+        try:
+            await anoncreds.prover_create_master_secret(self.wallet.handle, master_secret)
+        except IndyError as e:
+            if e.error_code == ErrorCode.AnoncredsMasterSecretDuplicateNameError:
+                logger.info('HolderProver did not create master secret - it already exists')
+            else:
+                logger.error('Cannot open wallet {}: indy error code {}'.format(self.name, self.e.error_code))
+                raise
+
         self._master_secret = master_secret
         logger.debug('HolderProver.create_master_secret: <<<')
 
     async def store_claim_offer(self, issuer_did: str, s_key: SchemaKey) -> None:
         """
-        Method for HolderProver to store a claim offer in its wallet.
+        Store claim offer in wallet as HolderProver.
 
         :param issuer_did: DID of claim issuer
         :param s_key: schema key (origin DID, name, version)
@@ -981,7 +990,7 @@ class HolderProver(BaseListeningAgent):
 
     async def store_claim_req(self, issuer_did: str, claim_def_json: str) -> str:
         """
-        Method for HolderProver to create a claim request and store it in its wallet.
+        Create claim request as HolderProver and store in wallet.
 
         :param issuer_did: claim issuer DID
         :param claim_def_json: claim definition json as retrieved from ledger via get_claim_def()
@@ -1021,7 +1030,7 @@ class HolderProver(BaseListeningAgent):
 
     async def store_claim(self, claim_json: str) -> None:
         """
-        Method for HolderProver to store claim in wallet.
+        Store claim in wallet as HolderProver.
 
         :param claim_json: json claim as HolderProver created
         """
@@ -1037,7 +1046,7 @@ class HolderProver(BaseListeningAgent):
 
     async def create_proof(self, proof_req: dict, claims: dict, requested_claims: dict = None) -> str:
         """
-        Method for HolderProver to create proof.
+        Create proof as HolderProver.
 
         :param proof_req: proof request as Verifier creates; has entries for proof request's
             nonce, name, and version; plus claim's requested attributes, requested predicates. E.g.,
@@ -1105,11 +1114,7 @@ class HolderProver(BaseListeningAgent):
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug(
-            ('HolderProver.create_proof: >>> ' +
-                    'proof_req: {}, ' +
-                    'claims: {}, ' +
-                    'requested_claims: {}').format(
+        logger.debug('HolderProver.create_proof: >>> proof_req: {}, claims: {}, requested_claims: {}'.format(
                 proof_req,
                 claims,
                 requested_claims))
@@ -1149,8 +1154,8 @@ class HolderProver(BaseListeningAgent):
 
     async def get_claims(self, proof_req_json: str, filt: dict = {}) -> (Set[str], str):
         """
-        Method for HolderProver to get claims (from wallet) corresponding to proof request; empty set and
-        empty production for no such claim.
+        Get claims from HolderProver wallet corresponding to proof request and filter criteria; return referents
+        and proof json or empty set and empty production for no such claim.
 
         :param proof_req_json: proof request json as Verifier creates; has entries for proof request's
             nonce, name, and version; plus claim's requested attributes, requested predicates. E.g.,
@@ -1255,7 +1260,7 @@ class HolderProver(BaseListeningAgent):
 
     async def get_claim_by_referent(self, referents: set, requested_attrs: dict) -> str:
         """
-        Method for HolderProver to get claim (from wallet) by referent
+        Get claim structure from HolderProver wallet by referents.
 
         :param referents: set of referents of interest
         :param requested_attrs: requested attrs dict mapping uuid to schema sequence number and attribute name for
@@ -1293,13 +1298,12 @@ class HolderProver(BaseListeningAgent):
         logger.debug('HolderProver.get_claim_by_referent: <<< {}'.format(rv))
         return rv
 
-    async def reset_wallet(self) -> int:
+    async def reset_wallet(self) -> str:
         """
-        Method for HolderProver to close and delete wallet, then create and open a new one.
-        Useful for demo purpose so as not to have to shut down and restart the HolderProver from django.
+        Close and delete HolderProver wallet, then create and open a replacement.
         Precursor to revocation, and issuer/filter-specifiable claim deletion.
 
-        :return: wallet num
+        :return: wallet name
         """
 
         logger = logging.getLogger(__name__)
@@ -1310,24 +1314,24 @@ class HolderProver(BaseListeningAgent):
             logger.error(x)
             raise x
 
-        _seed = self.wallet._seed
-        base_name = self.wallet.base_name
-        num = self.wallet.num
-        cfg_json = self.wallet.cfg_json
+        seed = self.wallet._seed
+        wallet_name = self.wallet.name
+        wallet_cfg = self.wallet.cfg
         await self.wallet.close()
-        self._wallet = Wallet(self.pool.name, _seed, base_name, num + 1, cfg_json)
+        await self.wallet.remove()
+        self._wallet = Wallet(self.pool.name, seed, wallet_name, wallet_cfg)
         await self.wallet.open()
 
         await self.create_master_secret(self._master_secret)  # carry over master secret to new wallet
 
-        rv = self.wallet.num
+        rv = self.wallet.name
         logger.debug('HolderProver.reset_wallet: <<< {}'.format(rv))
         return rv
 
     async def process_post(self, form: dict) -> str:
         """
-        Takes a request from service wrapper POST and dispatches the applicable agent action.
-        Returns (json) response arising from processing.
+        Take a request from service wrapper POST and dispatch the applicable agent action.
+        Return (json) response arising from processing.
 
         :param form: request form on which to operate
         :return: json response
@@ -1577,7 +1581,7 @@ class Verifier(BaseListeningAgent):
 
     async def verify_proof(self, proof_req: dict, proof: dict) -> str:
         """
-        Method for Verifier to verify proof.
+        Verify proof as Verifier.
 
         :param proof_req: proof request as Verifier creates - has entries for proof request's
             nonce, name, and version; plus claim's requested attributes, requested predicates; e.g.,
@@ -1659,8 +1663,8 @@ class Verifier(BaseListeningAgent):
 
     async def process_post(self, form: dict) -> str:
         """
-        Takes a request from service wrapper POST and dispatches the applicable agent action.
-        Returns (json) response arising from processing.
+        Take a request from service wrapper POST and dispatch the applicable agent action.
+        Return (json) response arising from processing.
 
         :param form: request form on which to operate
         :return: json response

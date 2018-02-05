@@ -27,9 +27,17 @@ async def test_pool_open(
     pool_genesis_txn_path,
     pool_genesis_txn_file):
 
+    p = NodePool(pool_name, pool_genesis_txn_path, {'auto_remove': True})
+    await p.open()
+    assert p.handle is not None
+    await p.close()
+
     p = NodePool(pool_name, pool_genesis_txn_path)
     await p.open()
     assert p.handle is not None
-
     await p.close()
 
+    p = NodePool(pool_name, pool_genesis_txn_path, {'auto_remove': True})
+    await p.open()
+    assert p.handle is not None
+    await p.close()

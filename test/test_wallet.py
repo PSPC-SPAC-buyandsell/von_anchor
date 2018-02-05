@@ -27,26 +27,21 @@ async def test_wallet(
     pool_genesis_txn_path,
     pool_genesis_txn_file):
 
-    p = NodePool(pool_name, pool_genesis_txn_path)
+    p = NodePool(pool_name, pool_genesis_txn_path, {'auto_remove': True})
     await p.open()
     assert p.handle is not None
 
     seed = '00000000000000000000000000000000'
-    base_name = 'my-wallet'
-    w = Wallet(p.name, seed, base_name, 0)
+    name = 'my-wallet'
+    w = Wallet(p.name, seed, name)
+
     await w.open()
-
-    num = w.num
-
-    assert num != None
     assert w.did
     assert w.verkey
-
     (did, verkey) = (w.did, w.verkey)
     await w.close()
 
-    num += 1
-    x = Wallet(p.name, seed, base_name, num)
+    x = Wallet(p.name, seed, name)
     await x.open()
     assert did == x.did
     assert verkey == x.verkey
