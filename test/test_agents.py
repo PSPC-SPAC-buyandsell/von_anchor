@@ -33,8 +33,8 @@ def claim_value_pair(plain):
 
 
 #noinspection PyUnusedLocal
-@pytest.mark.asyncio
-async def test_agents_direct(
+# @pytest.mark.asyncio
+async def x_test_agents_direct(
         pool_name,
         pool_genesis_txn_path,
         seed_trustee1,
@@ -1362,13 +1362,32 @@ async def test_agents_process_forms_local(
                     'requested-attrs': []
                 }
             }))
-            print('\n\n== 19.{} == SRI claims on [{} v{}], no filter: {}'.format(
+            print('\n\n== 19.{}.0 == SRI claims on [{} v{}], no filter: {}'.format(
+                i,
+                s_key.name,
+                s_key.version,
+                ppjson(sri_claim)))
+            assert len(sri_claim['claims']['attrs']) == (len(schema_data[s_key]['attr_names']))
+
+            sri_claim = json.loads(await holder_prover[s_key.origin_did].process_post({
+                'type': 'claim-request',
+                'data': {
+                    'schemata': [],
+                    'claim-filter': {
+                        'attr-match': [attr_match(s_key)],
+                        'pred-match': []
+                    },
+                    'requested-attrs': []
+                }
+            }))
+            print('\n\n== 19.{}.1 == SRI claims, filter for all attrs in schema [{} v{}]: {}'.format(
                 i,
                 s_key.name,
                 s_key.version,
                 ppjson(sri_claim)))
             i += 1
-
+            assert len(sri_claim['claims']['attrs']) == (len(schema_data[s_key]['attr_names']))
+            
         # 19. PSPC Org Book agent (as HolderProver) finds all claims, for all schemata, on first attr per schema
         sri_claims_all = json.loads(await pspcobag.process_post({
             'type': 'claim-request',
