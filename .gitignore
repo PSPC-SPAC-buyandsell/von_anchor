@@ -102,3 +102,6 @@ ENV/
 
 # vi
 .*.swp
+
+# pytest
+.pytest_cache/

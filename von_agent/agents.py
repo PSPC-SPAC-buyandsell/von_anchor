@@ -1086,14 +1086,25 @@ class HolderProver(BaseListeningAgent):
                                 'schema_key': {
                                     'did': 'R17v42T4pk...',
                                     'name': 'patient-records',
-                                    'version': '4.2'
+                                    'version': '2.1'
                                 }
                             }
                         ]
                     },
                 },
                 'requested_predicates': {
-                    ...  # TODO: predicates
+                    'predicate0_uuid': {
+                        'attr_name': 'age',
+                        'p_type': '>=',
+                        'value': 18,
+                        'restrictions': [
+                            'schema_key': {
+                                'did': 'R17v42T4pk...',
+                                'name': 'patient-records',
+                                'version': '2.1'
+                            }
+                        ]
+                    }
                 }
             }
         :param claims: claims to prove
@@ -1107,7 +1118,7 @@ class HolderProver(BaseListeningAgent):
                     'attr1_uuid': ['claim::97977381-ca99-3817-8f22-a07cd3550287', True]
                 },
                 'requested_predicates': {
-                    'predicate0_uuid': claim::31219731-9783-a772-bc98-12369780831f'
+                    'predicate0_uuid': 'claim::31219731-9783-a772-bc98-12369780831f'
                 }
             }
         :return: proof json
@@ -1195,30 +1206,57 @@ class HolderProver(BaseListeningAgent):
                                 'schema_key': {
                                     'did': 'R17v42T4pk...',
                                     'name': 'patient-records',
-                                    'version': '4.2'
+                                    'version': '2.1'
                                 }
                             }
                         ]
                     },
                 },
                 'requested_predicates': {
-                    ...  # TODO: predicates
+                    'predicate0_uuid': {
+                        'attr_name': 'age',
+                        'p_type': '>=',
+                        'value': 18,
+                        'restrictions': [
+                            'schema_key': {
+                                'did': 'R17v42T4pk...',
+                                'name': 'patient-records',
+                                'version': '2.1'
+                            }
+                        ]
+                    }
                 }
             }
-        :param filt: filter for matching attributes and values; dict mapping each SchemaKey to
-            dict mapping attributes to values to match (specify empty dict for no filter). E.g.,
+        :param filt: filter for matching attribute-value pairs and predicates; dict mapping each SchemaKey to
+            dict mapping attributes to values to match or compare (specify empty dict for no filter). E.g.,
             {
                 SchemaKey('Vx4E82R17q...', 'friendlies', '1.0'): {
-                    'name': 'Alex',
-                    'sex': 'M',
-                    'favouriteDrink': None
+                    'attr-match': {
+                        'name': 'Alex',
+                        'sex': 'M',
+                        'favouriteDrink': None
+                    },
+                    'pred-match': [
+                        {
+                            'attr' : 'favouriteNumber',
+                            'pred-type': '>=',
+                            'value': 10
+                        },
+                        {
+                            'attr' : 'score',
+                            'pred-type': '>=',
+                            'value': 100
+                        },
+                    ]
                 },
                 SchemaKey('R17v42T4pk...', 'tombstone', '2.1'): {
-                    'height': 175,
-                    'birthdate': '1975-11-15'
+                    'attr-match': {
+                        'height': 175,
+                        'birthdate': '1975-11-15'
+                    }
                 },
                 ...
-            ]
+            }
         :return: tuple with (set of referents, claims json for input proof request); empty set and production
             for no such claim
         """
@@ -1243,11 +1281,27 @@ class HolderProver(BaseListeningAgent):
         for attr_uuid in claims['attrs']:
             for candidate in claims['attrs'][attr_uuid]:
                 if filt:
+                    add_me = True
                     claim_s_key = schema_key_for(candidate['schema_key'])
-                    if claim_s_key in filt:
-                        if {k: str(filt[claim_s_key][k])
-                                for k in filt[claim_s_key]}.items() <= candidate['attrs'].items():
-                            referents.add(candidate['referent'])
+                    if claim_s_key in filt and 'attr-match' in filt[claim_s_key]:
+                        if not {k: str(filt[claim_s_key]['attr-match'][k])
+                                for k in filt[claim_s_key]['attr-match']}.items() <= candidate['attrs'].items():
+                            continue
+                    if claim_s_key in filt and 'pred-match' in filt[claim_s_key]:
+                        for pred_match in filt[claim_s_key]['pred-match']:
+                            if pred_match['attr'] not in candidate['attrs']:
+                                add_me = False
+                                break  # inner pred_match loop
+                            try:
+                                # pred_match['pred-type'] == '>='
+                                if int(candidate['attrs'][pred_match['attr']]) < pred_match['value']:
+                                    add_me = False
+                                    break  # inner pred_match loop
+                            except ValueError:
+                                add_me = False
+                                break  # inner pred_match loop
+                    if add_me:
+                        referents.add(candidate['referent'])
                 else:
                     referents.add(candidate['referent'])
 
@@ -1377,11 +1431,29 @@ class HolderProver(BaseListeningAgent):
             form_schema_keys = []
             for form_s_key_spec in (form['data']['schemata'] +
                     [attr_matcher['schema'] for attr_matcher in form['data']['claim-filter']['attr-match']] +
-                    [pred_matcher['schema'] for pred_matcher in form['data']['claim-filter']['predicate-match']] +
+                    [pred_matcher['schema'] for pred_matcher in form['data']['claim-filter']['pred-match']] +
                     [r_attr['schema'] for r_attr in form['data']['requested-attrs']]):
                 s_key = schema_key_for(form_s_key_spec)
                 await self.get_schema(s_key)  # add to store en passant
                 form_schema_keys.append(s_key)
+
+            req_preds = {}  # do preds first: there may be defaulting req-attrs to compute, avoid collision with preds
+            for pred_match in form['data']['claim-filter']['pred-match']:
+                s_key = schema_key_for(pred_match['schema'])
+                seq_no = self._schema_store[s_key]['seqNo']
+                for pred_match_match in pred_match['match']:
+                    req_preds['{}_{}_uuid'.format(seq_no, pred_match_match['attr'])] = {
+                        'attr_name': pred_match_match['attr'],
+                        'p_type': pred_match_match['pred-type'],
+                        'value': pred_match_match['value'],
+                        'restrictions': [{
+                            'schema_key': {
+                                'did': s_key.origin_did,
+                                'name': s_key.name,
+                                'version': s_key.version
+                            }
+                        }]
+                    }
 
             req_attrs = {}
             if form['data']['requested-attrs']:
@@ -1389,45 +1461,59 @@ class HolderProver(BaseListeningAgent):
                     s_key = schema_key_for(req_attr['schema'])
                     schema = self._schema_store[s_key]
                     for name in req_attr['names'] or schema['data']['attr_names']:
-                        req_attrs['{}_{}_uuid'.format(schema['seqNo'], name)] = {
-                            'name': name,
-                            'restrictions': [{
-                                'schema_key': {
-                                    'did': s_key.origin_did,
-                                    'name': s_key.name,
-                                    'version': s_key.version
-                                }
-                            }]
-                        }
+                        if all(name != req_pred['attr_name'] or
+                            s_key != schema_key_for(req_pred['restrictions'][0]['schema_key'])
+                                for req_pred in req_preds.values()):
+                            req_attrs['{}_{}_uuid'.format(schema['seqNo'], name)] = {
+                                'name': name,
+                                'restrictions': [{
+                                    'schema_key': {
+                                        'did': s_key.origin_did,
+                                        'name': s_key.name,
+                                        'version': s_key.version
+                                    }
+                                }]
+                            }
             else:
                 for s_key in form_schema_keys:
                     schema = self._schema_store[s_key]
                     for attr_name in schema['data']['attr_names']:
-                        req_attrs['{}_{}_uuid'.format(schema['seqNo'], attr_name)] = {
-                            'name': attr_name,
-                            'restrictions': [{
-                                'schema_key': {
-                                    'did': s_key.origin_did,
-                                    'name': s_key.name,
-                                    'version': s_key.version
-                                }
-                            }]
-                        }
+                        if all(attr_name != req_pred['attr_name'] or
+                            s_key != schema_key_for(req_pred['restrictions'][0]['schema_key'])
+                                for req_pred in req_preds.values()):
+                            req_attrs['{}_{}_uuid'.format(schema['seqNo'], attr_name)] = {
+                                'name': attr_name,
+                                'restrictions': [{
+                                    'schema_key': {
+                                        'did': s_key.origin_did,
+                                        'name': s_key.name,
+                                        'version': s_key.version
+                                    }
+                                }]
+                            }
 
             find_req = {
                 'nonce': str(int(time() * 1000)),
                 'name': 'find_req_0', # informational only
                 'version': '1.0',  # informational only
                 'requested_attrs': req_attrs,
-                'requested_predicates': {}  # TODO: predicates
+                'requested_predicates': req_preds
             }
+
+            filt = {
+                schema_key_for(attr_match['schema']): {'attr-match': attr_match['match']}
+                    for attr_match in form['data']['claim-filter']['attr-match']
+            }
+            for pred_match in form['data']['claim-filter']['pred-match']:
+                s_key = schema_key_for(pred_match['schema'])
+                if s_key not in filt:
+                    filt[s_key] = {}
+                filt[s_key]['pred-match'] = pred_match['match']
+
             (referents, claims_found_json) = await self.get_claims(
                 json.dumps(find_req),
-                {schema_key_for(attr_match['schema']): attr_match['match']
-                    for attr_match in form['data']['claim-filter']['attr-match']})
-                # form['data']['claim-filter']['attr-match'])
+                filt)
             claims_found = json.loads(claims_found_json)
-
             if form['type'] == 'claim-request':
                 rv = json.dumps({
                     'proof-req': find_req,
@@ -1449,7 +1535,10 @@ class HolderProver(BaseListeningAgent):
                     attr_uuid: [claims_found['attrs'][attr_uuid][0]['referent'], True]
                         for attr_uuid in claims_found['attrs']
                 },
-                'requested_predicates': {}  # TODO: predicates
+                'requested_predicates': {
+                    pred_uuid: claims_found['predicates'][pred_uuid][0]['referent']
+                        for pred_uuid in claims_found['predicates']
+                }
             }
 
             proof_json = await self.create_proof(
@@ -1528,7 +1617,7 @@ class HolderProver(BaseListeningAgent):
                 'name': 'proof_req_0', # informational only
                 'version': '1.0',  # informational only
                 'requested_attrs': req_attrs,
-                'requested_predicates': {}  # TODO: predicates
+                'requested_predicates': {}
             }
 
             referents = form['data']['referents']
@@ -1628,7 +1717,18 @@ class Verifier(BaseListeningAgent):
                     },
                 },
                 'requested_predicates': {
-                    ...  # TODO: predicates
+                    'predicate0_uuid': {
+                        'attr_name': 'age',
+                        'p_type': '>=',
+                        'value': 18,
+                        'restrictions': [
+                            'schema_key': {
+                                'did': 'R17v42T4pk...',
+                                'name': 'patient-records',
+                                'version': '2.1'
+                            }
+                        ]
+                    }
                 }
             }
         :param proof: proof as HolderProver creates

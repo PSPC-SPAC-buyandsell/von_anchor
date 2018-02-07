@@ -391,7 +391,7 @@ PROTO_MSG_JSON_SCHEMA = {
                                 },
                                 'minItems': 0
                             },
-                            'predicate-match': {
+                            'pred-match': {
                                 'type': 'array',
                                 'items': {
                                     'type': 'object',
@@ -419,14 +419,14 @@ PROTO_MSG_JSON_SCHEMA = {
                                                     'attr': {
                                                         'type': 'string'
                                                     },
-                                                    'p_type': {
+                                                    'pred-type': {
                                                         'type': 'string'
                                                     },
                                                     'value': {
                                                         'type': 'integer'
                                                     }
                                                 },
-                                                'required': ['attr', 'p_type', 'value']
+                                                'required': ['attr', 'pred-type', 'value']
                                             },
                                             'minItems': 1
                                         }
@@ -436,7 +436,7 @@ PROTO_MSG_JSON_SCHEMA = {
                                 'minItems': 0
                             }
                         },
-                        'required': ['attr-match', 'predicate-match']
+                        'required': ['attr-match', 'pred-match']
                     },
                     'requested-attrs': {
                         'type': 'array',
@@ -554,7 +554,7 @@ PROTO_MSG_JSON_SCHEMA = {
                                 },
                                 'minItems': 0
                             },
-                            'predicate-match': {
+                            'pred-match': {
                                 'type': 'array',
                                 'items': {
                                     'type': 'object',
@@ -582,14 +582,14 @@ PROTO_MSG_JSON_SCHEMA = {
                                                     'attr': {
                                                         'type': 'string'
                                                     },
-                                                    'p_type': {
+                                                    'pred-type': {
                                                         'type': 'string'
                                                     },
                                                     'value': {
                                                         'type': 'integer'
                                                     }
                                                 },
-                                                'required': ['attr', 'p_type', 'value']
+                                                'required': ['attr', 'pred-type', 'value']
                                             },
                                             'minItems': 1
                                         }
@@ -599,7 +599,7 @@ PROTO_MSG_JSON_SCHEMA = {
                                 'minItems': 0
                             }
                         },
-                        'required': ['attr-match', 'predicate-match']
+                        'required': ['attr-match', 'pred-match']
                     },
                     'requested-attrs': {
                         'type': 'array',

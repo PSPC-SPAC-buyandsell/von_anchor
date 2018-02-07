@@ -166,7 +166,7 @@ GOOD = {
                         }
                     }
                 ],
-                'predicate-match': [
+                'pred-match': [
                     {
                         'schema': {
                             'origin-did': 'abcd1234',
@@ -176,12 +176,12 @@ GOOD = {
                         'match': [
                             {
                                 'attr': 'attr0',
-                                'p_type': 'GE',
+                                'pred-type': '>=',
                                 'value': 0
                             },
                             {
                                 'attr': 'attr1',
-                                'p_type': 'GE',
+                                'pred-type': '>=',
                                 'value': 1
                             }
                         ]
@@ -195,12 +195,12 @@ GOOD = {
                         'match': [
                             {
                                 'attr': 'attr0',
-                                'p_type': 'GE',
+                                'pred-type': '>=',
                                 'value': 0
                             },
                             {
                                 'attr': 'attr1',
-                                'p_type': 'GE',
+                                'pred-type': '>=',
                                 'value': 1
                             }
                         ]
@@ -268,7 +268,7 @@ GOOD = {
                         }
                     }
                 ],
-                'predicate-match': [
+                'pred-match': [
                     {
                         'schema': {
                             'origin-did': 'abcd1234',
@@ -278,12 +278,12 @@ GOOD = {
                         'match': [
                             {
                                 'attr': 'attr0',
-                                'p_type': 'GE',
+                                'pred-type': '>=',
                                 'value': 0
                             },
                             {
                                 'attr': 'attr1',
-                                'p_type': 'GE',
+                                'pred-type': '>=',
                                 'value': 1
                             }
                         ]
@@ -297,12 +297,12 @@ GOOD = {
                         'match': [
                             {
                                 'attr': 'attr0',
-                                'p_type': 'GE',
+                                'pred-type': '>=',
                                 'value': 0
                             },
                             {
                                 'attr': 'attr1',
-                                'p_type': 'GE',
+                                'pred-type': '>=',
                                 'value': 1
                             }
                         ]
@@ -410,11 +410,11 @@ async def test_validate():
             validate(GOOD[key])
             GOOD[key]['data']['claim-filter']['attr-match'] = match
         if '.pred-match' in key:
-            match = GOOD[key]['data']['claim-filter']['predicate-match']
-            GOOD[key]['data']['claim-filter']['predicate-match'] = []
-            print('\n\n== Validating good {} message with empty predicate-match'.format(message_type))
+            match = GOOD[key]['data']['claim-filter']['pred-match']
+            GOOD[key]['data']['claim-filter']['pred-match'] = []
+            print('\n\n== Validating good {} message with empty pred-match'.format(message_type))
             validate(GOOD[key])
-            GOOD[key]['data']['claim-filter']['predicate-match'] = match
+            GOOD[key]['data']['claim-filter']['pred-match'] = match
         if '.req-attrs' in key:
             names = GOOD[key]['data']['requested-attrs'][0]['names']
             GOOD[key]['data']['requested-attrs'][0]['names'] = []
