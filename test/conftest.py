@@ -82,15 +82,15 @@ def path_home() -> Path:
     path = Path.home().joinpath(".indy_client")
 
     if path.exists():
-        logger.debug("path_home: Cleanup home path: %r", path)
-        rmtree(str(path))
+        logger.debug("path_home: (abstaining from) cleanup home path: %r", path)
+        # rmtree(str(path))
 
     logger.debug("path_home: yield: %r", path)
     yield path
 
     if path.exists():
-        logger.debug("path_home: Cleanup home path: %r", path)
-        rmtree(str(path))
+        logger.debug("path_home: (abstaining from) cleanup home path: %r", path)
+        # rmtree(str(path))
 
     logger.debug("path_home: <<<")
 

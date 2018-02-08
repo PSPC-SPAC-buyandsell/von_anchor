@@ -33,8 +33,8 @@ def claim_value_pair(plain):
 
 
 #noinspection PyUnusedLocal
-# @pytest.mark.asyncio
-async def x_test_agents_direct(
+@pytest.mark.asyncio
+async def test_agents_direct(
         pool_name,
         pool_genesis_txn_path,
         seed_trustee1,
@@ -231,6 +231,9 @@ async def x_test_agents_direct(
             s_key.version,
             ppjson(json.loads(claim_def_json[s_key]))))
         assert json.loads(claim_def_json[s_key])['ref'] == schema[s_key]['seqNo']
+
+        repeat_claim_def = json.loads(await did2ag[s_key.origin_did].send_claim_def(schema_json[s_key]))
+        assert repeat_claim_def  # check idempotence and non-crashing on duplicate claim-def send
         i += 1
 
     # 5. Setup master secrets, claim reqs at HolderProver agents
@@ -973,6 +976,12 @@ async def test_agents_process_forms_local(
                 s_key.version,
                 ppjson(json.loads(claim_def_json[s_key]))))
             assert json.loads(claim_def_json[s_key])['ref'] == schema[s_key]['seqNo']
+
+            did2ag[s_key.origin_did].process_post(claim_def_send_form)
+            repeat_claim_def = json.loads(await holder_prover[s_key.origin_did].get_claim_def(
+                schema[s_key]['seqNo'],
+                s_key.origin_did))  # check idempotence and non-crashing on duplicate claim-def send
+            assert repeat_claim_def
             i += 1
 
         # 5. Setup master secrets, claim reqs at HolderProver agents
@@ -1010,7 +1019,7 @@ async def test_agents_process_forms_local(
             'data': {}
         }
         for ag in (bcobag, pspcobag):  # reset all HolderProvers
-            assert not json.loads(await bcobag.process_post(claims_reset_form))  # response is {} if OK
+            assert not json.loads(await ag.process_post(claims_reset_form))  # response is {} if OK
 
         i = 0
         for s_key in schema_data:

@@ -14,7 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from indy import anoncreds, ledger, IndyError
+from indy import anoncreds, ledger
+from indy.error import IndyError, ErrorCode
 from re import match
 from requests import post
 from time import time
@@ -788,35 +789,71 @@ class Issuer(Origin):
         logger = logging.getLogger(__name__)
         logger.debug('Issuer.send_claim_def: >>> schema_json: {}'.format(schema_json))
 
-        rv = json.dumps({})
         schema = json.loads(schema_json)
-        claim_def_json = await anoncreds.issuer_create_and_store_claim_def(
-            self.wallet.handle,
-            self.did,  # issuer DID
-            schema_json,
-            'CL',
-            False)
-        req_json = await ledger.build_claim_def_txn(
-            self.did,
-            schema['seqNo'],
-            'CL',
-            json.dumps(json.loads(claim_def_json)['data']))
-        resp_json = await ledger.sign_and_submit_request(
-            self.pool.handle,
-            self.wallet.handle,
-            self.did,
-            req_json)
-        await asyncio.sleep(0);
+        rv = await self.get_claim_def(schema['seqNo'], schema['identifier'])
+        if json.loads(rv):
+            # TODO: revocation support will definitely change this check
+            logger.info(
+                'Claim def on schema {} version {} already exists on ledger; Issuer not sending another'.format(
+                    schema['data']['name'],
+                    schema['data']['version']))
 
-        resp = json.loads(resp_json)
-        if ('op' in resp) and (resp['op'] == 'REQNACK'):
-            logger.error('BaseAgent.send_claim_def: {}'.format(resp['reason']))
-        else:
-            data = resp['result']['data']
-            if data:
-                rv = json.dumps(data)
+        try:
+            claim_def_json = await anoncreds.issuer_create_and_store_claim_def(
+                self.wallet.handle,
+                self.did,  # issuer DID
+                schema_json,
+                'CL',
+                False)
+        except IndyError as e:
+            # TODO: revocation support may change this check
+            if e.error_code == ErrorCode.AnoncredsClaimDefAlreadyExistsError:
+                if json.loads(rv):
+                    logger.info('Issuer wallet reusing existing claim def on schema {} version {}'.format(
+                        schema['data']['name'],
+                        schema['data']['version']))
+                else:
+                    logger.warn(
+                        'Issuer wallet has claim def on schema {} version {} not on ledger: resetting wallet'.format(
+                            schema['data']['name'],
+                            schema['data']['version']))
+                    seed = self.wallet._seed
+                    wallet_name = self.wallet.name
+                    wallet_cfg = self.wallet.cfg
+                    await self.wallet.close()
+                    await self.wallet.remove()
+                    self._wallet = Wallet(self.pool.name, seed, wallet_name, wallet_cfg)
+                    await self.wallet.open()
+
+                    return await self.send_claim_def(schema_json)
             else:
-                logger.info('BaseAgent.send_claim_def: ledger query returned response with no data')
+                logger.error('Issuer cannot store claim def in wallet {}: indy error code {}'.format(
+                    self.name,
+                    self.e.error_code))
+                raise
+
+        if not json.loads(rv):  # checking the ledger returned no claim def: send it
+            req_json = await ledger.build_claim_def_txn(
+                self.did,
+                schema['seqNo'],
+                'CL',
+                json.dumps(json.loads(claim_def_json)['data']))
+            resp_json = await ledger.sign_and_submit_request(
+                self.pool.handle,
+                self.wallet.handle,
+                self.did,
+                req_json)
+            await asyncio.sleep(0);
+
+            resp = json.loads(resp_json)
+            if ('op' in resp) and (resp['op'] == 'REQNACK'):
+                logger.error('BaseAgent.send_claim_def: {}'.format(resp['reason']))
+            else:
+                data = resp['result']['data']
+                if data:
+                    rv = json.dumps(data)
+                else:
+                    logger.info('BaseAgent.send_claim_def: ledger query returned response with no data')
 
         logger.debug('Issuer.send_claim_def: <<< {}'.format(rv))
         return rv
@@ -957,7 +994,9 @@ class HolderProver(BaseListeningAgent):
             if e.error_code == ErrorCode.AnoncredsMasterSecretDuplicateNameError:
                 logger.info('HolderProver did not create master secret - it already exists')
             else:
-                logger.error('Cannot open wallet {}: indy error code {}'.format(self.name, self.e.error_code))
+                logger.error('HolderProver cannot open wallet {}: indy error code {}'.format(
+                    self.name,
+                    self.e.error_code))
                 raise
 
         self._master_secret = master_secret
