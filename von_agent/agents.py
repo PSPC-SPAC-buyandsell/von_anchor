@@ -17,7 +17,7 @@ limitations under the License.
 from indy import anoncreds, ledger
 from indy.error import IndyError, ErrorCode
 from re import match
-from requests import post
+from requests import post, HTTPError
 from time import time
 from typing import Set, Union
 
@@ -433,7 +433,8 @@ class BaseListeningAgent(BaseAgent):
                     self.agent_api_path,
                     form['type']),
                 json=form)  # requests module json-encodes
-            r.raise_for_status()
+            if not r.ok:
+                raise HTTPError(r.json()['error-code'], r.json()['message'])
 
             rv = json.dumps(r.json())  # requests module json-decodes
             logger.debug('BaseListeningAgent._response_from_proxy: <<< {}'.format(rv))
@@ -1327,20 +1328,14 @@ class HolderProver(BaseListeningAgent):
                                 for k in filt[claim_s_key]['attr-match']}.items() <= candidate['attrs'].items():
                             continue
                     if claim_s_key in filt and 'pred-match' in filt[claim_s_key]:
-                        for pred_match in filt[claim_s_key]['pred-match']:
-                            if pred_match['attr'] not in candidate['attrs']:
-                                add_me = False
-                                break  # inner pred_match loop
-                            try:
-                                # pred_match['pred-type'] == '>='
-                                if int(candidate['attrs'][pred_match['attr']]) < pred_match['value']:
-                                    add_me = False
-                                    break  # inner pred_match loop
-                            except ValueError:
-                                add_me = False
-                                break  # inner pred_match loop
-                    if add_me:
-                        referents.add(candidate['referent'])
+                        try:
+                            if any((pred_match['attr'] not in candidate['attrs']) or
+                                (int(candidate['attrs'][pred_match['attr']]) < pred_match['value'])
+                                    for pred_match in filt[claim_s_key]['pred-match']):
+                                continue
+                        except ValueError:
+                            continue
+                    referents.add(candidate['referent'])
                 else:
                     referents.add(candidate['referent'])
 

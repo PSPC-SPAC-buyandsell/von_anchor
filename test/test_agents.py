@@ -113,7 +113,7 @@ async def test_agents_direct(
         'bcrag': json.loads(await tag.get_endpoint(bcrag.did))
     }
 
-    print('\n\n== 1 == nyms {}\nendpoints {}\n'.format(ppjson(nyms), ppjson(endpoints)))
+    print('\n\n== 1 == nyms: {}\nendpoints: {}\n'.format(ppjson(nyms), ppjson(endpoints)))
 
     for k in nyms:
         assert 'dest' in nyms[k]
@@ -320,7 +320,7 @@ async def test_agents_direct(
         'requested_predicates': {}
     }
     (bc_referents_all, claims_found_json[S_KEY['BC']]) = await bcobag.get_claims(json.dumps(find_req[S_KEY['BC']]))
-    print('\n\n== 5 == All BC claims, no filter {}; {}'.format(
+    print('\n\n== 5 == All BC claims, no filter {}: {}'.format(
         bc_referents_all,
         ppjson(claims_found_json[S_KEY['BC']])))
     claims_found[S_KEY['BC']] = json.loads(claims_found_json[S_KEY['BC']])
@@ -337,7 +337,7 @@ async def test_agents_direct(
     bc_display_pruned = prune_claims_json(
         claims_found[S_KEY['BC']],
         {k for k in bc_display_pruned_filt_post_hoc})
-    print('\n\n== 7 == BC claims, stripped down {}'.format(ppjson(bc_display_pruned)))
+    print('\n\n== 7 == BC claims, stripped down: {}'.format(ppjson(bc_display_pruned)))
 
     filt = {
         S_KEY['BC']: {
@@ -350,7 +350,7 @@ async def test_agents_direct(
     (bc_referents_filt, claims_found_json[S_KEY['BC']]) = await bcobag.get_claims(
         json.dumps(find_req[S_KEY['BC']]),
         filt)
-    print('\n\n== 8 == BC claims, filtered a priori {}; {}'.format(
+    print('\n\n== 8 == BC claims, filtered a priori {}: {}'.format(
         bc_referents_filt,
         ppjson(claims_found_json[S_KEY['BC']])))
     assert set([*bc_display_pruned_filt_post_hoc]) == bc_referents_filt
@@ -375,13 +375,13 @@ async def test_agents_direct(
         find_req[S_KEY['BC']],
         claims_found[S_KEY['BC']],
         bc_requested_claims)
-    print('\n\n== 9 == BC proof (by filter) {}'.format(ppjson(bc_proof_json)))
+    print('\n\n== 9 == BC proof (by filter): {}'.format(ppjson(bc_proof_json)))
 
     # 9. SRI agent (as Verifier) verifies proof (by filter)
     rc_json = await sag.verify_proof(
         find_req[S_KEY['BC']],
         json.loads(bc_proof_json))
-    print('\n\n== 10 == The SRI agent verifies the BC proof (by filter) as {}'.format(ppjson(rc_json)))
+    print('\n\n== 10 == The SRI agent verifies the BC proof (by filter) as: {}'.format(ppjson(rc_json)))
     assert json.loads(rc_json)
 
     # 10. BC Org Book agent (as HolderProver) finds claim by referent, no claim by non-referent
@@ -426,7 +426,7 @@ async def test_agents_direct(
         bc_claim_found_by_referent,
         bc_requested_claims)
     bc_proof = json.loads(bc_proof_json)
-    print('\n\n== 13 == BC proof by referent={} {}'.format(bc_referent, ppjson(bc_proof_json)))
+    print('\n\n== 13 == BC proof by referent={}: {}'.format(bc_referent, ppjson(bc_proof_json)))
 
     # 12. SRI agent (as Verifier) verifies proof (by referent)
     rc_json = await sag.verify_proof(
@@ -477,12 +477,11 @@ async def test_agents_direct(
         }
     }
     (bc_referents_pred, claims_found_pred_json) = await bcobag.get_claims(json.dumps(find_req_pred), filt_pred)
-    print('\n\n== 15 == BC claims, filtered by predicate {}; {}'.format(
-        bc_referents_pred,
+    print('\n\n== 15 == BC claims, filtered by predicate id >= 3: {}'.format(
         ppjson(claims_found_pred_json)))
     claims_found_pred = json.loads(claims_found_pred_json)
     bc_display_pred = claims_for(claims_found_pred)
-    print('\n\n== 16 == BC claims display, filtered by predicate: {}'.format(ppjson(bc_display_pred)))
+    print('\n\n== 16 == BC claims display, filtered by predicate id >= 3: {}'.format(ppjson(bc_display_pred)))
     assert len(bc_referents_pred) == 1
     bc_referent_pred = bc_referents_pred.pop()  # it's unique
 
@@ -502,13 +501,13 @@ async def test_agents_direct(
         find_req_pred,
         claims_found_pred,
         bc_requested_claims_pred)
-    print('\n\n== 17 == BC proof (by predicate) {}'.format(ppjson(bc_proof_pred_json)))
+    print('\n\n== 17 == BC proof by predicate id >= 3: {}'.format(ppjson(bc_proof_pred_json)))
 
     # 15. SRI agent (as Verifier) verifies proof (by predicate)
     rc_json = await sag.verify_proof(
         find_req_pred,
         json.loads(bc_proof_pred_json))
-    print('\n\n== 18 == The SRI agent verifies the BC proof (by predicate) as {}'.format(ppjson(rc_json)))
+    print('\n\n== 18 == The SRI agent verifies the BC proof (by predicate) as: {}'.format(ppjson(rc_json)))
     assert json.loads(rc_json)
 
     # 16. Create and store SRI registration completion claims, green claim from verified proof + extra data
@@ -622,7 +621,7 @@ async def test_agents_direct(
     sri_display_pruned = prune_claims_json(
         sri_claims_found_all,
         {k for k in sri_display_pruned_filt_post_hoc})
-    print('\n\n== 23 == SRI claims, stripped down {}'.format(ppjson(sri_display_pruned)))
+    print('\n\n== 23 == SRI claims, stripped down: {}'.format(ppjson(sri_display_pruned)))
 
     filt = {
         S_KEY['GREEN']: {
@@ -632,7 +631,7 @@ async def test_agents_direct(
     (sri_referents_filt, claims_found_json[S_KEY['GREEN']]) = await pspcobag.get_claims(
         json.dumps(find_req[S_KEY['GREEN']]),
         filt)
-    print('\n\n== 24 == SRI claims, filtered a priori {}; {}'.format(
+    print('\n\n== 24 == SRI claims, filtered a priori {}: {}'.format(
         sri_referents_filt,
         ppjson(claims_found_json[S_KEY['GREEN']])))
     assert set([*sri_display_pruned_filt_post_hoc]) == sri_referents_filt
@@ -653,7 +652,7 @@ async def test_agents_direct(
         find_req_sri_all,
         sri_claims_found_all,
         sri_requested_claims)
-    print('\n\n== 25 == PSPC Org Book proof on referent={} {}'.format(sri_referents_all, ppjson(sri_proof_json)))
+    print('\n\n== 25 == PSPC Org Book proof on referent={}: {}'.format(sri_referents_all, ppjson(sri_proof_json)))
     sri_proof = json.loads(sri_proof_json)
 
     # 20. SRI agent (as Verifier) verify proof
@@ -661,7 +660,7 @@ async def test_agents_direct(
         find_req_sri_all,
         sri_proof)
 
-    print('\n\n== 26 == the SRI agent verifies the PSPC Org Book proof by referent={} as {}'.format(
+    print('\n\n== 26 == the SRI agent verifies the PSPC Org Book proof by referent={} as: {}'.format(
         sri_referents_all,
         ppjson(rc_json)))
     assert json.loads(rc_json)
@@ -1146,7 +1145,7 @@ async def test_agents_process_forms_local(
             }
         })
         bc_claims_prefilt = json.loads(bc_claims_prefilt_json)
-        print('\n\n== 6 == BC claims, with filter a priori, process-post {}'.format(ppjson(bc_claims_prefilt)))
+        print('\n\n== 6 == BC claims, with filter a priori, process-post: {}'.format(ppjson(bc_claims_prefilt)))
         bc_display_pruned_prefilt = claims_for(bc_claims_prefilt['claims'])
         print('\n\n== 7 == BC display claims filtered a priori matching {}: {}'.format(
             claim_data[S_KEY['BC']][2]['legalName'],
@@ -1174,14 +1173,14 @@ async def test_agents_process_forms_local(
                 'requested-attrs': []
             }
         }))
-        print('\n\n== 8 == BC proof response (by filter) {}'.format(ppjson(bc_proof_resp)))
+        print('\n\n== 8 == BC proof response (by filter): {}'.format(ppjson(bc_proof_resp)))
 
         # 9. SRI agent (as Verifier) verifies proof (by filter)
         rc_json = await sag.process_post({
             'type': 'verification-request',
             'data': bc_proof_resp
         })
-        print('\n\n== 9 == the SRI agent verifies the BC proof (by filter) as {}'.format(ppjson(rc_json)))
+        print('\n\n== 9 == the SRI agent verifies the BC proof (by filter) as: {}'.format(ppjson(rc_json)))
         assert json.loads(rc_json)
 
         # 10. BC Org Book agent (as HolderProver) creates proof (by referent)
@@ -1221,7 +1220,7 @@ async def test_agents_process_forms_local(
             'type': 'verification-request',
             'data': bc_proof_resp
         })
-        print('\n\n== 12 == SRI agent verifies BC proof by referent={} as {}'.format(
+        print('\n\n== 12 == SRI agent verifies BC proof by referent={} as: {}'.format(
             bc_referent,
             ppjson(rc_json)))
         assert json.loads(rc_json)
@@ -1308,7 +1307,7 @@ async def test_agents_process_forms_local(
             'type': 'verification-request',
             'data': bc_proof_resp_pred
         })
-        print('\n\n== 17 == SRI agent verifies BC proof by predicates id, orgTypeId >= 2 as {}'.format(ppjson(rc_json)))
+        print('\n\n== 17 == SRI agent verifies BC proof by predicates id, orgTypeId >= 2 as: {}'.format(ppjson(rc_json)))
         assert json.loads(rc_json)
 
         # 17. Create and store SRI registration completion claims, green claims from verified proof + extra data
@@ -1450,7 +1449,7 @@ async def test_agents_process_forms_local(
             'type': 'verification-request',
             'data': sri_proof_resp
         })
-        print('\n\n== 24 == SRI agent verifies PSPC org book proof as {}'.format(ppjson(rc_json)))
+        print('\n\n== 24 == SRI agent verifies PSPC org book proof as: {}'.format(ppjson(rc_json)))
         assert json.loads(rc_json)
 
         # 23. PSPC Org Book agent (as HolderProver) creates (multi-claim) proof by referent
@@ -1475,7 +1474,7 @@ async def test_agents_process_forms_local(
             'type': 'verification-request',
             'data': sri_proof_resp
         })
-        print('\n\n== 26 == SRI agent verifies PSPC org book proof as {}'.format(ppjson(rc_json)))
+        print('\n\n== 26 == SRI agent verifies PSPC org book proof as: {}'.format(ppjson(rc_json)))
         assert json.loads(rc_json)
 
         # 25. PSPC Org Book agent (as HolderProver) creates multi-claim proof, schemata implicit, first attrs only
@@ -1503,7 +1502,7 @@ async def test_agents_process_forms_local(
             'type': 'verification-request',
             'data': sri_proof_resp
         })
-        print('\n\n== 28 == SRI agent verifies PSPC org book proof as {}'.format(ppjson(rc_json)))
+        print('\n\n== 28 == SRI agent verifies PSPC org book proof as: {}'.format(ppjson(rc_json)))
         assert json.loads(rc_json)
 
         # 27. PSPC Org Book agent (as HolderProver) creates proof on req-attrs for all green schema attrs
@@ -1527,7 +1526,7 @@ async def test_agents_process_forms_local(
             'type': 'verification-request',
             'data': sri_proof_resp
         })
-        print('\n\n== 30 == SRI agent verifies PSPC Org Book proof as {}'.format(ppjson(rc_json)))
+        print('\n\n== 30 == SRI agent verifies PSPC Org Book proof as: {}'.format(ppjson(rc_json)))
         assert json.loads(rc_json)
 
         # 29. Exercise helper GET calls
