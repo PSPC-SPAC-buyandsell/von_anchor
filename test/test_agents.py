@@ -977,7 +977,7 @@ async def test_agents_process_forms_local(
                 ppjson(json.loads(claim_def_json[s_key]))))
             assert json.loads(claim_def_json[s_key])['ref'] == schema[s_key]['seqNo']
 
-            did2ag[s_key.origin_did].process_post(claim_def_send_form)
+            await did2ag[s_key.origin_did].process_post(claim_def_send_form)
             repeat_claim_def = json.loads(await holder_prover[s_key.origin_did].get_claim_def(
                 schema[s_key]['seqNo'],
                 s_key.origin_did))  # check idempotence and non-crashing on duplicate claim-def send

@@ -155,7 +155,7 @@ class Wallet:
             logger.info('Created wallet {} on handle {}'.format(self.name, self.handle))
         except IndyError as e:
             if e.error_code == ErrorCode.WalletAlreadyExistsError:
-                logger.info('Opening existing wallet: {}')
+                logger.info('Opening existing wallet: {}'.format(self.name))
             else:
                 logger.error('Cannot open wallet {}: indy error code {}'.format(self.name, self.e.error_code))
                 raise
