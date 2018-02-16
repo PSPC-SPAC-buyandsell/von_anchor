@@ -471,12 +471,24 @@ class BaseListeningAgent(BaseAgent):
 
         validate(form)
 
-        if form['type'] == 'agent-nym-lookup':  # agent-local only, no use case for proxying
+        if form['type'] == 'agent-nym-lookup':
+            resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
+            if resp_proxy_json != None:
+                rv = resp_proxy_json  # it's proxied
+                logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
+                return rv
+
             rv = await self.get_nym(form['data']['agent-nym']['did'])
             logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
             return rv
 
-        elif form['type'] == 'agent-endpoint-lookup':  # agent-local only, no use case for proxying
+        elif form['type'] == 'agent-endpoint-lookup':
+            resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
+            if resp_proxy_json != None:
+                rv = resp_proxy_json  # it's proxied
+                logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
+                return rv
+
             rv = await self.get_endpoint(form['data']['agent-endpoint']['did'])
             logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
             return rv
@@ -493,7 +505,13 @@ class BaseListeningAgent(BaseAgent):
             logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
             return rv
 
-        elif form['type'] == 'schema-lookup':  # agent-local only, no use case for proxying
+        elif form['type'] == 'schema-lookup':
+            resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
+            if resp_proxy_json != None:
+                rv = resp_proxy_json  # it's proxied
+                logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
+                return rv
+
             s_key = schema_key_for(form['data']['schema'])
             schema_json = await self.get_schema(s_key)
             schema = json.loads(schema_json)
@@ -506,7 +524,17 @@ class BaseListeningAgent(BaseAgent):
             logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
             return rv
 
-        elif form['type'] in ('claim-request', 'proof-request'):
+        elif form['type'] in (
+                'agent-nym-send',
+                'schema-send',
+                'claim-def-send',
+                'claim-hello',
+                'claim-create',
+                'claim-store',
+                'claim-request',
+                'proof-request',
+                'proof-request-by-referent',
+                'verification-request'):  # do not proxy: master-secret-set, claims-reset
             resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
                 rv = resp_proxy_json  # it's proxied
@@ -517,49 +545,6 @@ class BaseListeningAgent(BaseAgent):
             logger.debug('BaseListeningAgent.process_post: <!< not this form type: {}'.format(form['type']))
             raise NotImplementedError(
                 '{} does not respond to token type {}'.format(self.__class__.__name__, form['type']))
-
-        elif form['type'] == 'proof-request-by-referent':
-            resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
-            if resp_proxy_json != None:
-                rv = resp_proxy_json  # it's proxied
-                logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
-                return rv
-
-            # base listening agent doesn't do this work
-            logger.debug('BaseListeningAgent.process_post: <!< not this form type: {}'.format(form['type']))
-            raise NotImplementedError(
-                '{} does not respond to token type {}'.format(self.__class__.__name__, form['type']))
-
-        elif form['type'] == 'verification-request':
-            resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
-            if resp_proxy_json != None:
-                rv = resp_proxy_json  # it's proxied
-                logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
-                return rv
-
-            # base listening agent doesn't do this work
-            logger.debug('BaseListeningAgent.process_post: <!< not this form type: {}'.format(form['type']))
-            raise NotImplementedError(
-                '{} does not respond to token type {}'.format(self.__class__.__name__, form['type']))
-
-        elif form['type'] == 'claim-hello':
-            resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
-            if resp_proxy_json != None:
-                rv = resp_proxy_json  # it's proxied
-                logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
-                return rv
-
-            # base listening agent doesn't do this work
-            logger.debug('BaseListeningAgent.process_post: <!< not this form type: {}'.format(form['type']))
-            raise NotImplementedError(
-                '{} does not respond to token type {}'.format(self.__class__.__name__, form['type']))
-
-        elif form['type'] == 'claim-store':
-            resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
-            if resp_proxy_json != None:
-                rv = resp_proxy_json  # it's proxied
-                logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
-                return rv
 
             # base listening agent doesn't do this work
             logger.debug('BaseListeningAgent.process_post: <!< not this form type: {}'.format(form['type']))

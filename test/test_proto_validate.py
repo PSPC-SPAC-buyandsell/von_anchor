@@ -20,9 +20,10 @@ import pytest
 
 
 GOOD = {
-    'agent-nym-lookup': {
+    'agent-nym-lookup.proxy': {
         'type': 'agent-nym-lookup',
         'data': {
+            'proxy-did': 'abcd1234',
             'agent-nym': {
                 'did': 'abcd1234'
             }
@@ -38,9 +39,10 @@ GOOD = {
             }
         }
     },
-    'agent-endpoint-lookup': {
+    'agent-endpoint-lookup.proxy': {
         'type': 'agent-endpoint-lookup',
         'data': {
+            'proxy-did': 'abcd1234',
             'agent-endpoint': {
                 'did': 'abcd1234'
             }
@@ -52,9 +54,10 @@ GOOD = {
             'proxy-did': 'abcd1234',
         }
     },
-    'schema-lookup': {
+    'schema-lookup.proxy': {
         'type': 'schema-lookup',
         'data': {
+            'proxy-did': 'abcd1234',
             'schema': {
                 'origin-did': 'abcd1234',
                 'name': 'name',
@@ -62,9 +65,10 @@ GOOD = {
             }
         }
     },
-    'schema-send': {
+    'schema-send.proxy': {
         'type': 'schema-send',
         'data': {
+            'proxy-did': 'abcd1234',
             'schema': {
                 'origin-did': 'abcd1234',
                 'name': 'name',
@@ -77,9 +81,10 @@ GOOD = {
             ]
         }
     },
-    'claim-def-send': {
+    'claim-def-send.proxy': {
         'type': 'claim-def-send',
         'data': {
+            'proxy-did': 'abcd1234',
             'schema': {
                 'origin-did': 'abcd1234',
                 'name': 'name',
@@ -105,9 +110,10 @@ GOOD = {
             'issuer-did': 'abcd1234'
         }
     },
-    'claim-create': {
+    'claim-create.proxy': {
         'type': 'claim-create',
         'data': {
+            'proxy-did': 'abcd1234',
             'claim-req': {
                 'no': 'spec'
             },

@@ -28,6 +28,9 @@ PROTO_MSG_JSON_SCHEMA = {
             'data': {
                 'type': 'object',
                 'properties': {
+                    'proxy-did': {
+                        'type': 'string'
+                    },
                     'agent-nym': {
                         'type': 'object',
                         'properties': {
@@ -86,6 +89,9 @@ PROTO_MSG_JSON_SCHEMA = {
             'data': {
                 'type': 'object',
                 'properties': {
+                    'proxy-did': {
+                        'type': 'string'
+                    },
                     'agent-endpoint': {
                         'type': 'object',
                         'properties': {
@@ -131,6 +137,9 @@ PROTO_MSG_JSON_SCHEMA = {
             'data': {
                 'type': 'object',
                 'properties': {
+                    'proxy-did': {
+                        'type': 'string'
+                    },
                     'schema': {
                         'type': 'object',
                         'properties': {
@@ -163,6 +172,9 @@ PROTO_MSG_JSON_SCHEMA = {
             'data': {
                 'type': 'object',
                 'properties': {
+                    'proxy-did': {
+                        'type': 'string'
+                    },
                     'schema': {
                         'type': 'object',
                         'properties': {
@@ -202,6 +214,9 @@ PROTO_MSG_JSON_SCHEMA = {
             'data': {
                 'type': 'object',
                 'properties': {
+                    'proxy-did': {
+                        'type': 'string'
+                    },
                     'schema': {
                         'type': 'object',
                         'properties': {
@@ -292,6 +307,9 @@ PROTO_MSG_JSON_SCHEMA = {
             'data': {
                 'type': 'object',
                 'properties': {
+                    'proxy-did': {
+                        'type': 'string'
+                    },
                     'claim-req': {
                         'type': 'object'
                     },
