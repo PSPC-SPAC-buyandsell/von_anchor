@@ -1312,7 +1312,8 @@ async def test_agents_process_forms_local(
             'type': 'verification-request',
             'data': bc_proof_resp_pred
         })
-        print('\n\n== 19 == SRI agent verifies BC proof by predicates id, orgTypeId >= 2 as: {}'.format(ppjson(rc_json)))
+        print('\n\n== 19 == SRI agent verifies BC proof by predicates id, orgTypeId >= 2 as: {}'.format(
+            ppjson(rc_json)))
         assert json.loads(rc_json)
 
         # 17. Create and store SRI registration completion claims, green claims from verified proof + extra data
