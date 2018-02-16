@@ -423,25 +423,27 @@ class BaseListeningAgent(BaseAgent):
             form,
             proxy_marker_attr))
 
-        if (proxy_marker_attr in form['data']) and (form['data'][proxy_marker_attr] != self.did):
-            endpoint = json.loads(await self.get_endpoint(form['data'][proxy_marker_attr]))
-            form['data'].pop(proxy_marker_attr)
-            r = post(
-                'http://{}:{}/{}/{}'.format(
-                    endpoint['host'],
-                    endpoint['port'],
-                    self.agent_api_path,
-                    form['type']),
-                json=form)  # requests module json-encodes
-            if not r.ok:
-                raise HTTPError(r.json()['error-code'], r.json()['message'])
+        rv = None
+        if (proxy_marker_attr in form['data']):
+            proxy_did = form['data'].pop(proxy_marker_attr)
+            if (proxy_did != self.did):
+                endpoint = json.loads(await self.get_endpoint(proxy_did))
+                if 'host' not in endpoint or 'port' not in endpoint:
+                    raise ValueError('No agent on the ledger has DID {}'.format(proxy_did))
+                r = post(
+                    'http://{}:{}/{}/{}'.format(
+                        endpoint['host'],
+                        endpoint['port'],
+                        self.agent_api_path,
+                        form['type']),
+                    json=form)  # requests module json-encodes
+                if not r.ok:
+                    raise HTTPError(r.json()['error-code'], r.json()['message'])
 
-            rv = json.dumps(r.json())  # requests module json-decodes
-            logger.debug('BaseListeningAgent._response_from_proxy: <<< {}'.format(rv))
-            return rv
+                rv = json.dumps(r.json())  # requests module json-decodes
 
         logger.debug('BaseListeningAgent._response_from_proxy: <<<')
-        return None
+        return rv
 
     @classmethod
     def _mro_dispatch(cls):
