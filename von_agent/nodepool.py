@@ -16,6 +16,7 @@ limitations under the License.
 
 from indy import pool, IndyError
 from indy.error import ErrorCode
+from .validate_config import validate_config
 
 import json
 import logging
@@ -34,7 +35,7 @@ class NodePool:
         :param genesis_txn_path: path to genesis transaction file
         :param cfg: configuration, None for default;
             i.e., {
-                'auto_remove': bool (default False), whether to remove serialized indy configuration data on close
+                'auto-remove': bool (default False), whether to remove serialized indy configuration data on close
             }
         """
 
@@ -44,10 +45,12 @@ class NodePool:
             genesis_txn_path,
             cfg))
 
+        self._cfg = cfg or {}
+        validate_config('pool', self._cfg)
+
         self._name = name
         self._genesis_txn_path = genesis_txn_path
         self._handle = None
-        self._cfg = cfg or {}
 
         logger.debug('NodePool.__init__: <<<')
 
@@ -149,7 +152,7 @@ class NodePool:
         logger.debug('NodePool.close: >>>')
 
         await pool.close_pool_ledger(self.handle)
-        if self._cfg and 'auto_remove' in self._cfg and self._cfg['auto_remove']:
+        if self._cfg and 'auto-remove' in self._cfg and self._cfg['auto-remove']:
             await pool.delete_pool_ledger_config(self.name)
 
         logger.debug('NodePool.close: <<<')

@@ -16,26 +16,25 @@ limitations under the License.
 
 from indy import anoncreds, ledger
 from indy.error import IndyError, ErrorCode
+from re import match
 from requests import post, HTTPError
 from time import time
 from typing import Set, Union
 
 from .nodepool import NodePool
-from .proto.validate import validate as validate_form
+from .proto.validate import validate
 from .schema import SchemaKey, SchemaStore, schema_key_for
 from .util import encode, decode, prune_claims_json, ppjson
-from .validate_config import CONFIG_JSON_SCHEMA, validate_config
 from .wallet import Wallet
 
 import asyncio
 import json
 import logging
-import re
 
 
-class _AgentCore:
+class BaseAgent:
     """
-    Base class for agent implementing low-level functionality.
+    Base class for agent
     """
 
     def __init__(self, pool: NodePool, wallet: Wallet) -> None:
@@ -47,13 +46,13 @@ class _AgentCore:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.__init__: >>> pool: {}, wallet: {}'.format(pool, wallet))
+        logger.debug('BaseAgent.__init__: >>> pool: {}, wallet: {}'.format(pool, wallet))
 
         self._pool = pool
         self._wallet = wallet
         self._schema_store = SchemaStore()
 
-        logger.debug('_AgentCore.__init__: <<<')
+        logger.debug('BaseAgent.__init__: <<<')
 
     @property
     def pool(self) -> NodePool:
@@ -95,7 +94,7 @@ class _AgentCore:
 
         return self.wallet.verkey
 
-    async def __aenter__(self) -> '_AgentCore':
+    async def __aenter__(self) -> 'BaseAgent':
         """
         Context manager entry. Open wallet and store agent DID in it.
         For use in monolithic call opening, using, and closing the agent.
@@ -104,14 +103,14 @@ class _AgentCore:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.__aenter__: >>>')
+        logger.debug('BaseAgent.__aenter__: >>>')
 
         rv = await self.open()
 
-        logger.debug('_AgentCore.__aenter__: <<<')
+        logger.debug('BaseAgent.__aenter__: <<<')
         return rv
 
-    async def open(self) -> '_AgentCore':
+    async def open(self) -> 'BaseAgent':
         """
         Explicit entry. Open wallet and store agent DID in it.
         For use when keeping agent open across multiple calls.
@@ -120,11 +119,11 @@ class _AgentCore:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.open: >>>')
+        logger.debug('BaseAgent.open: >>>')
 
         await self.wallet.open()
 
-        logger.debug('_AgentCore.open: <<<')
+        logger.debug('BaseAgent.open: <<<')
         return self
 
     async def __aexit__(self, exc_type, exc, traceback) -> None:
@@ -138,10 +137,10 @@ class _AgentCore:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.__aexit__: >>> exc_type: {}, exc: {}, traceback: {}'.format(exc_type, exc, traceback))
+        logger.debug('BaseAgent.__aexit__: >>> exc_type: {}, exc: {}, traceback: {}'.format(exc_type, exc, traceback))
 
         await self.close()
-        logger.debug('_AgentCore.__exit__: <<<')
+        logger.debug('BaseAgent.__exit__: <<<')
 
     async def close(self) -> None:
         """
@@ -150,11 +149,11 @@ class _AgentCore:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.close: >>>')
+        logger.debug('BaseAgent.close: >>>')
 
         await self.wallet.close()
 
-        logger.debug('_AgentCore.close: <<<')
+        logger.debug('BaseAgent.close: <<<')
 
     async def get_nym(self, did: str) -> str:
         """
@@ -165,20 +164,20 @@ class _AgentCore:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.get_nym: >>> did: {}'.format(did))
+        logger.debug('BaseAgent.get_nym: >>> did: {}'.format(did))
 
         rv = json.dumps({})
         get_nym_req = await ledger.build_get_nym_request(
             self.did,
             did)
         resp_json = await ledger.submit_request(self.pool.handle, get_nym_req)
-        await asyncio.sleep(0)
+        await asyncio.sleep(0);
 
         data_json = (json.loads(resp_json))['result']['data']  # it's double-encoded on the ledger
         if data_json:
             rv = data_json
 
-        logger.debug('_AgentCore.get_nym: <<< {}'.format(rv))
+        logger.debug('BaseAgent.get_nym: <<< {}'.format(rv))
         return rv
 
     async def get_schema(self, index: Union[SchemaKey, int]) -> str:
@@ -193,7 +192,7 @@ class _AgentCore:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.get_schema: >>> index: {}'.format(index))
+        logger.debug('BaseAgent.get_schema: >>> index: {}'.format(index))
 
         rv = json.dumps({})
 
@@ -206,11 +205,11 @@ class _AgentCore:
                     index.origin_did,
                     json.dumps({'name': index.name, 'version': index.version}))
                 resp_json = await ledger.submit_request(self.pool.handle, req_json)
-                await asyncio.sleep(0)
+                await asyncio.sleep(0);
 
                 resp = json.loads(resp_json)
                 if ('op' in resp) and (resp['op'] == 'REQNACK'):
-                    logger.error('_AgentCore.get_schema: {}'.format(resp['reason']))
+                    logger.error('BaseAgent.get_schema: {}'.format(resp['reason']))
                 else:
                     schema = resp['result']
                     data_json = schema['data']  # response result data is double-encoded on the ledger
@@ -218,7 +217,7 @@ class _AgentCore:
                         self._schema_store[index] = schema
                         rv = json.dumps(schema)
                     else:
-                        logger.info('_AgentCore.get_schema: ledger query returned response with no data')
+                        logger.info('BaseAgent.get_schema: ledger query returned response with no data')
 
         elif isinstance(index, int):
             if self._schema_store.contains(index):
@@ -226,10 +225,10 @@ class _AgentCore:
             else:
                 req_json = await ledger.build_get_txn_request(self.did, index)
                 resp = json.loads(await ledger.submit_request(self.pool.handle, req_json))
-                await asyncio.sleep(0)
+                await asyncio.sleep(0);
 
                 if ('op' in resp) and (resp['op'] == 'REQNACK'):
-                    logger.error('_AgentCore.get_schema: {}'.format(resp['reason']))
+                    logger.error('BaseAgent.get_schema: {}'.format(resp['reason']))
                 elif resp['result']['data'] and (resp['result']['data']['type'] == '101'):  # type '101' == schema
                     # getting it as a transaction misses the 'dest' field: look it up from schema key data
                     rv = await self.get_schema(SchemaKey(
@@ -237,7 +236,7 @@ class _AgentCore:
                         resp['result']['data']['data']['name'],
                         resp['result']['data']['data']['version']))
 
-        logger.debug('_AgentCore.get_schema: <<< {}'.format(rv))
+        logger.debug('BaseAgent.get_schema: <<< {}'.format(rv))
         return rv
 
     async def get_endpoint(self, did: str) -> str:
@@ -249,7 +248,7 @@ class _AgentCore:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.get_endpoint: >>> did: {}'.format(did))
+        logger.debug('BaseAgent.get_endpoint: >>> did: {}'.format(did))
 
         rv = json.dumps({})
         req_json = await ledger.build_get_attrib_request(
@@ -257,19 +256,19 @@ class _AgentCore:
             did,
             'endpoint')
         resp_json = await ledger.submit_request(self.pool.handle, req_json)
-        await asyncio.sleep(0)
+        await asyncio.sleep(0);
 
         resp = json.loads(resp_json)
         if ('op' in resp) and (resp['op'] == 'REQNACK'):
-            logger.error('_AgentCore.get_endpoint: {}'.format(resp['reason']))
+            logger.error('BaseAgent.get_endpoint: {}'.format(resp['reason']))
         else:
             data_json = (json.loads(resp_json))['result']['data']  # it's double-encoded on the ledger
             if data_json:
-                rv = json.dumps(json.loads(data_json)['endpoint']['endpoint'])
+                rv = json.dumps(json.loads(data_json)['endpoint'])
             else:
-                logger.info('_AgentCore.get_endpoint: ledger query returned response with no data')
+                logger.info('BaseAgent.get_endpoint: ledger query returned response with no data')
 
-        logger.debug('_AgentCore.get_endpoint: <<< {}'.format(rv))
+        logger.debug('BaseAgent.get_endpoint: <<< {}'.format(rv))
         return rv
 
     def __repr__(self) -> str:
@@ -291,68 +290,84 @@ class _AgentCore:
         return '{}({})'.format(self.__class__.__name__, self.wallet)
 
 
-class _BaseAgent(_AgentCore):
+class BaseListeningAgent(BaseAgent):
     """
     Class for agent that listens and responds to other agents. Note that a service wrapper will
     listen for requests, parse requests, dispatch to agents, and return content to callers;
     the current design calls not to use indy-sdk for direct agent-to-agent communication.
 
-    The _BaseAgent builds on the _AgentCore in that it stores configuration information (e.g., endpoint data),
-    and it receives and responds to (json) VON protocol messages (via a VON connector).
+    The BaseListeningAgent differs from the BaseAgent in that it stores endpoint information
+    to put on the ledger, and it receives and responds to requests from the (django application)
+    service wrapper API.
     """
 
-    def __init__(self, pool: NodePool, wallet: Wallet, cfg: dict = None) -> None:
+    def __init__(self,
+            pool: NodePool,
+            wallet: Wallet,
+            host: str,
+            port: int,
+            agent_api_path: str = '') -> None:
         """
         Initializer for agent. Retain input parameters; do not open wallet.
 
-        :param pool: node pool on which agent operates
-        :param wallet: wallet for agent use
-        :param cfg: configuration, None for default with no endpoint and proxy-relay=False;
-            e.g., {
-                'endpoint': 'http://127.0.0.1:8808/api/v0',
-                'proxy-relay': True
-            }
+        :pool: node pool on which agent operates
+        :wallet: wallet for agent use
+        :host: agent IP address
+        :port: agent port
+        :agent_api_path: URL path to agent API, for use in proxying to further agents
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent.__init__: >>> pool: {}, wallet: {}, cfg: {}'.format(pool, wallet, cfg))
+        logger.debug(
+            'BaseListeningAgent.__init__: >>> pool: {}, wallet: {}, host: {}, port: {}, agent_api_path: {}'.format(
+                pool,
+                wallet,
+                host,
+                port,
+                agent_api_path))
 
         super().__init__(pool, wallet)
+        self._host = host
+        self._port = port
+        self._agent_api_path = agent_api_path
 
-        self._cfg = cfg or {}
-        validate_config('agent', self._cfg)
-
-        logger.debug('_BaseAgent.__init__: <<<')
+        logger.debug('BaseListeningAgent.__init__: <<<')
 
     @property
-    def cfg(self):
-        return self._cfg
+    def host(self):
+        return self._host
+
+    @property
+    def port(self):
+        return self._port
+
+    @property
+    def agent_api_path(self):
+        return self._agent_api_path
 
     async def send_endpoint(self) -> str:
         """
         Send agent endpoint attribute to ledger. Return endpoint json as written
         (the process of writing the attribute to the ledger does not add any additional content).
 
-        :return: endpoint attibute entry json (at present, 'http://<host>:<port>/<base-api-path>' or none)
+        :return: endpoint attibute entry json with host and port
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent.send_endpoint: >>>')
+        logger.debug('BaseListeningAgent.send_endpoint: >>>')
 
-        if 'endpoint' in self.cfg:
-            raw_json = json.dumps({
-                'endpoint': {
-                    'endpoint': self.cfg['endpoint']
-                }  # indy-sdk needs value to be a dict
-            })
-            req_json = await ledger.build_attrib_request(self.did, self.did, None, raw_json, None)
+        raw_json = json.dumps({
+            'endpoint': {
+                'host': str(self.host),
+                'port': self.port
+            }
+        })
+        req_json = await ledger.build_attrib_request(self.did, self.did, None, raw_json, None)
 
-            rv = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
-            await asyncio.sleep(0)
-        else:
-            raise NotImplementedError('Cannot send agent endpoint to ledger: no such endpoint in configuration')
+        rv = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
+        await asyncio.sleep(0);
 
-        logger.debug('_BaseAgent.send_endpoint: <<< {}'.format(rv))
+        logger.debug('BaseListeningAgent.send_endpoint: <<< {}'.format(rv))
         return rv
 
     async def get_claim_def(self, schema_seq_no: int, issuer_did: str) -> str:
@@ -367,7 +382,7 @@ class _BaseAgent(_AgentCore):
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent.get_claim_def: >>> schema_seq_no: {}, issuer_did: {}'.format(
+        logger.debug('BaseListeningAgent.get_claim_def: >>> schema_seq_no: {}, issuer_did: {}'.format(
             schema_seq_no,
             issuer_did))
 
@@ -379,65 +394,67 @@ class _BaseAgent(_AgentCore):
             issuer_did)
 
         resp_json = await ledger.submit_request(self.pool.handle, req_json)
-        await asyncio.sleep(0)
+        await asyncio.sleep(0);
 
         resp = json.loads(resp_json)
         if ('op' in resp) and (resp['op'] == 'REQNACK'):
-            logger.error('_BaseAgent.get_claim_def: {}'.format(resp['reason']))
+            logger.error('BaseAgent.get_claim_def: {}'.format(resp['reason']))
         elif 'result' in resp and 'data' in resp['result'] and resp['result']['data']:
             data = resp['result']['data']
             if 'revocation' in data and data['revocation'] is not None:
                 resp['result']['data']['revocation'] = None  #TODO: support revocation
             rv = json.dumps(resp['result'])
         else:
-            logger.info('_BaseAgent.get_claim_def: ledger query returned response with no data')
+            logger.info('BaseAgent.get_claim_def: ledger query returned response with no data')
 
-        logger.debug('_BaseAgent.get_claim_def: <<< {}'.format(rv))
+        logger.debug('BaseListeningAgent.get_claim_def: <<< {}'.format(rv))
         return rv
 
-    async def _response_from_proxy(self, form: dict) -> 'Response':
+    async def _response_from_proxy(self, form: dict, proxy_marker_attr: str) -> 'Response':
         """
         Get the response from the proxy, if the request form content identifies to do so.
 
         :param form: request form on which to operate
+        :param proxy_marker_attr: attribute in dict at form['data'] identifying intent to proxy
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent._response_from_proxy: >>> form: {}'.format(form))
+        logger.debug('BaseListeningAgent._response_from_proxy: >>> form: {}, proxy_marker_attr: {}'.format(
+            form,
+            proxy_marker_attr))
 
         rv = None
-        if (self.cfg.get('proxy-relay', False)) and ('proxy-did' in form['data']):
-            proxy_did = form['data'].pop('proxy-did')
+        if (proxy_marker_attr in form['data']):
+            proxy_did = form['data'].pop(proxy_marker_attr)
             if (proxy_did != self.did):
                 endpoint = json.loads(await self.get_endpoint(proxy_did))
-                if not re.match(
-                        CONFIG_JSON_SCHEMA['agent']['properties']['endpoint']['pattern'],
-                        endpoint,
-                        re.IGNORECASE):
+                if 'host' not in endpoint or 'port' not in endpoint:
                     raise ValueError('No agent on the ledger has DID {}'.format(proxy_did))
-                if re.match('^http[s]?://.*', endpoint, re.IGNORECASE):
-                    r = post(
-                        '{}/{}'.format(endpoint, form['type']),
-                        json=form)  # requests module json-encodes
-                    if not r.ok:
-                        raise HTTPError(r.json()['error-code'], r.json()['message'])
-                else:
-                    raise ValueError('No proxy strategy implemented for target agent endpoint {}'.format(endpoint))
+                r = post(
+                    'http://{}:{}/{}/{}'.format(
+                        endpoint['host'],
+                        endpoint['port'],
+                        self.agent_api_path,
+                        form['type']),
+                    json=form)  # requests module json-encodes
+                if not r.ok:
+                    raise HTTPError(r.json()['error-code'], r.json()['message'])
+
                 rv = json.dumps(r.json())  # requests module json-decodes
 
-        logger.debug('_BaseAgent._response_from_proxy: <<< {}'.format(rv))
+        logger.debug('BaseListeningAgent._response_from_proxy: <<<')
         return rv
 
     @classmethod
     def _mro_dispatch(cls):
         logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent._mro_dispatch: >>> cls.__name__: {}'.format(cls.__name__))
+        logger.debug('BaseListeningAgent._mro_dispatch: >>> cls.__name__: {}'.format(cls.__name__))
 
         rv = [c for c in cls.__mro__
-            if issubclass(c, _BaseAgent) and issubclass(cls, c) and c != cls]
+            if issubclass(c, BaseListeningAgent) and issubclass(cls, c) and c != cls]
         rv.reverse()
 
-        logger.debug('_BaseAgent._mro_dispatch: <<< {}'.format(rv))
+        logger.debug('BaseListeningAgent._mro_dispatch: <<< {}'.format(rv))
         return rv
 
     async def process_post(self, form: dict) -> str:
@@ -450,49 +467,49 @@ class _BaseAgent(_AgentCore):
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent.process_post: >>> form: {}'.format(form))
+        logger.debug('BaseListeningAgent.process_post: >>> form: {}'.format(form))
 
-        validate_form(form, self.cfg.get('proxy-relay', False))
+        validate(form)
 
         if form['type'] == 'agent-nym-lookup':
-            resp_proxy_json = await self._response_from_proxy(form)
+            resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
                 rv = resp_proxy_json  # it's proxied
-                logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
+                logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
                 return rv
 
             rv = await self.get_nym(form['data']['agent-nym']['did'])
-            logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
+            logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
             return rv
 
         elif form['type'] == 'agent-endpoint-lookup':
-            resp_proxy_json = await self._response_from_proxy(form)
+            resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
                 rv = resp_proxy_json  # it's proxied
-                logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
+                logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
                 return rv
 
             rv = await self.get_endpoint(form['data']['agent-endpoint']['did'])
-            logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
+            logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
             return rv
 
         elif form['type'] == 'agent-endpoint-send':
-            resp_proxy_json = await self._response_from_proxy(form)
+            resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
                 rv = resp_proxy_json  # it's proxied
-                logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
+                logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
                 return rv
 
             resp_json = await self.send_endpoint()
             rv = json.dumps({})
-            logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
+            logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
             return rv
 
         elif form['type'] == 'schema-lookup':
-            resp_proxy_json = await self._response_from_proxy(form)
+            resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
                 rv = resp_proxy_json  # it's proxied
-                logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
+                logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
                 return rv
 
             s_key = schema_key_for(form['data']['schema'])
@@ -500,11 +517,11 @@ class _BaseAgent(_AgentCore):
             schema = json.loads(schema_json)
             if not schema:
                 rv = schema_json
-                logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
+                logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
                 return rv
 
             rv = schema_json
-            logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
+            logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
             return rv
 
         elif form['type'] in (
@@ -518,19 +535,24 @@ class _BaseAgent(_AgentCore):
                 'proof-request',
                 'proof-request-by-referent',
                 'verification-request'):  # do not proxy: master-secret-set, claims-reset
-            resp_proxy_json = await self._response_from_proxy(form)
+            resp_proxy_json = await self._response_from_proxy(form, 'proxy-did')
             if resp_proxy_json != None:
                 rv = resp_proxy_json  # it's proxied
-                logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
+                logger.debug('BaseListeningAgent.process_post: <<< {}'.format(rv))
                 return rv
 
             # base listening agent doesn't do this work
-            logger.debug('_BaseAgent.process_post: <!< not this form type: {}'.format(form['type']))
+            logger.debug('BaseListeningAgent.process_post: <!< not this form type: {}'.format(form['type']))
+            raise NotImplementedError(
+                '{} does not respond to token type {}'.format(self.__class__.__name__, form['type']))
+
+            # base listening agent doesn't do this work
+            logger.debug('BaseListeningAgent.process_post: <!< not this form type: {}'.format(form['type']))
             raise NotImplementedError(
                 '{} does not respond to token type {}'.format(self.__class__.__name__, form['type']))
 
         # unknown token type
-        logger.debug('_BaseAgent.process_post: <!< not this form type: {}'.format(form['type']))
+        logger.debug('BaseListeningAgent.process_post: <!< not this form type: {}'.format(form['type']))
         raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
     async def process_get_txn(self, txn: int) -> str:
@@ -542,19 +564,19 @@ class _BaseAgent(_AgentCore):
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent.process_get_txn: >>> txn: {}'.format(txn))
+        logger.debug('BaseListeningAgent.process_get_txn: >>> txn: {}'.format(txn))
 
         rv = json.dumps({})
         req_json = await ledger.build_get_txn_request(self.did, txn)
         resp = json.loads(await ledger.submit_request(self.pool.handle, req_json))
-        await asyncio.sleep(0)
+        await asyncio.sleep(0);
 
         if ('op' in resp) and (resp['op'] == 'REQNACK'):
-            logger.error('_BaseAgent.process_get_txn: {}'.format(resp['reason']))
+            logger.error('BaseAgent.process_get_txn: {}'.format(resp['reason']))
         else:
             rv = json.dumps(resp['result']['data'] or {})
 
-        logger.debug('_BaseAgent.process_get_txn: <<< {}'.format(rv))
+        logger.debug('BaseListeningAgent.process_get_txn: <<< {}'.format(rv))
         return rv
 
     async def process_get_did(self) -> str:
@@ -565,10 +587,10 @@ class _BaseAgent(_AgentCore):
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent.process_get_did: >>>')
+        logger.debug('BaseListeningAgent.process_get_did: >>>')
 
         rv = json.dumps(self.did or {})
-        logger.debug('_BaseAgent.process_get_did: <<< {}'.format(rv))
+        logger.debug('BaseListeningAgent.process_get_did: <<< {}'.format(rv))
         return rv
 
     def __repr__(self) -> str:
@@ -578,7 +600,7 @@ class _BaseAgent(_AgentCore):
         :return: representation for current object
         """
 
-        return '{}({}, {}, {})'.format(self.__class__.__name__, repr(self.pool), self.wallet, self.cfg)
+        return '{}({}, {}, {}, {})'.format(self.__class__.__name__, repr(self.pool), self.wallet, self.host, self.port)
 
     def __str__(self) -> str:
         """
@@ -587,10 +609,10 @@ class _BaseAgent(_AgentCore):
         :return: string identifying current object
         """
 
-        return '{}({}, {})'.format(self.__class__.__name__, self.wallet, self.cfg)
+        return '{}({}, {}, {})'.format(self.__class__.__name__, self.wallet, self.host, self.port)
 
 
-class AgentRegistrar(_BaseAgent):
+class AgentRegistrar(BaseListeningAgent):
     """
     Mixin for (trust anchor) agent to register agents onto the distributed ledger
     """
@@ -617,7 +639,7 @@ class AgentRegistrar(_BaseAgent):
             self.wallet.handle,
             self.did,
             req_json)
-        await asyncio.sleep(0)
+        await asyncio.sleep(0);
 
         logger.debug('AgentRegistrar.send_nym: <<<')
 
@@ -633,7 +655,7 @@ class AgentRegistrar(_BaseAgent):
         logger = logging.getLogger(__name__)
         logger.debug('AgentRegistrar.process_post: >>> form: {}'.format(form))
 
-        # Try dispatching to each ancestor from _BaseAgent first
+        # Try dispatching to each ancestor from BaseListeningAgent first
         mro = AgentRegistrar._mro_dispatch()
         for ResponderClass in mro:
             try:
@@ -655,7 +677,7 @@ class AgentRegistrar(_BaseAgent):
         raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
 
-class Origin(_BaseAgent):
+class Origin(BaseListeningAgent):
     """
     Mixin for agent to send schemata and claim definitions to the distributed ledger
     """
@@ -688,11 +710,11 @@ class Origin(_BaseAgent):
         else:
             req_json = await ledger.build_schema_request(self.did, schema_data_json)
             resp_json = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
-            await asyncio.sleep(0)
+            await asyncio.sleep(0);
 
             resp = json.loads(resp_json)
             if ('op' in resp) and (resp['op'] == 'REQNACK'):
-                logger.error('_BaseAgent.send_schema: {}'.format(resp['reason']))
+                logger.error('BaseAgent.send_schema: {}'.format(resp['reason']))
             else:
                 resp_result = (json.loads(resp_json))['result']
                 rv = await self.get_schema(SchemaKey(
@@ -715,7 +737,7 @@ class Origin(_BaseAgent):
         logger = logging.getLogger(__name__)
         logger.debug('Origin.process_post: >>> form: {}'.format(form))
 
-        # Try dispatching to each ancestor from _BaseAgent first
+        # Try dispatching to each ancestor from BaseListeningAgent first
         mro = Origin._mro_dispatch()
         for ResponderClass in mro:
             try:
@@ -809,17 +831,17 @@ class Issuer(Origin):
                 self.wallet.handle,
                 self.did,
                 req_json)
-            await asyncio.sleep(0)
+            await asyncio.sleep(0);
 
             resp = json.loads(resp_json)
             if ('op' in resp) and (resp['op'] == 'REQNACK'):
-                logger.error('Issuer.send_claim_def: {}'.format(resp['reason']))
+                logger.error('BaseAgent.send_claim_def: {}'.format(resp['reason']))
             else:
                 data = resp['result']['data']
                 if data:
                     rv = json.dumps(data)
                 else:
-                    logger.info('Issuer.send_claim_def: ledger query returned response with no data')
+                    logger.info('BaseAgent.send_claim_def: ledger query returned response with no data')
 
         logger.debug('Issuer.send_claim_def: <<< {}'.format(rv))
         return rv
@@ -862,7 +884,7 @@ class Issuer(Origin):
         logger = logging.getLogger(__name__)
         logger.debug('Issuer.process_post: >>> form: {}'.format(form))
 
-        # Try dispatching to each ancestor from _BaseAgent first
+        # Try dispatching to each ancestor from BaseListeningAgent first
         mro = Issuer._mro_dispatch()
         for ResponderClass in mro:
             try:
@@ -898,32 +920,51 @@ class Issuer(Origin):
         raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
 
-class HolderProver(_BaseAgent):
+class HolderProver(BaseListeningAgent):
     """
     Mixin for agent acting in the role of w3c Holder and indy-sdk Prover. A Holder holds claims,
     and a Prover produces proof for claims.
     """
 
-    def __init__(self, pool: NodePool, wallet: Wallet, cfg: dict = None) -> None:
+    def __init__(self,
+            pool: NodePool,
+            wallet: Wallet,
+            host: str,
+            port: int,
+            agent_api_path: str = '') -> None:
         """
-        Initializer for HolderProver agent. Retain input parameters; do not open wallet.
+        Initializer for agent. Retain input parameters; do not open wallet.
 
-        :param pool: node pool on which agent operates
-        :param wallet: wallet for agent use
-        :param cfg: configuration, None for default with no endpoint and proxy-relay=False;
-            e.g., {
-                'endpoint': 'http://127.0.0.1:8808/api/v0',
-                'proxy-relay': True
-            }
+        :pool: node pool on which agent operates
+        :wallet: wallet for agent use
+        :host: agent IP address
+        :port: agent port
+        :agent_api_path: URL path to agent API, for use in proxying to further agents
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.__init__: >>> pool: {}, wallet: {}, cfg: {}'.format(pool, wallet, cfg))
+        logger.debug('HolderProver.__init__: >>> pool: {}, wallet: {}, host: {}, port: {}, agent_api_path: {}'.format(
+            pool,
+            wallet,
+            host,
+            port,
+            agent_api_path))
 
-        super().__init__(pool, wallet, cfg)
+        super().__init__(pool, wallet, host, port, agent_api_path)
         self._master_secret = None
+        self._claim_req_json = None  # FIXME: support multiple schema, use dict: txn_no -> claim_req_json
 
         logger.debug('HolderProver.__init__: <<<')
+
+    @property
+    def claim_req_json(self) -> str:
+        """
+        Accessor for (HolderProver) agent claim request json as stored in wallet.
+
+        :return: agent claim request json as stored in wallet
+        """
+
+        return self._claim_req_json
 
     async def create_master_secret(self, master_secret: str) -> None:
         """
@@ -1008,8 +1049,9 @@ class HolderProver(_BaseAgent):
                 }
             }),
             claim_def_json,
-            self._master_secret)
+            self._master_secret);
 
+        self._claim_req_json = rv
         logger.debug('HolderProver.store_claim_req: <<< {}'.format(rv))
         return rv
 
@@ -1373,7 +1415,7 @@ class HolderProver(_BaseAgent):
         logger = logging.getLogger(__name__)
         logger.debug('HolderProver.process_post: >>> form: {}'.format(form))
 
-        # Try dispatching to each ancestor from _BaseAgent first
+        # Try dispatching to each ancestor from BaseListeningAgent first
         mro = HolderProver._mro_dispatch()
         for ResponderClass in mro:
             try:
@@ -1399,8 +1441,9 @@ class HolderProver(_BaseAgent):
             schema = json.loads(schema_json)
             await self.store_claim_offer(issuer_did, s_key)
             claim_def_json = await self.get_claim_def(schema['seqNo'], issuer_did)
-            rv = await self.store_claim_req(issuer_did, claim_def_json)
+            await self.store_claim_req(issuer_did, claim_def_json)
 
+            rv = self.claim_req_json
             logger.debug('HolderProver.process_post: <<< {}'.format(rv))
             return rv
 
@@ -1641,7 +1684,7 @@ class HolderProver(_BaseAgent):
         raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
 
-class Verifier(_BaseAgent):
+class Verifier(BaseListeningAgent):
     """
     Mixin for agent acting in the role of Verifier.
     """
@@ -1751,7 +1794,7 @@ class Verifier(_BaseAgent):
         logger = logging.getLogger(__name__)
         logger.debug('HolderProver.process_post: >>> form: {}'.format(form))
 
-        # Try dispatching to each ancestor from _BaseAgent first
+        # Try dispatching to each ancestor from BaseListeningAgent first
         mro = Verifier._mro_dispatch()
         for ResponderClass in mro:
             try:

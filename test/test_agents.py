@@ -42,40 +42,30 @@ async def test_agents_direct(
         path_home):
 
     # 1. Open pool, init agents
-    p = NodePool(pool_name, pool_genesis_txn_path, {'auto_remove': True})
+    p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
     await p.open()
     assert p.handle
 
     tag = TrustAnchorAgent(
         p,
         Wallet(p.name, seed_trustee1, 'trustee-wallet'),
-        '127.0.0.1',
-        8000,
-        'api/v0')
+        {'endpoint': 'http://127.0.0.1:8000/api/v0', 'proxy-relay': True})
     sag = SRIAgent(
         p,
         Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent-wallet'),
-        '127.0.0.1',
-        8001,
-        'api/v0')
+        {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True})
     pspcobag = OrgBookAgent(
         p,
         Wallet(p.name, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent-wallet'),
-        '127.0.0.1',
-        8002,
-        'api/v0')
+        {'endpoint': 'http://127.0.0.1:8002/api/v0', 'proxy-relay': True})
     bcobag = OrgBookAgent(
         p,
         Wallet(p.name, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent-wallet'),
-        '127.0.0.1',
-        8003,
-        'api/v0')
+        {'endpoint': 'http://127.0.0.1:8003/api/v0', 'proxy-relay': True})
     bcrag = BCRegistrarAgent(
         p,
         Wallet(p.name, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent-wallet'),
-        '127.0.0.1',
-        8004,
-        'api/v0')
+        {'endpoint': 'http://127.0.0.1:8004/api/v0', 'proxy-relay': True})
 
     await tag.open()
     await sag.open()
@@ -118,8 +108,7 @@ async def test_agents_direct(
     for k in nyms:
         assert 'dest' in nyms[k]
     for k in endpoints:
-        assert 'host' in endpoints[k]
-        assert 'port' in endpoints[k]
+        assert 'http://' in endpoints[k]
 
     # 3. Publish schema to ledger if not yet present; get from ledger
     S_KEY = {
@@ -682,40 +671,96 @@ async def test_agents_process_forms_local(
         pool_genesis_txn_file,
         path_home):
 
-    # 1. Open pool, init agents
-    async with NodePool(pool_name, pool_genesis_txn_path, {'auto_remove': True}) as p, (
+    # 1. Open pool, init agents, exercise bad configuration and ops inconsistent with configuration
+    async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True}) as p, (
             TrustAnchorAgent(
                 p,
                 Wallet(p.name, seed_trustee1, 'trustee-wallet'),
-                '127.0.0.1',
-                '8000',
-                'api/v0')) as tag, (
+                {'endpoint': 'http://127.0.0.1:8000/api/v0', 'proxy-relay': True})) as tag, (
             SRIAgent(
                 p,
                 Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent-wallet'),
-                '127.0.0.1',
-                8001,
-                'api/v0')) as sag, (
+                {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True})) as sag, (
             OrgBookAgent(
                 p,
                 Wallet(p.name, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent-wallet'),
-                '127.0.0.1',
-                8003,
-                'api/v0')) as pspcobag, (
+                {'endpoint': 'http://127.0.0.1:8002/api/v0', 'proxy-relay': True})) as pspcobag, (
             OrgBookAgent(
                 p,
                 Wallet(p.name, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent-wallet'),
-                '127.0.0.1',
-                8003,
-                'api/v0')) as bcobag, (
+                {'endpoint': 'http://127.0.0.1:8003/api/v0', 'proxy-relay': True})) as bcobag, (
             BCRegistrarAgent(
                 p,
                 Wallet(p.name, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent-wallet'),
-                '127.0.0.1',
-                8004,
-                'api/v0')) as bcrag:
+                {'endpoint': 'http://127.0.0.1:8004/api/v0', 'proxy-relay': True})) as bcrag:
 
         assert p.handle is not None
+
+        try:  # additional property in config
+            SRIAgent(
+                p,
+                Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent-wallet'),
+                {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True, 'additional-property': True})
+            assert False
+        except ValueError:
+            pass
+
+        async with SRIAgent(  # send endpoint not included in configuration
+            p,
+            Wallet(
+                p.name,
+                'SRI-Agent-Non-Proxy0000000000000',
+                'sri-agent-non-proxy-wallet',
+                {'auto-remove': True})) as xag:
+            nym_lookup_form = {
+                'type': 'agent-nym-lookup',
+                'data': {
+                    'agent-nym': {
+                        'did': xag.did
+                    }
+                }
+            }
+            nym = json.loads(await xag.process_post(nym_lookup_form))  # register xag nym first if need be
+            if not nym:
+                await tag.process_post({
+                    'type': 'agent-nym-send',
+                    'data': {
+                        'agent-nym': {
+                            'did': xag.did,
+                            'verkey': xag.verkey
+                        }
+                    }
+                })
+                nym = json.loads(await xag.process_post(nym_lookup_form))
+                assert nym
+            try:
+                resp_json = await xag.process_post({
+                    'type': 'agent-endpoint-send',
+                    'data': {
+                    }
+                })
+                assert False
+            except NotImplementedError:
+                pass
+
+        async with SRIAgent(  # proxy via non-proxy-relay
+                p,
+                Wallet(p.name, 'SRI-Agent-Non-Proxy0000000000000', 'sri-agent-non-proxy-wallet', {'auto-remove': True}),
+                {'endpoint': 'http://127.0.0.1:8999/api/v0'}) as xag:
+            nym_lookup_form = {
+                'type': 'agent-nym-lookup',
+                'data': {
+                    'proxy-did': sag.did,
+                    'agent-nym': {
+                        'did': xag.did
+                    }
+                }
+            } 
+            try:
+                await xag.process_post(nym_lookup_form)
+                assert False
+            except ValueError:
+                pass
 
         # TAG DID: V4SG...
         # SAG DID: FaBA...

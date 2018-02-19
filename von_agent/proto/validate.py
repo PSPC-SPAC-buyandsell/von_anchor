@@ -23,7 +23,8 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'agent-nym-lookup'
             },
             'data': {
                 'type': 'object',
@@ -38,13 +39,16 @@ PROTO_MSG_JSON_SCHEMA = {
                                 'type': 'string',
                             }
                         },
-                        'required': ['did']
+                        'required': ['did'],
+                        'additionalProperties': False
                     }
                 },
-                'required': ['agent-nym']
+                'required': ['agent-nym'],
+                'additionalProperties': False
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     },
 
     'agent-nym-send': {
@@ -52,7 +56,8 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'agent-nym-send'
             },
             'data': {
                 'type': 'object',
@@ -70,13 +75,16 @@ PROTO_MSG_JSON_SCHEMA = {
                                 'type': 'string',
                             }
                         },
-                        'required': ['did', 'verkey']
+                        'required': ['did', 'verkey'],
+                        'additionalProperties': False
                     }
                 },
-                'required': ['agent-nym']
+                'required': ['agent-nym'],
+                'additionalProperties': False
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     },
 
     'agent-endpoint-lookup': {
@@ -84,7 +92,8 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'agent-endpoint-lookup'
             },
             'data': {
                 'type': 'object',
@@ -99,13 +108,16 @@ PROTO_MSG_JSON_SCHEMA = {
                                 'type': 'string',
                             }
                         },
-                        'required': ['did']
+                        'required': ['did'],
+                        'additionalProperties': False
                     }
                 },
-                'required': ['agent-endpoint']
+                'required': ['agent-endpoint'],
+                'additionalProperties': False
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     },
 
     'agent-endpoint-send': {
@@ -113,7 +125,8 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'agent-endpoint-send'
             },
             'data': {
                 'type': 'object',
@@ -121,10 +134,12 @@ PROTO_MSG_JSON_SCHEMA = {
                     'proxy-did': {
                         'type': 'string'
                     }
-                }
+                },
+                'additionalProperties': False
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     },
 
     'schema-lookup': {
@@ -132,7 +147,8 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'schema-lookup'
             },
             'data': {
                 'type': 'object',
@@ -153,13 +169,16 @@ PROTO_MSG_JSON_SCHEMA = {
                                 'type': 'string',
                             },
                         },
-                        'required': ['origin-did', 'name', 'version']
+                        'required': ['origin-did', 'name', 'version'],
+                        'additionalProperties': False
                     },
                 },
-                'required': ['schema']
+                'required': ['schema'],
+                'additionalProperties': False
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     },
 
     'schema-send': {
@@ -167,7 +186,8 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'schema-send'
             },
             'data': {
                 'type': 'object',
@@ -188,7 +208,8 @@ PROTO_MSG_JSON_SCHEMA = {
                                 'type': 'string',
                             },
                         },
-                        'required': ['origin-did', 'name', 'version']
+                        'required': ['origin-did', 'name', 'version'],
+                        'additionalProperties': False
                     },
                     'attr-names': {
                         'type': 'array',
@@ -198,10 +219,12 @@ PROTO_MSG_JSON_SCHEMA = {
                         'minItems': 0
                     }
                 },
-                'required': ['schema', 'attr-names']
+                'required': ['schema', 'attr-names'],
+                'additionalProperties': False
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     },
 
     'claim-def-send': {
@@ -209,7 +232,8 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'claim-def-send'
             },
             'data': {
                 'type': 'object',
@@ -230,13 +254,16 @@ PROTO_MSG_JSON_SCHEMA = {
                                 'type': 'string',
                             },
                         },
-                        'required': ['origin-did', 'name', 'version']
+                        'required': ['origin-did', 'name', 'version'],
+                        'additionalProperties': False
                     },
                 },
-                'required': ['schema']
+                'required': ['schema'],
+                'additionalProperties': False
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     },
 
     'master-secret-set': {
@@ -244,7 +271,8 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'master-secret-set'
             },
             'data': {
                 'type': 'object',
@@ -253,10 +281,12 @@ PROTO_MSG_JSON_SCHEMA = {
                         'type': 'string'
                     },
                 },
-                'required': ['label']
+                'required': ['label'],
+                'additionalProperties': False
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     },
 
     'claim-hello': {
@@ -264,7 +294,8 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'claim-hello'
             },
             'data': {
                 'type': 'object',
@@ -285,16 +316,19 @@ PROTO_MSG_JSON_SCHEMA = {
                                 'type': 'string',
                             },
                         },
-                        'required': ['origin-did', 'name', 'version']
+                        'required': ['origin-did', 'name', 'version'],
+                        'additionalProperties': False
                     },
                     'issuer-did': {
                         'type': 'string'
                     }
                 },
-                'required': ['schema', 'issuer-did']
+                'required': ['schema', 'issuer-did'],
+                'additionalProperties': False
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     },
 
     'claim-create': {
@@ -302,7 +336,8 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'claim-create'
             },
             'data': {
                 'type': 'object',
@@ -317,10 +352,12 @@ PROTO_MSG_JSON_SCHEMA = {
                         'type': 'object'
                     }
                 },
-                'required': ['claim-req', 'claim-attrs']
+                'required': ['claim-req', 'claim-attrs'],
+                'additionalProperties': False
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     },
 
     'claim-store': {
@@ -328,7 +365,8 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'claim-store'
             },
             'data': {
                 'type': 'object',
@@ -340,10 +378,12 @@ PROTO_MSG_JSON_SCHEMA = {
                         'type': 'object'
                     },
                 },
-                'required': ['claim']
+                'required': ['claim'],
+                'additionalProperties': False
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     },
 
     'claim-request': {
@@ -351,7 +391,8 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'claim-request'
             },
             'data': {
                 'type': 'object',
@@ -374,7 +415,8 @@ PROTO_MSG_JSON_SCHEMA = {
                                     'type': 'string',
                                 },
                             },
-                            'required': ['origin-did', 'name', 'version']
+                            'required': ['origin-did', 'name', 'version'],
+                            'additionalProperties': False
                         },
                         'minItems': 0
                     },
@@ -399,13 +441,15 @@ PROTO_MSG_JSON_SCHEMA = {
                                                     'type': 'string',
                                                 },
                                             },
-                                            'required': ['origin-did', 'name', 'version']
+                                            'required': ['origin-did', 'name', 'version'],
+                                            'additionalProperties': False
                                         },
                                         'match': {
                                             'type': 'object'
                                         }
                                     },
-                                    'required': ['schema', 'match']
+                                    'required': ['schema', 'match'],
+                                    'additionalProperties': False
                                 },
                                 'minItems': 0
                             },
@@ -427,7 +471,8 @@ PROTO_MSG_JSON_SCHEMA = {
                                                     'type': 'string',
                                                 },
                                             },
-                                            'required': ['origin-did', 'name', 'version']
+                                            'required': ['origin-did', 'name', 'version'],
+                                            'additionalProperties': False
                                         },
                                         'match': {
                                             'type': 'array',
@@ -444,7 +489,8 @@ PROTO_MSG_JSON_SCHEMA = {
                                                         'type': 'integer'
                                                     }
                                                 },
-                                                'required': ['attr', 'pred-type', 'value']
+                                                'required': ['attr', 'pred-type', 'value'],
+                                                'additionalProperties': False
                                             },
                                             'minItems': 1
                                         }
@@ -454,7 +500,8 @@ PROTO_MSG_JSON_SCHEMA = {
                                 'minItems': 0
                             }
                         },
-                        'required': ['attr-match', 'pred-match']
+                        'required': ['attr-match', 'pred-match'],
+                        'additionalProperties': False
                     },
                     'requested-attrs': {
                         'type': 'array',
@@ -474,7 +521,8 @@ PROTO_MSG_JSON_SCHEMA = {
                                             'type': 'string',
                                         },
                                     },
-                                    'required': ['origin-did', 'name', 'version']
+                                    'required': ['origin-did', 'name', 'version'],
+                                    'additionalProperties': False
                                 },
                                 'names': {
                                     'type': 'array',
@@ -484,15 +532,18 @@ PROTO_MSG_JSON_SCHEMA = {
                                     'minItems': 0
                                 },
                             },
-                            'required': ['schema', 'names']
+                            'required': ['schema', 'names'],
+                            'additionalProperties': False
                         },
                         'minItems': 0,
                     }
                 },
-                'required': ['schemata', 'claim-filter', 'requested-attrs']
+                'required': ['schemata', 'claim-filter', 'requested-attrs'],
+                'additionalProperties': False
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     },
 
     'claims-reset': {
@@ -500,13 +551,15 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'claims-reset'
             },
             'data': {
                 'type': 'object'
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     },
 
     'proof-request': {
@@ -514,7 +567,8 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'proof-request'
             },
             'data': {
                 'type': 'object',
@@ -537,7 +591,8 @@ PROTO_MSG_JSON_SCHEMA = {
                                     'type': 'string',
                                 },
                             },
-                            'required': ['origin-did', 'name', 'version']
+                            'required': ['origin-did', 'name', 'version'],
+                            'additionalProperties': False
                         },
                         'minItems': 0
                     },
@@ -562,13 +617,15 @@ PROTO_MSG_JSON_SCHEMA = {
                                                     'type': 'string',
                                                 },
                                             },
-                                            'required': ['origin-did', 'name', 'version']
+                                            'required': ['origin-did', 'name', 'version'],
+                                            'additionalProperties': False
                                         },
                                         'match': {
                                             'type': 'object'
                                         }
                                     },
-                                    'required': ['schema', 'match']
+                                    'required': ['schema', 'match'],
+                                    'additionalProperties': False
                                 },
                                 'minItems': 0
                             },
@@ -590,7 +647,8 @@ PROTO_MSG_JSON_SCHEMA = {
                                                     'type': 'string',
                                                 },
                                             },
-                                            'required': ['origin-did', 'name', 'version']
+                                            'required': ['origin-did', 'name', 'version'],
+                                            'additionalProperties': False
                                         },
                                         'match': {
                                             'type': 'array',
@@ -607,17 +665,20 @@ PROTO_MSG_JSON_SCHEMA = {
                                                         'type': 'integer'
                                                     }
                                                 },
-                                                'required': ['attr', 'pred-type', 'value']
+                                                'required': ['attr', 'pred-type', 'value'],
+                                                'additionalProperties': False
                                             },
                                             'minItems': 1
                                         }
                                     },
-                                    'required': ['schema', 'match']
+                                    'required': ['schema', 'match'],
+                                    'additionalProperties': False
                                 },
                                 'minItems': 0
                             }
                         },
-                        'required': ['attr-match', 'pred-match']
+                        'required': ['attr-match', 'pred-match'],
+                        'additionalProperties': False
                     },
                     'requested-attrs': {
                         'type': 'array',
@@ -637,7 +698,8 @@ PROTO_MSG_JSON_SCHEMA = {
                                             'type': 'string',
                                         },
                                     },
-                                    'required': ['origin-did', 'name', 'version']
+                                    'required': ['origin-did', 'name', 'version'],
+                                    'additionalProperties': False
                                 },
                                 'names': {
                                     'type': 'array',
@@ -652,10 +714,12 @@ PROTO_MSG_JSON_SCHEMA = {
                         'minItems': 0,
                     }
                 },
-                'required': ['schemata', 'claim-filter', 'requested-attrs']
+                'required': ['schemata', 'claim-filter', 'requested-attrs'],
+                'additionalProperties': False
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     },
 
     'proof-request-by-referent': {
@@ -663,7 +727,8 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'proof-request-by-referent'
             },
             'data': {
                 'type': 'object',
@@ -686,7 +751,8 @@ PROTO_MSG_JSON_SCHEMA = {
                                     'type': 'string',
                                 },
                             },
-                            'required': ['origin-did', 'name', 'version']
+                            'required': ['origin-did', 'name', 'version'],
+                            'additionalProperties': False
                         },
                         'minItems': 0
                     },
@@ -715,7 +781,8 @@ PROTO_MSG_JSON_SCHEMA = {
                                             'type': 'string',
                                         },
                                     },
-                                    'required': ['origin-did', 'name', 'version']
+                                    'required': ['origin-did', 'name', 'version'],
+                                    'additionalProperties': False
                                 },
                                 'names': {
                                     'type': 'array',
@@ -725,15 +792,18 @@ PROTO_MSG_JSON_SCHEMA = {
                                     'minItems': 0
                                 },
                             },
-                            'required': ['schema', 'names']
+                            'required': ['schema', 'names'],
+                            'additionalProperties': False
                         },
                         'minItems': 0,
                     }
                 },
-                'required': ['schemata', 'referents', 'requested-attrs']
+                'required': ['schemata', 'referents', 'requested-attrs'],
+                'additionalProperties': False
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     },
 
     'verification-request': {
@@ -741,7 +811,8 @@ PROTO_MSG_JSON_SCHEMA = {
         'type': 'object',
         'properties': {
             'type': {
-                'type': 'string'
+                'type': 'string',
+                'pattern': 'verification-request'
             },
             'data': {
                 'type': 'object',
@@ -756,19 +827,22 @@ PROTO_MSG_JSON_SCHEMA = {
                         'type': 'object'
                     },
                 },
-                'required': ['proof-req', 'proof']
+                'required': ['proof-req', 'proof'],
+                'additionalProperties': False
             }
         },
-        'required': ['type', 'data']
+        'required': ['type', 'data'],
+        'additionalProperties': False
     }
 }
 
 
-def validate(form: dict) -> None:
+def validate(form: dict, proxy_relay: bool = True) -> None:
     """
     Validate input form; raise ValueError on non-compliance or silently pass.
 
     :param form: input form decoded from json
+    :param proxy_relay: whether proxy-did is a valid property within form['data']
     """
 
     if 'type' not in form:
@@ -776,6 +850,8 @@ def validate(form: dict) -> None:
     if form['type'] not in PROTO_MSG_JSON_SCHEMA: 
         raise ValueError("Bad form: type '{}' unsupported".format(form['type']))
     try:
+        if (not proxy_relay) and ('data' in form) and ('proxy-did' in form['data']):
+            raise ValueError('This VON agent does not support form data property [proxy-did]')
         jsonschema.validate(form, PROTO_MSG_JSON_SCHEMA[form['type']])
     except jsonschema.ValidationError as e:
         raise ValueError('JSON validation error: {}'.format(e.message))

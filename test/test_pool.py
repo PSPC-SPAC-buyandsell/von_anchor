@@ -27,17 +27,24 @@ async def test_pool_open(
     pool_genesis_txn_path,
     pool_genesis_txn_file):
 
-    p = NodePool(pool_name, pool_genesis_txn_path, {'auto_remove': True})
+    for pool_cfg in ({'extra-property': True}, {'auto-remove': 'non-boolean'}):
+        try:
+            NodePool(pool_name, pool_genesis_txn_path, pool_cfg)
+            assert False
+        except ValueError:
+            pass
+
+    p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
     await p.open()
     assert p.handle is not None
     await p.close()
 
-    p = NodePool(pool_name, pool_genesis_txn_path)
+    p = NodePool(pool_name, pool_genesis_txn_path)  # auto-remove default: False
     await p.open()
     assert p.handle is not None
     await p.close()
 
-    p = NodePool(pool_name, pool_genesis_txn_path, {'auto_remove': True})
+    p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})  # check survival on re-opening existing pool
     await p.open()
     assert p.handle is not None
     await p.close()

@@ -16,6 +16,7 @@ limitations under the License.
 
 from indy import did, wallet, IndyError
 from indy.error import ErrorCode
+from .validate_config import validate_config
 
 import json
 import logging
@@ -36,7 +37,7 @@ class Wallet:
         :param name: name of the wallet
         :param cfg: configuration, None for default;
             i.e., {
-                'auto_remove': bool (default False), whether to remove serialized indy configuration data on close,
+                'auto-remove': bool (default False), whether to remove serialized indy configuration data on close,
                 ... (any other indy configuration data)
             }
         """
@@ -48,7 +49,9 @@ class Wallet:
         self._seed = seed
         self._name = name
         self._handle = None
+
         self._cfg = cfg or {}
+        validate_config('wallet', self._cfg)
 
         self._did = None
         self._verkey = None
@@ -142,8 +145,8 @@ class Wallet:
         logger.debug('Wallet.open: >>>')
 
         cfg = json.loads(json.dumps(self._cfg))  # deep copy
-        if 'auto_remove' in cfg:
-            cfg.pop('auto_remove')
+        if 'auto-remove' in cfg:
+            cfg.pop('auto-remove')
 
         try:
             await wallet.create_wallet(
@@ -198,7 +201,7 @@ class Wallet:
         logger.debug('Wallet.close: >>>')
 
         await wallet.close_wallet(self.handle)
-        auto_remove = self.cfg.get('auto_remove', False)
+        auto_remove = self.cfg.get('auto-remove', False)
         if auto_remove:
             await self.remove()
 

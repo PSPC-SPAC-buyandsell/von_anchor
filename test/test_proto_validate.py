@@ -389,6 +389,16 @@ BAD = {
     'no-data': {
         'type': 'claim-request'
     },
+    'additional-property': {
+        'type': 'agent-nym-lookup',
+        'data': {
+            'proxy-did': 'abcd1234',
+            'agent-nym': {
+                'did': 'abcd1234'
+            }
+        },
+        'extra': 'wrong'
+    }
 }
 
 
@@ -397,53 +407,60 @@ BAD = {
 async def test_validate():
     for key in GOOD:
         message_type = GOOD[key]['type']
-        print('\n\n== Validating good {} message'.format(message_type))
+        print('\n== Validating good {} message'.format(message_type))
         validate(GOOD[key])
         if '.proxy' in key:
+            try:
+                print('== Validating bad {} message with prohibited proxy-did'.format(message_type))
+                validate(GOOD[key], False)
+                assert False
+            except ValueError:
+                pass
             proxy_did = GOOD[key]['data'].pop('proxy-did')
-            print('\n\n== Validating good {} message without proxy-did'.format(message_type))
-            validate(GOOD[key])
+            print('== Validating good {} message without proxy-did'.format(message_type))
+            validate(GOOD[key], False)
         if '.schemata' in key:
             schemata = GOOD[key]['data']['schemata']
             GOOD[key]['data']['schemata'] = []
-            print('\n\n== Validating good {} message with empty schemata'.format(message_type))
+            print('== Validating good {} message with empty schemata'.format(message_type))
             validate(GOOD[key])
             GOOD[key]['data']['schemata'] = schemata
         if '.attr-match' in key:
             match = GOOD[key]['data']['claim-filter']['attr-match']
             GOOD[key]['data']['claim-filter']['attr-match'] = []
-            print('\n\n== Validating good {} message with empty attr-match'.format(message_type))
+            print('== Validating good {} message with empty attr-match'.format(message_type))
             validate(GOOD[key])
             GOOD[key]['data']['claim-filter']['attr-match'] = match
         if '.pred-match' in key:
             match = GOOD[key]['data']['claim-filter']['pred-match']
             GOOD[key]['data']['claim-filter']['pred-match'] = []
-            print('\n\n== Validating good {} message with empty pred-match'.format(message_type))
+            print('== Validating good {} message with empty pred-match'.format(message_type))
             validate(GOOD[key])
             GOOD[key]['data']['claim-filter']['pred-match'] = match
         if '.req-attrs' in key:
             names = GOOD[key]['data']['requested-attrs'][0]['names']
             GOOD[key]['data']['requested-attrs'][0]['names'] = []
-            print('\n\n== Validating good {} message with empty req-attrs.names'.format(message_type))
+            print('== Validating good {} message with empty req-attrs.names'.format(message_type))
             validate(GOOD[key])
             GOOD[key]['data']['requested-attrs'][0]['names'] = names
             req_attrs = GOOD[key]['data']['requested-attrs']
             GOOD[key]['data']['requested-attrs'] = []
-            print('\n\n== Validating good {} message with empty req-attrs'.format(message_type))
+            print('== Validating good {} message with empty req-attrs'.format(message_type))
             validate(GOOD[key])
             GOOD[key]['data']['requested-attrs'] = req_attrs
 
         if len(GOOD[key]['data']) > 0:
             missing_attr = GOOD[key]['data'].popitem()[0]
-            print('\n\n== Validating bad {} message missing {}'.format(message_type, missing_attr))
+            print('== Validating bad {} message missing {}'.format(message_type, missing_attr))
             try:
                 validate(GOOD[key])
             except ValueError:
                 pass
 
+    print()
     for key in BAD:
         try:
-            print('\n\n== Validating bad message, {}'.format(key))
+            print('== Validating bad message, {}'.format(key))
             validate(BAD[key])
         except ValueError:
             pass

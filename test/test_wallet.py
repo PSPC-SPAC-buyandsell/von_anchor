@@ -27,12 +27,20 @@ async def test_wallet(
     pool_genesis_txn_path,
     pool_genesis_txn_file):
 
-    p = NodePool(pool_name, pool_genesis_txn_path, {'auto_remove': True})
+    p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
     await p.open()
     assert p.handle is not None
 
     seed = '00000000000000000000000000000000'
     name = 'my-wallet'
+
+    for wallet_cfg in ({'extra-property': True}, {'auto-remove': 'non-boolean'}):
+        try:
+            Wallet(p.name, seed, name, wallet_cfg)
+            assert False
+        except ValueError:
+            pass
+
     w = Wallet(p.name, seed, name)
 
     await w.open()
