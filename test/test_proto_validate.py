@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from von_agent.error import JSONValidation, ProxyRelayConfig
 from von_agent.proto.validate import validate
 
 import pytest
@@ -414,7 +415,7 @@ async def test_validate():
                 print('== Validating bad {} message with prohibited proxy-did'.format(message_type))
                 validate(GOOD[key], False)
                 assert False
-            except ValueError:
+            except ProxyRelayConfig:
                 pass
             proxy_did = GOOD[key]['data'].pop('proxy-did')
             print('== Validating good {} message without proxy-did'.format(message_type))
@@ -454,7 +455,7 @@ async def test_validate():
             print('== Validating bad {} message missing {}'.format(message_type, missing_attr))
             try:
                 validate(GOOD[key])
-            except ValueError:
+            except JSONValidation:
                 pass
 
     print()
@@ -462,5 +463,5 @@ async def test_validate():
         try:
             print('== Validating bad message, {}'.format(key))
             validate(BAD[key])
-        except ValueError:
+        except JSONValidation:
             pass

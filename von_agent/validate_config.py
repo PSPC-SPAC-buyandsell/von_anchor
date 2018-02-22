@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from von_agent.error import JSONValidation
+
 import json
 import jsonschema
 
@@ -25,8 +27,8 @@ CONFIG_JSON_SCHEMA = {
             'auto-remove': {
                 'type': 'boolean'
             }
-        },
-        'additionalProperties': False
+        }
+        # additionalProperties OK, Wallet passes them into indy-sdk wallet instantiation
     },
 
     'pool': {
@@ -59,7 +61,7 @@ CONFIG_JSON_SCHEMA = {
 
 def validate_config(key: str, config: dict) -> None:
     """
-    Call jsonschema validation to raise ValueError on non-compliance or silently pass.
+    Call jsonschema validation to raise JSONValidation on non-compliance or silently pass.
 
     :param key: validation schema key of interest
     :param config: configuration dict to validate
@@ -68,6 +70,6 @@ def validate_config(key: str, config: dict) -> None:
     try:
         jsonschema.validate(config, CONFIG_JSON_SCHEMA[key])
     except jsonschema.ValidationError as e:
-        raise ValueError('JSON validation error: {}'.format(e.message))
+        raise JSONValidation('JSON validation error on {} configuration: {}'.format(key, e.message))
     except jsonschema.SchemaError as e:
-        raise ValueError('JSON schema error: {}'.format(e.message))
+        raise JSONValidation('JSON schema error on {} specification: {}'.format(key, e.message))

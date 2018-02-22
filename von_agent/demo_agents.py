@@ -15,8 +15,8 @@ limitations under the License.
 """
 
 from requests import post
-
-from .agents import AgentRegistrar, Origin, Verifier, Issuer, HolderProver
+from von_agent.agents import AgentRegistrar, Origin, Verifier, Issuer, HolderProver
+from von_agent.error import TokenType
 
 import json
 import logging
@@ -29,8 +29,10 @@ class TrustAnchorAgent(AgentRegistrar, Origin):
 
     async def process_post(self, form: dict) -> str:
         """
-        Takes a request from service wrapper POST and dispatches the applicable agent action.
-        Returns (json) response arising from processing.
+        Take a request from service wrapper POST and dispatch the applicable agent action.
+        Return (json) response arising from processing.
+
+        Raise TokenType on demurral.
 
         :param form: request form on which to operate
         :return: json response
@@ -46,12 +48,11 @@ class TrustAnchorAgent(AgentRegistrar, Origin):
                 rv = await ResponderClass.process_post(self, form)
                 logger.debug('TrustAnchorAgent.process_post: <<< {}'.format(rv))
                 return rv
-            except NotImplementedError:
+            except TokenType:
                 pass
 
-        # token-type/proxy
         logger.debug('TrustAnchorAgent.process_post: <!< not this form type: {}'.format(form['type']))
-        raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
+        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
 
 class SRIAgent(Verifier, Issuer):
@@ -65,8 +66,10 @@ class SRIAgent(Verifier, Issuer):
 
     async def process_post(self, form: dict) -> str:
         """
-        Takes a request from service wrapper POST and dispatches the applicable agent action.
-        Returns (json) response arising from processing.
+        Take a request from service wrapper POST and dispatch the applicable agent action.
+        Return (json) response arising from processing.
+
+        Raise TokenType on demurral.
 
         :param form: request form on which to operate
         :return: json response
@@ -82,12 +85,11 @@ class SRIAgent(Verifier, Issuer):
                 rv = await ResponderClass.process_post(self, form)
                 logger.debug('SRIAgent.process_post: <<< {}'.format(rv))
                 return rv
-            except NotImplementedError:
+            except TokenType:
                 pass
 
-        # token-type/proxy
         logger.debug('SRIAgent.process_post: <!< not this form type: {}'.format(form['type']))
-        raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
+        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
 
 class BCRegistrarAgent(Issuer):
@@ -97,8 +99,10 @@ class BCRegistrarAgent(Issuer):
 
     async def process_post(self, form: dict) -> str:
         """
-        Takes a request from service wrapper POST and dispatches the applicable agent action.
-        Returns (json) response arising from processing.
+        Take a request from service wrapper POST and dispatch the applicable agent action.
+        Return (json) response arising from processing.
+
+        Raise TokenType on demurral.
 
         :param form: request form on which to operate
         :return: json response
@@ -114,12 +118,11 @@ class BCRegistrarAgent(Issuer):
                 rv = await ResponderClass.process_post(self, form)
                 logger.debug('BCRegistrarAgent.process_post: <<< {}'.format(rv))
                 return rv
-            except NotImplementedError:
+            except TokenType:
                 pass
 
-        # token-type/proxy
         logger.debug('BCRegistrarAgent.process_post: <!< not this form type: {}'.format(form['type']))
-        raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
+        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
 
 class OrgBookAgent(HolderProver):
@@ -130,8 +133,10 @@ class OrgBookAgent(HolderProver):
 
     async def process_post(self, form: dict) -> str:
         """
-        Takes a request from service wrapper POST and dispatches the applicable agent action.
-        Returns (json) response arising from processing.
+        Take a request from service wrapper POST and dispatch the applicable agent action.
+        Return (json) response arising from processing.
+
+        Raise TokenType on demurral.
 
         :param form: request form on which to operate
         :return: json response
@@ -147,9 +152,8 @@ class OrgBookAgent(HolderProver):
                 rv = await ResponderClass.process_post(self, form)
                 logger.debug('OrgBookAgent.process_post: <<< {}'.format(rv))
                 return rv
-            except NotImplementedError:
+            except TokenType:
                 pass
 
-        # token-type/proxy
         logger.debug('OrgBookAgent.process_post: <!< not this form type: {}'.format(form['type']))
-        raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
+        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))

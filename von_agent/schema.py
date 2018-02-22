@@ -16,6 +16,7 @@ limitations under the License.
 
 from collections import namedtuple
 from typing import Union
+from von_agent.error import SchemaKeySpec, SchemaStoreIndex
 
 import logging
 
@@ -28,7 +29,7 @@ def schema_key_for(spec: dict) -> SchemaKey:
     Given schema key specifier in protocol (on keys origin-did, name, version) or indy-sdk API
     (on keys did/issuer/identifier/etc., name, version), return corresponding SchemaKey namedtuple.
 
-    Raise ValueError on bad schema key specification.
+    Raise SchemaKeySpec on bad schema key specification.
 
     :param spec: schema key specifier
     :return: SchemaKey
@@ -40,7 +41,7 @@ def schema_key_for(spec: dict) -> SchemaKey:
             version=spec['version'],
             origin_did=spec[set(spec.keys() - {'name', 'version'}).pop()])
 
-    raise ValueError('Bad schema key specification {}'.format(spec))
+    raise SchemaKeySpec('Bad schema key specification {}'.format(spec))
 
 
 class SchemaStore:
@@ -122,7 +123,9 @@ class SchemaStore:
 
     def __getitem__(self, index: Union[SchemaKey, int]) -> dict:
         """
-        Get schema by key or sequence number, or raise KeyError for no such schema.
+        Get schema by key or sequence number, or raise SchemaStoreIndex for no such schema.
+
+        Raise SchemaStoreIndex for no such index in schema store.
 
         :param index: schema key or sequence number
         :return: corresponding schema or None
@@ -135,11 +138,14 @@ class SchemaStore:
         if isinstance(index, SchemaKey):
             rv = self._schema_key2schema[index]
         elif isinstance(index, int):
-            rv = self._schema_key2schema[self._seq_no2schema_key[index]]
+            try:
+                rv = self._schema_key2schema[self._seq_no2schema_key[index]]
+            except KeyError:
+                logger.debug('SchemaStore.__getitem__: <!< index {} not present'.format(index))
+                raise SchemaStoreIndex('{}'.format(index))
         else:
-            x = KeyError('{}'.format(index))
-            logger.error('SchemaStore.__getitem__: <!< {}'.format(x))
-            raise x
+            logger.debug('SchemaStore.__getitem__: <!< index {} must be int or SchemaKey'.format(index))
+            raise SchemaStoreIndex('{} must be int or SchemaKey'.format(index))
 
         logger.debug('SchemaStore.__getitem__: <<< {}'.format(rv))
         return rv

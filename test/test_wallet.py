@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from von_agent.error import JSONValidation
 from von_agent.nodepool import NodePool
 from von_agent.wallet import Wallet
 
@@ -34,13 +35,15 @@ async def test_wallet(
     seed = '00000000000000000000000000000000'
     name = 'my-wallet'
 
-    for wallet_cfg in ({'extra-property': True}, {'auto-remove': 'non-boolean'}):
-        try:
-            Wallet(p.name, seed, name, wallet_cfg)
-            assert False
-        except ValueError:
-            pass
+    # 1. Exercise configuration: auto-remove must be boolean if present, but extra properties are OK
+    try:
+        Wallet(p.name, seed, name, {'auto-remove': 'non-boolean'})
+        assert False
+    except JSONValidation:
+        pass
+    Wallet(p.name, seed, name, {'auto-remove': True, 'extra-property': 'ok'})
 
+    # 2. Default configuration (auto-remove=False)
     w = Wallet(p.name, seed, name)
 
     await w.open()
@@ -49,7 +52,8 @@ async def test_wallet(
     (did, verkey) = (w.did, w.verkey)
     await w.close()
 
-    x = Wallet(p.name, seed, name)
+    # 3. Make sure wallet opens from extant file
+    x = Wallet(p.name, seed, name, {'auto-remove': True})
     await x.open()
     assert did == x.did
     assert verkey == x.verkey

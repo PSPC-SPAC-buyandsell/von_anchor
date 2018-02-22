@@ -20,12 +20,13 @@ from requests import post, HTTPError
 from time import time
 from typing import Set, Union
 
-from .nodepool import NodePool
-from .proto.validate import validate as validate_form
-from .schema import SchemaKey, SchemaStore, schema_key_for
-from .util import encode, decode, prune_claims_json, ppjson
-from .validate_config import CONFIG_JSON_SCHEMA, validate_config
-from .wallet import Wallet
+from von_agent.error import AbsentAttribute, AbsentMasterSecret, ClaimsFocus, ProxyHop, TokenType
+from von_agent.nodepool import NodePool
+from von_agent.proto.validate import validate as validate_form
+from von_agent.schema import SchemaKey, SchemaStore, schema_key_for
+from von_agent.util import encode, decode, prune_claims_json, ppjson
+from von_agent.validate_config import CONFIG_JSON_SCHEMA, validate_config
+from von_agent.wallet import Wallet
 
 import asyncio
 import json
@@ -245,7 +246,8 @@ class _AgentCore:
         Get json endpoint for agent having input DID.
 
         :param did: DID for agent whose endpoint to find
-        :return: json endpoint data for agent having input DID
+        :return: json endpoint object (one 'endpoint' attribute and value) for agent having input DID;
+            empty production for none
         """
 
         logger = logging.getLogger(__name__)
@@ -265,7 +267,7 @@ class _AgentCore:
         else:
             data_json = (json.loads(resp_json))['result']['data']  # it's double-encoded on the ledger
             if data_json:
-                rv = json.dumps(json.loads(data_json)['endpoint']['endpoint'])
+                rv = json.dumps(json.loads(data_json)['endpoint'])
             else:
                 logger.info('_AgentCore.get_endpoint: ledger query returned response with no data')
 
@@ -330,8 +332,9 @@ class _BaseAgent(_AgentCore):
 
     async def send_endpoint(self) -> str:
         """
-        Send agent endpoint attribute to ledger. Return endpoint json as written
-        (the process of writing the attribute to the ledger does not add any additional content).
+        Send agent endpoint attribute to ledger. Return endpoint json as written to the ledger.
+
+        Raise AbsentAttribute if no such endpoint.
 
         :return: endpoint attibute entry json (at present, 'http://<host>:<port>/<base-api-path>' or none)
         """
@@ -343,15 +346,19 @@ class _BaseAgent(_AgentCore):
             raw_json = json.dumps({
                 'endpoint': {
                     'endpoint': self.cfg['endpoint']
-                }  # indy-sdk needs value to be a dict
+                }  # indy-sdk needs value itself to be a dict; {'endpoint': '...'} is no good
             })
             req_json = await ledger.build_attrib_request(self.did, self.did, None, raw_json, None)
-
-            rv = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
+            resp_json = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
             await asyncio.sleep(0)
+            resp = json.loads(resp_json)
+            if ('op' in resp) and (resp['op'] == 'REQNACK'):
+                logger.error('_BaseAgent.send_endpoint: {}'.format(resp['reason']))
         else:
-            raise NotImplementedError('Cannot send agent endpoint to ledger: no such endpoint in configuration')
+            logger.debug('_BaseAgent.send_endpoint: <!< no endpoint configured')
+            raise AbsentAttribute('Cannot send agent endpoint to ledger: no such endpoint in configuration')
 
+        rv = await self.get_endpoint(self.did)
         logger.debug('_BaseAgent.send_endpoint: <<< {}'.format(rv))
         return rv
 
@@ -399,6 +406,8 @@ class _BaseAgent(_AgentCore):
         """
         Get the response from the proxy, if the request form content identifies to do so.
 
+        Raise ProxyHop if no agent found for specified DID, or endpoint specifies non-supported protocol (e.g., xmpp)
+
         :param form: request form on which to operate
         """
 
@@ -410,19 +419,24 @@ class _BaseAgent(_AgentCore):
             proxy_did = form['data'].pop('proxy-did')
             if (proxy_did != self.did):
                 endpoint = json.loads(await self.get_endpoint(proxy_did))
-                if not re.match(
+                if (('endpoint' not in endpoint) or
+                    not re.match(
                         CONFIG_JSON_SCHEMA['agent']['properties']['endpoint']['pattern'],
                         endpoint,
-                        re.IGNORECASE):
-                    raise ValueError('No agent on the ledger has DID {}'.format(proxy_did))
-                if re.match('^http[s]?://.*', endpoint, re.IGNORECASE):
+                        re.IGNORECASE)):
+                    logger.debug('_BaseAgent._response_from_proxy: <!< no agent found for DID {}'.format(proxy_did))
+                    raise ProxyHop('No agent on the ledger has DID {}'.format(proxy_did))
+                if re.match('^http[s]?://.*', endpoint['endpoint'], re.IGNORECASE):
                     r = post(
-                        '{}/{}'.format(endpoint, form['type']),
+                        '{}/{}'.format(endpoint['endpoint'], form['type']),
                         json=form)  # requests module json-encodes
                     if not r.ok:
-                        raise HTTPError(r.json()['error-code'], r.json()['message'])
+                        logger.debug('_BaseAgent._response_from_proxy: <!< proxy got HTTP {}'.format(r.status_code))
+                        raise HTTPError(r.status_code, r.reason)
                 else:
-                    raise ValueError('No proxy strategy implemented for target agent endpoint {}'.format(endpoint))
+                    logger.debug('_BaseAgent._response_from_proxy: <!< cannot resolve proxy hop')
+                    raise ProxyHop(
+                        'No proxy strategy implemented for target agent endpoint {}'.format(endpoint['endpoint']))
                 rv = json.dumps(r.json())  # requests module json-decodes
 
         logger.debug('_BaseAgent._response_from_proxy: <<< {}'.format(rv))
@@ -442,8 +456,14 @@ class _BaseAgent(_AgentCore):
 
     async def process_post(self, form: dict) -> str:
         """
-        Take a request from service wrapper POST and dispatch the applicable agent action.
-        Return (json) response arising from processing.
+        Take a request from service wrapper POST, validate form via JSON schema, and dispatch
+        the applicable agent action.  Return (json) response arising from processing.
+
+        Raise:
+            * JSONValidation on token validation exception,
+            * TokenType on demurral for descendant class processing,
+            * ProxyRelayConfig for attempt to proxy via agent not so configured
+            * ProxyHop if unable to proxy otherwise OK message token.
 
         :param form: request form on which to operate
         :return: json response
@@ -526,12 +546,10 @@ class _BaseAgent(_AgentCore):
 
             # base listening agent doesn't do this work
             logger.debug('_BaseAgent.process_post: <!< not this form type: {}'.format(form['type']))
-            raise NotImplementedError(
-                '{} does not respond to token type {}'.format(self.__class__.__name__, form['type']))
+            raise TokenType('{} does not respond to token type {}'.format(self.__class__.__name__, form['type']))
 
-        # unknown token type
         logger.debug('_BaseAgent.process_post: <!< not this form type: {}'.format(form['type']))
-        raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
+        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
     async def process_get_txn(self, txn: int) -> str:
         """
@@ -626,6 +644,8 @@ class AgentRegistrar(_BaseAgent):
         Take a request from service wrapper POST and dispatch the applicable agent action.
         Return (json) response arising from processing.
 
+        Raise TokenType on demurral.
+
         :param form: request form on which to operate
         :return: json response
         """
@@ -640,7 +660,7 @@ class AgentRegistrar(_BaseAgent):
                 rv = await ResponderClass.process_post(self, form)
                 logger.debug('AgentRegistrar.process_post: <<< {}'.format(rv))
                 return rv
-            except NotImplementedError:
+            except TokenType:
                 pass
 
         if form['type'] == 'agent-nym-send':
@@ -650,9 +670,8 @@ class AgentRegistrar(_BaseAgent):
             logger.debug('AgentRegistrar.process_post: <<< {}'.format(rv))
             return rv
 
-        # token-type/proxy
         logger.debug('AgentRegistrar.process_post: <!< not this form type: {}'.format(form['type']))
-        raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
+        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
 
 class Origin(_BaseAgent):
@@ -708,6 +727,8 @@ class Origin(_BaseAgent):
         Take a request from service wrapper POST and dispatch the applicable agent action.
         Return (json) response arising from processing.
 
+        Raise TokenType on demurral.
+
         :param form: request form on which to operate
         :return: json response
         """
@@ -722,7 +743,7 @@ class Origin(_BaseAgent):
                 rv = await ResponderClass.process_post(self, form)
                 logger.debug('Origin.process_post: <<< {}'.format(rv))
                 return rv
-            except NotImplementedError:
+            except TokenType:
                 pass
 
         if form['type'] == 'schema-send':
@@ -735,9 +756,8 @@ class Origin(_BaseAgent):
             logger.debug('Origin.process_post: <<< {}'.format(rv))
             return rv
 
-        # token-type
         logger.debug('Origin.process_post: <!< not this form type: {}'.format(form['type']))
-        raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
+        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
 class Issuer(Origin):
     """
@@ -747,6 +767,8 @@ class Issuer(Origin):
     async def send_claim_def(self, schema_json: str) -> str:
         """
         Create a claim definition as Issuer, store it in its wallet, and send it to the ledger.
+
+        Raise any IndyError causing failure to store claim def.
 
         :param schema_json: schema as it appears on ledger via get_schema()
         :return: json claim definition as it appears on ledger, empty production for None
@@ -793,9 +815,10 @@ class Issuer(Origin):
 
                     return await self.send_claim_def(schema_json)
             else:
-                logger.error('Issuer cannot store claim def in wallet {}: indy error code {}'.format(
-                    self.name,
-                    self.e.error_code))
+                logger.debug(
+                    'Issuer.send_claim_def: <!< cannot store claim def in wallet {}: indy error code {}'.format(
+                        self.name,
+                        self.e.error_code))
                 raise
 
         if not json.loads(rv):  # checking the ledger returned no claim def: send it
@@ -855,6 +878,8 @@ class Issuer(Origin):
         Take a request from service wrapper POST and dispatch the applicable agent action.
         Return (json) response arising from processing.
 
+        Raise TokenType on demurral.
+
         :param form: request form on which to operate
         :return: json response
         """
@@ -869,7 +894,7 @@ class Issuer(Origin):
                 rv = await ResponderClass.process_post(self, form)
                 logger.debug('Issuer.process_post: <<< {}'.format(rv))
                 return rv
-            except NotImplementedError:
+            except TokenType:
                 pass
 
         if form['type'] == 'claim-def-send':
@@ -893,9 +918,8 @@ class Issuer(Origin):
             logger.debug('Issuer.process_post: <<< {}'.format(rv))
             return rv  # TODO: support revocation -- this return value will change
 
-        # token-type
         logger.debug('Issuer.process_post: <!< not this form type: {}'.format(form['type']))
-        raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
+        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
 
 class HolderProver(_BaseAgent):
@@ -929,6 +953,8 @@ class HolderProver(_BaseAgent):
         """
         Create master secret used in proofs by HolderProver.
 
+        Raise any IndyError causing failure to set master secret in wallet.
+
         :param master_secret: label for master secret; indy-sdk uses label to generate master secret
         """
 
@@ -941,9 +967,10 @@ class HolderProver(_BaseAgent):
             if e.error_code == ErrorCode.AnoncredsMasterSecretDuplicateNameError:
                 logger.info('HolderProver did not create master secret - it already exists')
             else:
-                logger.error('HolderProver cannot open wallet {}: indy error code {}'.format(
-                    self.name,
-                    self.e.error_code))
+                logger.debug(   
+                    'HolderProver.create_master_secret: <<<  cannot create master secret {}, indy error code {}'.format(
+                        self.name,
+                        self.e.error_code))
                 raise
 
         self._master_secret = master_secret
@@ -978,6 +1005,8 @@ class HolderProver(_BaseAgent):
         """
         Create claim request as HolderProver and store in wallet.
 
+        Raise AbsentMasterSecret if master secret not set.
+
         :param issuer_did: claim issuer DID
         :param claim_def_json: claim definition json as retrieved from ledger via get_claim_def()
         :return: claim request json as stored in wallet
@@ -989,9 +1018,8 @@ class HolderProver(_BaseAgent):
             claim_def_json))
 
         if self._master_secret is None:
-            x = ValueError('Master secret is not set')
-            logger.error(x)
-            raise x
+            logger.debug('HolderProver.store_claim_req: <!< master secret not set')
+            raise AbsentMasterSecret('Master secret is not set')
 
         schema_seq_no = json.loads(claim_def_json)['ref']  # = schema seq no in claim def
         await self.get_schema(schema_seq_no)  # update schema store if need be
@@ -1032,6 +1060,10 @@ class HolderProver(_BaseAgent):
     async def create_proof(self, proof_req: dict, claims: dict, requested_claims: dict = None) -> str:
         """
         Create proof as HolderProver.
+
+        Raise:
+            * AbsentMasterSecret if master secret not set
+            * ClaimsFocus on attempt to create proof on no claims or multiple claims for a claim definition.
 
         :param proof_req: proof request as Verifier creates; has entries for proof request's
             nonce, name, and version; plus claim's requested attributes, requested predicates. E.g.,
@@ -1116,15 +1148,13 @@ class HolderProver(_BaseAgent):
                 requested_claims))
 
         if self._master_secret is None:
-            x = ValueError('Master secret is not set')
-            logger.error(x)
-            raise x
+            logger.debug('HolderProver.create_proof: <!< master secret not set')
+            raise AbsentMasterSecret('Master secret is not set')
 
         x_uuids = [attr_uuid for attr_uuid in claims['attrs'] if len(claims['attrs'][attr_uuid]) != 1]
         if x_uuids:
-            x = ValueError('Proof request requires unique claims per attribute; violators: {}'.format(x_uuids))
-            logger.error(x)
-            raise x
+            logger.debug('HolderProver.create_proof: <!< claims specification out of focus (non-uniqueness)')
+            raise ClaimsFocus('Proof request requires unique claims per attribute; violators: {}'.format(x_uuids))
 
         referent2schema = {}
         referent2claim_def = {}
@@ -1279,6 +1309,7 @@ class HolderProver(_BaseAgent):
                                     for pred_match in filt[claim_s_key]['pred-match']):
                                 continue
                         except ValueError:
+                            # int conversion failed - reject candidate
                             continue
                     referents.add(candidate['referent'])
                 else:
@@ -1336,6 +1367,8 @@ class HolderProver(_BaseAgent):
         Close and delete HolderProver wallet, then create and open a replacement.
         Precursor to revocation, and issuer/filter-specifiable claim deletion.
 
+        Raise AbsentMasterSecret if master secret not set.
+
         :return: wallet name
         """
 
@@ -1343,9 +1376,8 @@ class HolderProver(_BaseAgent):
         logger.debug('HolderProver.reset_wallet: >>>')
 
         if self._master_secret is None:
-            x = ValueError('Master secret is not set')
-            logger.error(x)
-            raise x
+            logger.debug('HolderProver.reset_wallet: <!< master secret not set')
+            raise AbsentMasterSecret('Master secret is not set')
 
         seed = self.wallet._seed
         wallet_name = self.wallet.name
@@ -1366,6 +1398,10 @@ class HolderProver(_BaseAgent):
         Take a request from service wrapper POST and dispatch the applicable agent action.
         Return (json) response arising from processing.
 
+        Raise:
+            * TokenType on demurral
+            * ClaimsFocus on attempt to create proof on no claims or multiple claims for a claim definition.
+
         :param form: request form on which to operate
         :return: json response
         """
@@ -1380,7 +1416,7 @@ class HolderProver(_BaseAgent):
                 rv = await ResponderClass.process_post(self, form)
                 logger.debug('HolderProver.process_post: <<< {}'.format(rv))
                 return rv
-            except NotImplementedError:
+            except TokenType:
                 pass
 
         if form['type'] == 'master-secret-set':
@@ -1503,9 +1539,8 @@ class HolderProver(_BaseAgent):
             # forbid multiple matching claims for any claim-def in a proof
             x_uuids = [attr_uuid for attr_uuid in claims_found['attrs'] if len(claims_found['attrs'][attr_uuid]) != 1]
             if x_uuids:
-                x = ValueError('Proof request requires unique claims per attribute; violators: {}'.format(x_uuids))
-                logger.error(x)
-                raise x
+                logger.debug('HolderProver.process_post: <!< claims specification out of focus (non-uniqueness)')
+                raise ClaimsFocus('Proof request requires unique claims per attribute; violators: {}'.format(x_uuids))
 
             requested_claims = {
                 'self_attested_attributes': {},
@@ -1578,17 +1613,16 @@ class HolderProver(_BaseAgent):
 
             # kick out early if no matching claims
             if (not claims_found['attrs']) and (not claims_found['predicates']):
-                x = ValueError('No such referent claim: {}'.format(form['data']['referents']))
-                logger.error(x)
-                raise x
+                logger.debug('HolderProver.process_post: <!< claims specification out of focus (no matching claims)')
+                raise ClaimsFocus('No such referent claim: {}'.format(form['data']['referents']))
 
             # forbid multiple matching claims for any claim-def in a proof
             x_referents = [attr_uuid for attr_uuid in claims_found['attrs']
                 if len(claims_found['attrs'][attr_uuid]) != 1]
             if x_referents:
-                x = ValueError('Proof request requires unique claims per attribute; violators: {}'.format(x_referents))
-                logger.error(x)
-                raise x
+                logger.debug('HolderProver.process_post: <!< claims specification out of focus (too many claims)')
+                raise ClaimsFocus(  
+                    'Proof request requires unique claims per attribute; violators: {}'.format(x_referents))
 
             proof_req = {
                 'nonce': str(int(time() * 1000)),
@@ -1636,9 +1670,8 @@ class HolderProver(_BaseAgent):
             logger.debug('HolderProver.process_post: <<< {}'.format(rv))
             return rv
 
-        # token-type
         logger.debug('HolderProver.process_post: <!< not this form type: {}'.format(form['type']))
-        raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
+        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
 
 class Verifier(_BaseAgent):
@@ -1744,6 +1777,8 @@ class Verifier(_BaseAgent):
         Take a request from service wrapper POST and dispatch the applicable agent action.
         Return (json) response arising from processing.
 
+        Raise TokenType on demurral.
+
         :param form: request form on which to operate
         :return: json response
         """
@@ -1758,7 +1793,7 @@ class Verifier(_BaseAgent):
                 rv = await ResponderClass.process_post(self, form)
                 logger.debug('Verifier.process_post: <<< {}'.format(rv))
                 return rv
-            except NotImplementedError:
+            except TokenType:
                 pass
 
         if form['type'] == 'verification-request':
@@ -1769,6 +1804,5 @@ class Verifier(_BaseAgent):
             logger.debug('Verifier.process_post: <<< {}'.format(rv))
             return rv
 
-        # token-type
         logger.debug('Verifier.process_post: <!< not this form type: {}'.format(form['type']))
-        raise NotImplementedError('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
+        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))

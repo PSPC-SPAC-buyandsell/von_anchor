@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from von_agent.error import JSONValidation, ProxyRelayConfig
+
 import json
 import jsonschema
 
@@ -839,21 +841,21 @@ PROTO_MSG_JSON_SCHEMA = {
 
 def validate(form: dict, proxy_relay: bool = True) -> None:
     """
-    Validate input form; raise ValueError on non-compliance or silently pass.
+    Validate input form; raise JSONValidation on non-compliance or silently pass.
 
     :param form: input form decoded from json
     :param proxy_relay: whether proxy-did is a valid property within form['data']
     """
 
     if 'type' not in form:
-        raise ValueError("Bad form: missing 'type' key")
+        raise JSONValidation("Bad form: missing 'type' key")
     if form['type'] not in PROTO_MSG_JSON_SCHEMA: 
-        raise ValueError("Bad form: type '{}' unsupported".format(form['type']))
+        raise JSONValidation("Bad form: type '{}' unsupported".format(form['type']))
     try:
         if (not proxy_relay) and ('data' in form) and ('proxy-did' in form['data']):
-            raise ValueError('This VON agent does not support form data property [proxy-did]')
+            raise ProxyRelayConfig('Agent is not a proxy relay')
         jsonschema.validate(form, PROTO_MSG_JSON_SCHEMA[form['type']])
     except jsonschema.ValidationError as e:
-        raise ValueError('JSON validation error: {}'.format(e.message))
+        raise JSONValidation('JSON validation error: {}'.format(e.message))
     except jsonschema.SchemaError as e:
-        raise ValueError('JSON schema error: {}'.format(e.message))
+        raise JSONValidation('JSON schema error: {}'.format(e.message))

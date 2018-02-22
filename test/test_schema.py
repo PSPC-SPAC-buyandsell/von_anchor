@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from von_agent.error import SchemaKeySpec, SchemaStoreIndex
 from von_agent.schema import SchemaKey, SchemaStore, schema_key_for
 from von_agent.util import ppjson
 
@@ -57,7 +58,7 @@ async def test_schema_store():
 
     try:
         ss[-1]
-    except KeyError:
+    except SchemaStoreIndex:
         pass
 
 
@@ -75,5 +76,5 @@ async def test_schema_key_for():
         try:
             schema_key_for(x_spec)
             assert False
-        except ValueError:
+        except SchemaKeySpec:
             pass

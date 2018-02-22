@@ -17,6 +17,13 @@ limitations under the License.
 from indy import IndyError
 from indy.error import ErrorCode
 from von_agent.demo_agents import TrustAnchorAgent, SRIAgent, OrgBookAgent, BCRegistrarAgent
+from von_agent.error import (
+    AbsentAttribute,
+    AbsentMasterSecret,
+    ClaimsFocus,
+    JSONValidation,
+    ProxyRelayConfig,
+    TokenType)
 from von_agent.nodepool import NodePool
 from von_agent.proto.proto_util import attr_match, list_schemata, pred_match, pred_match_match, req_attrs
 from von_agent.schema import SchemaKey
@@ -108,7 +115,7 @@ async def test_agents_direct(
     for k in nyms:
         assert 'dest' in nyms[k]
     for k in endpoints:
-        assert 'http://' in endpoints[k]
+        assert 'endpoint' in endpoints[k]
 
     # 3. Publish schema to ledger if not yet present; get from ledger
     S_KEY = {
@@ -702,7 +709,7 @@ async def test_agents_process_forms_local(
                 Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent-wallet'),
                 {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True, 'additional-property': True})
             assert False
-        except ValueError:
+        except JSONValidation:
             pass
 
         async with SRIAgent(  # send endpoint not included in configuration
@@ -740,7 +747,7 @@ async def test_agents_process_forms_local(
                     }
                 })
                 assert False
-            except NotImplementedError:
+            except AbsentAttribute:
                 pass
 
         async with SRIAgent(  # proxy via non-proxy-relay
@@ -759,7 +766,7 @@ async def test_agents_process_forms_local(
             try:
                 await xag.process_post(nym_lookup_form)
                 assert False
-            except ValueError:
+            except ProxyRelayConfig:
                 pass
 
         # TAG DID: V4SG...
@@ -826,7 +833,7 @@ async def test_agents_process_forms_local(
                 }
             })
             assert False
-        except NotImplementedError:
+        except TokenType:
             pass
 
         # 3. Publish schema to ledger if not yet present; get from ledger
@@ -993,7 +1000,7 @@ async def test_agents_process_forms_local(
                     }
                 })
                 assert False
-            except NotImplementedError:
+            except TokenType:
                 pass
 
         # 4. BC Registrar and SRI agents (as Issuers) create, store,  and publish claim def to ledger
@@ -1051,7 +1058,7 @@ async def test_agents_process_forms_local(
 
         try:  # master secret unspecified, ought to fail
             await bcobag.process_post(claim_hello_form[S_KEY['BC']])
-        except ValueError:
+        except AbsentMasterSecret:
             pass
 
         await bcobag.process_post(master_secret_set_form)
@@ -1164,7 +1171,7 @@ async def test_agents_process_forms_local(
                 }
             })
             assert False
-        except ValueError:
+        except ClaimsFocus:
             pass  # carry on: proof supports at most one claim per attribute
 
         print('\n\n== 7 == display BC claims filtered post hoc matching {}: {}'.format(
@@ -1262,7 +1269,7 @@ async def test_agents_process_forms_local(
                 }
             }))
             assert False
-        except ValueError:
+        except ClaimsFocus:
             pass
 
         # 12. SRI agent (as Verifier) verifies proof (by referent)

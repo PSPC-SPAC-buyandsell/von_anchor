@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from von_agent.error import JSONValidation
 from von_agent.nodepool import NodePool
 
 import pytest
@@ -31,7 +32,7 @@ async def test_pool_open(
         try:
             NodePool(pool_name, pool_genesis_txn_path, pool_cfg)
             assert False
-        except ValueError:
+        except JSONValidation:
             pass
 
     p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})

@@ -14,9 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from indy import pool, IndyError
-from indy.error import ErrorCode
-from .validate_config import validate_config
+from indy import pool
+from indy.error import IndyError, ErrorCode
+from von_agent.validate_config import validate_config
 
 import json
 import logging
@@ -105,6 +105,8 @@ class NodePool:
         Explicit entry. Opens pool as configured, for later closure via close().
         For use when keeping pool open across multiple calls.
 
+        Raise any IndyError causing failure to create ledger configuration.
+
         :return: current object
         """
 
@@ -117,7 +119,7 @@ class NodePool:
             if e.error_code == ErrorCode.PoolLedgerConfigAlreadyExistsError:
                 logger.info('Pool ledger config for {} already exists'.format(self.name))
             else:
-                logger.error('NodePool cannot create ledger configuration: indy error code {}'.format(e.error_code))
+                logger.debug('NodePool.open: <!< indy error code {}'.format(e.error_code))
                 raise e
 
         self._handle = await pool.open_pool_ledger(self.name, None)
@@ -129,6 +131,8 @@ class NodePool:
         """
         Context manager exit. Closes pool and deletes its configuration to ensure clean next entry.
         For use in monolithic call opening, using, and closing the pool.
+
+        Raise any IndyError causing failure to create ledger configuration.
 
         :param exc_type:
         :param exc:

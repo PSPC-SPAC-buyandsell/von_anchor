@@ -14,9 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from indy import did, wallet, IndyError
-from indy.error import ErrorCode
-from .validate_config import validate_config
+from indy import did, wallet
+from indy.error import IndyError, ErrorCode
+from von_agent.validate_config import validate_config
 
 import json
 import logging
@@ -123,6 +123,8 @@ class Wallet:
         Context manager entry. Create and open wallet as configured, for closure on context manager exit.
         For use in monolithic call opening, using, and closing wallet.
 
+        Raise any IndyError causing failure to open wallet.
+
         :return: current object
         """
 
@@ -137,6 +139,8 @@ class Wallet:
         """
         Explicit entry. Open wallet as configured, for later closure via close().
         For use when keeping wallet open across multiple calls.
+
+        Raise any IndyError causing failure to open wallet.
 
         :return: current object
         """
@@ -160,7 +164,7 @@ class Wallet:
             if e.error_code == ErrorCode.WalletAlreadyExistsError:
                 logger.info('Opening existing wallet: {}'.format(self.name))
             else:
-                logger.error('Cannot open wallet {}: indy error code {}'.format(self.name, self.e.error_code))
+                logger.debug('Wallet.open: <!< indy error code {}'.format(self.e.error_code))
                 raise
 
         self._handle = await wallet.open_wallet(self.name, json.dumps(cfg) if cfg else None, None)

@@ -17,7 +17,7 @@ limitations under the License.
 from binascii import hexlify, unhexlify
 from copy import deepcopy
 from math import ceil, log
-from .schema import SchemaKey, schema_key_for
+from von_agent.schema import SchemaKey, schema_key_for
 
 import json
 
