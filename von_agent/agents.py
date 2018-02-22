@@ -422,7 +422,7 @@ class _BaseAgent(_AgentCore):
                 if (('endpoint' not in endpoint) or
                     not re.match(
                         CONFIG_JSON_SCHEMA['agent']['properties']['endpoint']['pattern'],
-                        endpoint,
+                        endpoint['endpoint'],
                         re.IGNORECASE)):
                     logger.debug('_BaseAgent._response_from_proxy: <!< no agent found for DID {}'.format(proxy_did))
                     raise ProxyHop('No agent on the ledger has DID {}'.format(proxy_did))
