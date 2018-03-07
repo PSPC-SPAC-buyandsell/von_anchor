@@ -99,8 +99,8 @@ GOOD = {
             'label': 'abcd1234'
         }
     },
-    'claim-hello.proxy': {
-        'type': 'claim-hello',
+    'claim-offer-create.proxy': {
+        'type': 'claim-offer-create',
         'data': {
             'proxy-did': 'abcd1234',
             'schema': {
@@ -108,7 +108,25 @@ GOOD = {
                 'name': 'name',
                 'version': '1.0'
             },
-            'issuer-did': 'abcd1234'
+            'holder-did': 'abcd1234'
+        }
+    },
+    'claim-offer-store.proxy': {
+        'type': 'claim-offer-store',
+        'data': {
+            'proxy-did': 'abcd1234',
+            'claim-offer': {
+                'issuer_did': 'abcd1234',
+                'nonce': '814657117595222711516131',
+                'schema_key': {
+                    'name': 'sri',
+                    'did': 'abcd1234',
+                    'version': '1.0'
+                },
+                'key_correctness_proof': {
+                    'no': 'spec'
+                }
+            }
         }
     },
     'claim-create.proxy': {

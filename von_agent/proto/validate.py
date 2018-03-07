@@ -38,7 +38,7 @@ PROTO_MSG_JSON_SCHEMA = {
                         'type': 'object',
                         'properties': {
                             'did': {
-                                'type': 'string',
+                                'type': 'string'
                             }
                         },
                         'required': ['did'],
@@ -71,10 +71,10 @@ PROTO_MSG_JSON_SCHEMA = {
                         'type': 'object',
                         'properties': {
                             'did': {
-                                'type': 'string',
+                                'type': 'string'
                             },
                             'verkey': {
-                                'type': 'string',
+                                'type': 'string'
                             }
                         },
                         'required': ['did', 'verkey'],
@@ -107,7 +107,7 @@ PROTO_MSG_JSON_SCHEMA = {
                         'type': 'object',
                         'properties': {
                             'did': {
-                                'type': 'string',
+                                'type': 'string'
                             }
                         },
                         'required': ['did'],
@@ -162,13 +162,13 @@ PROTO_MSG_JSON_SCHEMA = {
                         'type': 'object',
                         'properties': {
                             'origin-did': {
-                                'type': 'string',
+                                'type': 'string'
                             },
                             'name': {
-                                'type': 'string',
+                                'type': 'string'
                             },
                             'version': {
-                                'type': 'string',
+                                'type': 'string'
                             },
                         },
                         'required': ['origin-did', 'name', 'version'],
@@ -201,13 +201,13 @@ PROTO_MSG_JSON_SCHEMA = {
                         'type': 'object',
                         'properties': {
                             'origin-did': {
-                                'type': 'string',
+                                'type': 'string'
                             },
                             'name': {
-                                'type': 'string',
+                                'type': 'string'
                             },
                             'version': {
-                                'type': 'string',
+                                'type': 'string'
                             },
                         },
                         'required': ['origin-did', 'name', 'version'],
@@ -247,13 +247,13 @@ PROTO_MSG_JSON_SCHEMA = {
                         'type': 'object',
                         'properties': {
                             'origin-did': {
-                                'type': 'string',
+                                'type': 'string'
                             },
                             'name': {
-                                'type': 'string',
+                                'type': 'string'
                             },
                             'version': {
-                                'type': 'string',
+                                'type': 'string'
                             },
                         },
                         'required': ['origin-did', 'name', 'version'],
@@ -291,13 +291,13 @@ PROTO_MSG_JSON_SCHEMA = {
         'additionalProperties': False
     },
 
-    'claim-hello': {
+    'claim-offer-create': {
         '$schema': 'http://json-schema.org/draft-04/schema',
         'type': 'object',
         'properties': {
             'type': {
                 'type': 'string',
-                'pattern': 'claim-hello'
+                'pattern': 'claim-offer-create'
             },
             'data': {
                 'type': 'object',
@@ -309,23 +309,78 @@ PROTO_MSG_JSON_SCHEMA = {
                         'type': 'object',
                         'properties': {
                             'origin-did': {
-                                'type': 'string',
+                                'type': 'string'
                             },
                             'name': {
-                                'type': 'string',
+                                'type': 'string'
                             },
                             'version': {
-                                'type': 'string',
+                                'type': 'string'
                             },
                         },
                         'required': ['origin-did', 'name', 'version'],
                         'additionalProperties': False
                     },
-                    'issuer-did': {
+                    'holder-did': {
                         'type': 'string'
                     }
                 },
-                'required': ['schema', 'issuer-did'],
+                'required': ['schema', 'holder-did'],
+                'additionalProperties': False
+            }
+        },
+        'required': ['type', 'data'],
+        'additionalProperties': False
+    },
+
+    'claim-offer-store': {
+        '$schema': 'http://json-schema.org/draft-04/schema',
+        'type': 'object',
+        'properties': {
+            'type': {
+                'type': 'string',
+                'pattern': 'claim-offer-store'
+            },
+            'data': {
+                'type': 'object',
+                'properties': {
+                    'proxy-did': {
+                        'type': 'string'
+                    },
+                    'claim-offer': {
+                        'type': 'object',
+                        'properties': {
+                            'issuer_did': {
+                                'type': 'string'
+                            },
+                            'nonce': {
+                                'type': 'string'
+                            },
+                            'schema_key': {
+                                'type': 'object',
+                                'properties': {
+                                    'did': {
+                                        'type': 'string'
+                                    },
+                                    'name': {
+                                        'type': 'string'
+                                    },
+                                    'version': {
+                                        'type': 'string'
+                                    }
+                                },
+                                'required': ['did', 'name', 'version'],
+                                'additionalProperties': False
+                            },
+                            'key_correctness_proof': {
+                                'type': 'object'
+                            }
+                        },
+                        'required': ['issuer_did', 'nonce', 'schema_key', 'key_correctness_proof'],
+                        'additionalProperties': False
+                    }
+                },
+                'required': ['claim-offer'],
                 'additionalProperties': False
             }
         },
@@ -408,13 +463,13 @@ PROTO_MSG_JSON_SCHEMA = {
                             'type': 'object',
                             'properties': {
                                 'origin-did': {
-                                    'type': 'string',
+                                    'type': 'string'
                                 },
                                 'name': {
-                                    'type': 'string',
+                                    'type': 'string'
                                 },
                                 'version': {
-                                    'type': 'string',
+                                    'type': 'string'
                                 },
                             },
                             'required': ['origin-did', 'name', 'version'],
@@ -434,13 +489,13 @@ PROTO_MSG_JSON_SCHEMA = {
                                             'type': 'object',
                                             'properties': {
                                                 'origin-did': {
-                                                    'type': 'string',
+                                                    'type': 'string'
                                                 },
                                                 'name': {
-                                                    'type': 'string',
+                                                    'type': 'string'
                                                 },
                                                 'version': {
-                                                    'type': 'string',
+                                                    'type': 'string'
                                                 },
                                             },
                                             'required': ['origin-did', 'name', 'version'],
@@ -464,13 +519,13 @@ PROTO_MSG_JSON_SCHEMA = {
                                             'type': 'object',
                                             'properties': {
                                                 'origin-did': {
-                                                    'type': 'string',
+                                                    'type': 'string'
                                                 },
                                                 'name': {
-                                                    'type': 'string',
+                                                    'type': 'string'
                                                 },
                                                 'version': {
-                                                    'type': 'string',
+                                                    'type': 'string'
                                                 },
                                             },
                                             'required': ['origin-did', 'name', 'version'],
@@ -514,13 +569,13 @@ PROTO_MSG_JSON_SCHEMA = {
                                     'type': 'object',
                                     'properties': {
                                         'origin-did': {
-                                            'type': 'string',
+                                            'type': 'string'
                                         },
                                         'name': {
-                                            'type': 'string',
+                                            'type': 'string'
                                         },
                                         'version': {
-                                            'type': 'string',
+                                            'type': 'string'
                                         },
                                     },
                                     'required': ['origin-did', 'name', 'version'],
@@ -584,13 +639,13 @@ PROTO_MSG_JSON_SCHEMA = {
                             'type': 'object',
                             'properties': {
                                 'origin-did': {
-                                    'type': 'string',
+                                    'type': 'string'
                                 },
                                 'name': {
-                                    'type': 'string',
+                                    'type': 'string'
                                 },
                                 'version': {
-                                    'type': 'string',
+                                    'type': 'string'
                                 },
                             },
                             'required': ['origin-did', 'name', 'version'],
@@ -610,13 +665,13 @@ PROTO_MSG_JSON_SCHEMA = {
                                             'type': 'object',
                                             'properties': {
                                                 'origin-did': {
-                                                    'type': 'string',
+                                                    'type': 'string'
                                                 },
                                                 'name': {
-                                                    'type': 'string',
+                                                    'type': 'string'
                                                 },
                                                 'version': {
-                                                    'type': 'string',
+                                                    'type': 'string'
                                                 },
                                             },
                                             'required': ['origin-did', 'name', 'version'],
@@ -640,13 +695,13 @@ PROTO_MSG_JSON_SCHEMA = {
                                             'type': 'object',
                                             'properties': {
                                                 'origin-did': {
-                                                    'type': 'string',
+                                                    'type': 'string'
                                                 },
                                                 'name': {
-                                                    'type': 'string',
+                                                    'type': 'string'
                                                 },
                                                 'version': {
-                                                    'type': 'string',
+                                                    'type': 'string'
                                                 },
                                             },
                                             'required': ['origin-did', 'name', 'version'],
@@ -691,13 +746,13 @@ PROTO_MSG_JSON_SCHEMA = {
                                     'type': 'object',
                                     'properties': {
                                         'origin-did': {
-                                            'type': 'string',
+                                            'type': 'string'
                                         },
                                         'name': {
-                                            'type': 'string',
+                                            'type': 'string'
                                         },
                                         'version': {
-                                            'type': 'string',
+                                            'type': 'string'
                                         },
                                     },
                                     'required': ['origin-did', 'name', 'version'],
@@ -744,13 +799,13 @@ PROTO_MSG_JSON_SCHEMA = {
                             'type': 'object',
                             'properties': {
                                 'origin-did': {
-                                    'type': 'string',
+                                    'type': 'string'
                                 },
                                 'name': {
-                                    'type': 'string',
+                                    'type': 'string'
                                 },
                                 'version': {
-                                    'type': 'string',
+                                    'type': 'string'
                                 },
                             },
                             'required': ['origin-did', 'name', 'version'],
@@ -774,13 +829,13 @@ PROTO_MSG_JSON_SCHEMA = {
                                     'type': 'object',
                                     'properties': {
                                         'origin-did': {
-                                            'type': 'string',
+                                            'type': 'string'
                                         },
                                         'name': {
-                                            'type': 'string',
+                                            'type': 'string'
                                         },
                                         'version': {
-                                            'type': 'string',
+                                            'type': 'string'
                                         },
                                     },
                                     'required': ['origin-did', 'name', 'version'],
@@ -849,7 +904,7 @@ def validate(form: dict, proxy_relay: bool = True) -> None:
 
     if 'type' not in form:
         raise JSONValidation("Bad form: missing 'type' key")
-    if form['type'] not in PROTO_MSG_JSON_SCHEMA: 
+    if form['type'] not in PROTO_MSG_JSON_SCHEMA:
         raise JSONValidation("Bad form: type '{}' unsupported".format(form['type']))
     try:
         if (not proxy_relay) and ('data' in form) and ('proxy-did' in form['data']):

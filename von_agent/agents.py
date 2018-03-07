@@ -257,7 +257,9 @@ class _AgentCore:
         req_json = await ledger.build_get_attrib_request(
             self.did,
             did,
-            'endpoint')
+            'endpoint',
+            None,
+            None)
         resp_json = await ledger.submit_request(self.pool.handle, req_json)
         await asyncio.sleep(0)
 
@@ -531,7 +533,8 @@ class _BaseAgent(_AgentCore):
                 'agent-nym-send',
                 'schema-send',
                 'claim-def-send',
-                'claim-hello',
+                'claim-offer-create',
+                'claim-offer-store',
                 'claim-create',
                 'claim-store',
                 'claim-request',
@@ -847,6 +850,28 @@ class Issuer(Origin):
         logger.debug('Issuer.send_claim_def: <<< {}'.format(rv))
         return rv
 
+    async def create_claim_offer(self, schema_json: str, holder_prover_did: str) -> str:
+        """
+        Create claim offer as Issuer for given schema and agent on specified DID.
+
+        :param schema_json: schema as it appears on ledger via get_schema()
+        :return: json claim offer for use in storing claims at HolderProver.
+        """
+
+        logger = logging.getLogger(__name__)
+        logger.debug('Issuer.create_claim_offer: >>> schema_json: {}, holder_prover_did: {}'.format(
+            schema_json,
+            holder_prover_did))
+
+        rv = await anoncreds.issuer_create_claim_offer(
+            self.wallet.handle,
+            schema_json,
+            self.did,
+            holder_prover_did)
+
+        logger.debug('Issuer.create_claim_offer: <<< {}'.format(rv))
+        return rv
+
     async def create_claim(self, claim_req_json: str, claim: dict) -> (str, str):
         """
         Create claim as Issuer out of claim request and dict of key:[value, encoding] entries
@@ -898,15 +923,19 @@ class Issuer(Origin):
                 pass
 
         if form['type'] == 'claim-def-send':
-            # it's agent-local, carry on (no use case for proxying)
             schema_json = await self.get_schema(schema_key_for(form['data']['schema']))
             await self.send_claim_def(schema_json)
             rv = json.dumps({})
             logger.debug('Issuer.process_post: <<< {}'.format(rv))
             return rv
 
+        elif form['type'] == 'claim-offer-create':
+            schema_json = await self.get_schema(schema_key_for(form['data']['schema']))
+            rv = await self.create_claim_offer(schema_json, form['data']['holder-did'])  # claim offer json
+            logger.debug('Issuer.process_post: <<< {}'.format(rv))
+            return rv
+
         elif form['type'] == 'claim-create':
-            # it's agent-local, carry on (no use case for proxying)
             _, rv = await self.create_claim(
                 json.dumps(form['data']['claim-req']),
                 {k:
@@ -976,50 +1005,29 @@ class HolderProver(_BaseAgent):
         self._master_secret = master_secret
         logger.debug('HolderProver.create_master_secret: <<<')
 
-    async def store_claim_offer(self, issuer_did: str, s_key: SchemaKey) -> None:
+    async def store_claim_req(self, claim_offer_json: str, claim_def_json: str) -> str:
         """
-        Store claim offer in wallet as HolderProver.
-
-        :param issuer_did: DID of claim issuer
-        :param s_key: schema key (origin DID, name, version)
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.store_claim_offer: >>> issuer_did: {}, s_key: {}'.format(issuer_did, s_key))
-
-        await anoncreds.prover_store_claim_offer(
-            self.wallet.handle,
-            json.dumps({
-                'issuer_did': issuer_did,
-                'schema_key': {
-                    'did': s_key.origin_did,
-                    'name': s_key.name,
-                    'version': s_key.version
-                }
-            }))
-
-        logger.debug('HolderProver.store_claim_offer: <<<')
-
-
-    async def store_claim_req(self, issuer_did: str, claim_def_json: str) -> str:
-        """
-        Create claim request as HolderProver and store in wallet.
+        Store claim offer and create claim request as HolderProver and store in wallet.
 
         Raise AbsentMasterSecret if master secret not set.
 
-        :param issuer_did: claim issuer DID
+        :param claim_offer_json: claim offer json
         :param claim_def_json: claim definition json as retrieved from ledger via get_claim_def()
         :return: claim request json as stored in wallet
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.store_claim_req: >>> issuer_did: {}, claim_def_json: {}'.format(
-            issuer_did,
+        logger.debug('HolderProver.store_claim_req: >>> claim_offer_json: {}, claim_def_json: {}'.format(
+            claim_offer_json,
             claim_def_json))
 
         if self._master_secret is None:
             logger.debug('HolderProver.store_claim_req: <!< master secret not set')
             raise AbsentMasterSecret('Master secret is not set')
+
+        await anoncreds.prover_store_claim_offer(
+            self.wallet.handle,
+            claim_offer_json)
 
         schema_seq_no = json.loads(claim_def_json)['ref']  # = schema seq no in claim def
         await self.get_schema(schema_seq_no)  # update schema store if need be
@@ -1027,14 +1035,7 @@ class HolderProver(_BaseAgent):
         rv = await anoncreds.prover_create_and_store_claim_req(
             self.wallet.handle,
             self.did,
-            json.dumps({
-                'issuer_did': issuer_did,
-                'schema_key': {
-                    'did': s_key.origin_did,
-                    'name': s_key.name,
-                    'version': s_key.version
-                }
-            }),
+            claim_offer_json,
             claim_def_json,
             self._master_secret)
 
@@ -1427,15 +1428,14 @@ class HolderProver(_BaseAgent):
             logger.debug('HolderProver.process_post: <<< {}'.format(rv))
             return rv
 
-        elif form['type'] == 'claim-hello':
+        elif form['type'] == 'claim-offer-store':
             # base listening agent code handles all proxied requests: it's agent-local, carry on
-            s_key = schema_key_for(form['data']['schema'])
-            issuer_did = form['data']['issuer-did']
+            s_key = schema_key_for(form['data']['claim-offer']['schema_key'])
+            issuer_did = form['data']['claim-offer']['issuer_did']
             schema_json = await self.get_schema(s_key)
             schema = json.loads(schema_json)
-            await self.store_claim_offer(issuer_did, s_key)
             claim_def_json = await self.get_claim_def(schema['seqNo'], issuer_did)
-            rv = await self.store_claim_req(issuer_did, claim_def_json)
+            rv = await self.store_claim_req(json.dumps(form['data']['claim-offer']), claim_def_json)
 
             logger.debug('HolderProver.process_post: <<< {}'.format(rv))
             return rv

@@ -176,6 +176,7 @@ async def test_agents_direct(
     # index by SchemaKey
     schema_json = {}
     schema = {}
+    claim_offer_json = {}
     claim_def_json = {}
     claim_def = {}
     claim_data = {}
@@ -210,7 +211,7 @@ async def test_agents_direct(
     assert not json.loads(await did2ag[S_KEY['BC'].origin_did].send_schema(
         json.dumps(schema_data[S_KEY['BC']])))  # forbid multiple write of multiple schema on same key
 
-    # 4. BC Registrar and SRI agents (as Issuers) create, store, and publish claim definitions to ledger
+    # 4. BC Registrar and SRI agents (Issuers) create, store, publish claim definitions to ledger; create claim offers
     non_claim_def_json = await bcobag.get_claim_def(999999, bcrag.did)  # ought not exist
     assert not json.loads(non_claim_def_json)
 
@@ -221,7 +222,7 @@ async def test_agents_direct(
             schema[s_key]['seqNo'],
             s_key.origin_did)  # ought to exist now
         claim_def[s_key] = json.loads(claim_def_json[s_key])
-        print('\n\n== 3.{} == Claim def [{} v{}]: {}'.format(
+        print('\n\n== 3.{}.0 == Claim def [{} v{}]: {}'.format(
             i,
             s_key.name,
             s_key.version,
@@ -230,6 +231,15 @@ async def test_agents_direct(
 
         repeat_claim_def = json.loads(await did2ag[s_key.origin_did].send_claim_def(schema_json[s_key]))
         assert repeat_claim_def  # check idempotence and non-crashing on duplicate claim-def send
+
+        claim_offer_json[s_key] = await did2ag[s_key.origin_did].create_claim_offer(
+            schema_json[s_key],
+            holder_prover[s_key.origin_did].did)
+        print('\n\n== 3.{}.1 == Claim offer [{} v{}]: {}'.format(
+            i,
+            s_key.name,
+            s_key.version,
+            ppjson(claim_offer_json[s_key])))
         i += 1
 
     # 5. Setup master secrets, claim reqs at HolderProver agents
@@ -242,9 +252,9 @@ async def test_agents_direct(
 
     i = 0
     for s_key in schema_data:
-        await holder_prover[s_key.origin_did].store_claim_offer(s_key.origin_did, s_key)
+        # await holder_prover[s_key.origin_did].store_claim_offer(claim_offer_json[s_key])
         claim_req_json[s_key] = await holder_prover[s_key.origin_did].store_claim_req(
-            s_key.origin_did,
+            claim_offer_json[s_key],
             claim_def_json[s_key])
         claim_req[s_key] = json.loads(claim_req_json[s_key])
         print('\n\n== 4.{} == Claim req [{} v{}]: {}'.format(
@@ -896,6 +906,7 @@ async def test_agents_process_forms_local(
         schema_lookup_form = {}
         schema_json = {}
         schema = {}
+        claim_offer_json = {}
         claim_def_json = {}
         claim_def = {}
         claim_data = {}
@@ -1021,7 +1032,7 @@ async def test_agents_process_forms_local(
                 schema[s_key]['seqNo'],
                 s_key.origin_did)  # ought to exist now (short-circuit to low-level API)
             claim_def[s_key] = json.loads(claim_def_json[s_key])
-            print('\n\n== 3.{} == Claim def [{} v{}]: {}'.format(
+            print('\n\n== 3.{}.0 == Claim def [{} v{}]: {}'.format(
                 i,
                 s_key.name,
                 s_key.version,
@@ -1033,6 +1044,24 @@ async def test_agents_process_forms_local(
                 schema[s_key]['seqNo'],
                 s_key.origin_did))  # check idempotence and non-crashing on duplicate claim-def send
             assert repeat_claim_def
+
+            claim_offer_create_form = {
+                'type': 'claim-offer-create',
+                'data': {
+                    'schema': {
+                        'origin-did': s_key.origin_did,
+                        'name': s_key.name,
+                        'version': s_key.version
+                    },
+                    'holder-did': holder_prover[s_key.origin_did].did
+                }
+            }
+            claim_offer_json[s_key] = await did2ag[s_key.origin_did].process_post(claim_offer_create_form)
+            print('\n\n== 3.{}.1 == Claim offer [{} v{}]: {}'.format(
+                i,
+                s_key.name,
+                s_key.version,
+                ppjson(claim_offer_json[s_key])))
             i += 1
 
         # 5. Setup master secrets, claim reqs at HolderProver agents
@@ -1042,22 +1071,17 @@ async def test_agents_process_forms_local(
                 'label': 'maestro'
             }
         }
-        claim_hello_form = {
+        claim_offer_store_form = {
             s_key: {
-                'type': 'claim-hello',
+                'type': 'claim-offer-store',
                 'data': {
-                    'issuer-did': s_key.origin_did,
-                    'schema': {
-                        'origin-did': s_key.origin_did,
-                        'name': s_key.name,
-                        'version': s_key.version
-                    }
+                    'claim-offer': json.loads(claim_offer_json[s_key])
                 }
             } for s_key in schema_data
         }
 
         try:  # master secret unspecified, ought to fail
-            await bcobag.process_post(claim_hello_form[S_KEY['BC']])
+            await bcobag.process_post(claim_offer_store_form[S_KEY['BC']])
         except AbsentMasterSecret:
             pass
 
@@ -1074,7 +1098,7 @@ async def test_agents_process_forms_local(
 
         i = 0
         for s_key in schema_data:
-            claim_req_json[s_key] = await holder_prover[s_key.origin_did].process_post(claim_hello_form[s_key])
+            claim_req_json[s_key] = await holder_prover[s_key.origin_did].process_post(claim_offer_store_form[s_key])
             claim_req[s_key] = json.loads(claim_req_json[s_key])
             print('\n\n== 4.{} == claim req [{}]: {}'.format(i, s_key, ppjson(claim_req[s_key])))
             i += 1
