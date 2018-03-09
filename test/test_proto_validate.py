@@ -36,7 +36,18 @@ GOOD = {
             'proxy-did': 'abcd1234',
             'agent-nym': {
                 'did': 'abcd1234',
-                'verkey': 'abcd234'
+                'verkey': 'abcd1234'
+            }
+        }
+    },
+    'agent-nym-send-alias.proxy': {
+        'type': 'agent-nym-send',
+        'data': {
+            'proxy-did': 'abcd1234',
+            'agent-nym': {
+                'did': 'abcd1234',
+                'verkey': 'abcd1234',
+                'alias': 'bob'
             }
         }
     },
@@ -426,11 +437,11 @@ BAD = {
 async def test_validate():
     for key in GOOD:
         message_type = GOOD[key]['type']
-        print('\n== Validating good {} message'.format(message_type))
+        print('\n== Validating good {} message on key {}'.format(message_type, key))
         validate(GOOD[key])
         if '.proxy' in key:
             try:
-                print('== Validating bad {} message with prohibited proxy-did'.format(message_type))
+                print('== Validating bad {} message on key {} with prohibited proxy-did'.format(message_type, key))
                 validate(GOOD[key], False)
                 assert False
             except ProxyRelayConfig:

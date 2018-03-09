@@ -20,17 +20,6 @@ import json
 import jsonschema
 
 CONFIG_JSON_SCHEMA = {
-    'wallet': {
-        '$schema': 'http://json-schema.org/draft-04/schema',
-        'type': 'object',
-        'properties': {
-            'auto-remove': {
-                'type': 'boolean'
-            }
-        }
-        # additionalProperties OK, Wallet passes them into indy-sdk wallet instantiation
-    },
-
     'pool': {
         '$schema': 'http://json-schema.org/draft-04/schema',
         'type': 'object',

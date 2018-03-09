@@ -75,6 +75,9 @@ PROTO_MSG_JSON_SCHEMA = {
                             },
                             'verkey': {
                                 'type': 'string'
+                            },
+                            'alias': {
+                                'type': 'string'
                             }
                         },
                         'required': ['did', 'verkey'],

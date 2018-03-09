@@ -55,23 +55,23 @@ async def test_agents_direct(
 
     tag = TrustAnchorAgent(
         p,
-        Wallet(p.name, seed_trustee1, 'trustee-wallet'),
+        Wallet(p.name, seed_trustee1, 'trust-anchor'),
         {'endpoint': 'http://127.0.0.1:8000/api/v0', 'proxy-relay': True})
     sag = SRIAgent(
         p,
-        Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent-wallet'),
+        Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent'),
         {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True})
     pspcobag = OrgBookAgent(
         p,
-        Wallet(p.name, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent-wallet'),
+        Wallet(p.name, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent'),
         {'endpoint': 'http://127.0.0.1:8002/api/v0', 'proxy-relay': True})
     bcobag = OrgBookAgent(
         p,
-        Wallet(p.name, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent-wallet'),
+        Wallet(p.name, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent'),
         {'endpoint': 'http://127.0.0.1:8003/api/v0', 'proxy-relay': True})
     bcrag = BCRegistrarAgent(
         p,
-        Wallet(p.name, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent-wallet'),
+        Wallet(p.name, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent'),
         {'endpoint': 'http://127.0.0.1:8004/api/v0', 'proxy-relay': True})
 
     await tag.open()
@@ -91,7 +91,7 @@ async def test_agents_direct(
     for ag in (tag, sag, pspcobag, bcobag, bcrag):
         did2ag[ag.did] = ag
         if not json.loads(await tag.get_nym(ag.did)):
-            await tag.send_nym(ag.did, ag.verkey)
+            await tag.send_nym(ag.did, ag.verkey, ag.wallet.name)
         if not json.loads(await tag.get_endpoint(ag.did)):
             await ag.send_endpoint()
 
@@ -692,23 +692,23 @@ async def test_agents_process_forms_local(
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True}) as p, (
             TrustAnchorAgent(
                 p,
-                Wallet(p.name, seed_trustee1, 'trustee-wallet'),
+                Wallet(p.name, seed_trustee1, 'trust-anchor'),
                 {'endpoint': 'http://127.0.0.1:8000/api/v0', 'proxy-relay': True})) as tag, (
             SRIAgent(
                 p,
-                Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent-wallet'),
+                Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent'),
                 {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True})) as sag, (
             OrgBookAgent(
                 p,
-                Wallet(p.name, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent-wallet'),
+                Wallet(p.name, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent'),
                 {'endpoint': 'http://127.0.0.1:8002/api/v0', 'proxy-relay': True})) as pspcobag, (
             OrgBookAgent(
                 p,
-                Wallet(p.name, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent-wallet'),
+                Wallet(p.name, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent'),
                 {'endpoint': 'http://127.0.0.1:8003/api/v0', 'proxy-relay': True})) as bcobag, (
             BCRegistrarAgent(
                 p,
-                Wallet(p.name, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent-wallet'),
+                Wallet(p.name, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent'),
                 {'endpoint': 'http://127.0.0.1:8004/api/v0', 'proxy-relay': True})) as bcrag:
 
         assert p.handle is not None
@@ -716,7 +716,7 @@ async def test_agents_process_forms_local(
         try:  # additional property in config
             SRIAgent(
                 p,
-                Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent-wallet'),
+                Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent'),
                 {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True, 'additional-property': True})
             assert False
         except JSONValidation:
@@ -727,7 +727,8 @@ async def test_agents_process_forms_local(
             Wallet(
                 p.name,
                 'SRI-Agent-Non-Proxy0000000000000',
-                'sri-agent-non-proxy-wallet',
+                'sri-agent-non-proxy',
+                None,
                 {'auto-remove': True})) as xag:
             nym_lookup_form = {
                 'type': 'agent-nym-lookup',
@@ -744,7 +745,8 @@ async def test_agents_process_forms_local(
                     'data': {
                         'agent-nym': {
                             'did': xag.did,
-                            'verkey': xag.verkey
+                            'verkey': xag.verkey,
+                            'alias': xag.wallet.name 
                         }
                     }
                 })
@@ -762,7 +764,7 @@ async def test_agents_process_forms_local(
 
         async with SRIAgent(  # proxy via non-proxy-relay
                 p,
-                Wallet(p.name, 'SRI-Agent-Non-Proxy0000000000000', 'sri-agent-non-proxy-wallet', {'auto-remove': True}),
+                Wallet(p.name, 'SRI-Agent-Non-Proxy0000000000000', 'sri-agent-non-proxy', None, {'auto-remove': True}),
                 {'endpoint': 'http://127.0.0.1:8999/api/v0'}) as xag:
             nym_lookup_form = {
                 'type': 'agent-nym-lookup',
@@ -785,7 +787,7 @@ async def test_agents_process_forms_local(
         # BCOBAG DID: Rzra...
         # BCRAG DID: Q4zq...
         print('\n\n== 1 == Agent DIDs: {}'.format(ppjson(
-            {ag.wallet.name.replace('-wallet',''): ag.did for ag in (tag, sag, pspcobag, bcobag, bcrag)})))
+            {ag.wallet.name: ag.did for ag in (tag, sag, pspcobag, bcobag, bcrag)})))
 
         # 2. Publish agent particulars to ledger if not yet present
         did2ag = {}
@@ -838,7 +840,8 @@ async def test_agents_process_forms_local(
                 'data': {
                     'agent-nym': {
                         'did': sag.did,
-                        'verkey': sag.verkey
+                        'verkey': sag.verkey,
+                        'alias': sag.wallet.name
                     }
                 }
             })

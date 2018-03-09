@@ -126,7 +126,7 @@ class NodePool:
 
         logger.debug('NodePool.open: <<<')
         return self
-        
+
     async def __aexit__(self, exc_type, exc, traceback) -> None: 
         """
         Context manager exit. Closes pool and deletes its configuration to ensure clean next entry.

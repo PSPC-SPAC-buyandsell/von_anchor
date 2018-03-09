@@ -31,6 +31,7 @@ class ErrorCode(IntEnum):
     ClaimsFocus = 1003,
     AbsentAttribute = 1004,
     AbsentMasterSecret = 1005,
+    CorruptWallet = 1006,
 
     # Errors to do with schema stores and schema keys
     SchemaStoreIndex = 2000,
@@ -130,6 +131,21 @@ class AbsentAttribute(VonAgentError):
         """
 
         super().__init__(ErrorCode.AbsentAttribute, message)
+
+
+class CorruptWallet(VonAgentError):
+    """
+    Agent wallet is inconsistent with ledger.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.CorruptWallet, message)
 
 
 class AbsentMasterSecret(VonAgentError):

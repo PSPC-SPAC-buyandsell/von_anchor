@@ -616,22 +616,23 @@ class AgentRegistrar(_BaseAgent):
     Mixin for (trust anchor) agent to register agents onto the distributed ledger
     """
 
-    async def send_nym(self, did: str, verkey: str) -> None:
+    async def send_nym(self, did: str, verkey: str, alias: str = None) -> None:
         """
         Method for trust anchor to send input agent's cryptonym (including DID and current verification key) to ledger.
 
         :param did: agent DID to send to ledger
         :param verkey: agent verification key
+        :param alias: optional alias
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('AgentRegistrar.send_nym: >>> did: {}, verkey: {}'.format(did, verkey))
+        logger.debug('AgentRegistrar.send_nym: >>> did: {}, verkey: {}, alias: {}'.format(did, verkey, None))
 
         req_json = await ledger.build_nym_request(
             self.did,
             did,
             verkey,
-            None,
+            alias,
             None)
         await ledger.sign_and_submit_request(
             self.pool.handle,
@@ -668,7 +669,10 @@ class AgentRegistrar(_BaseAgent):
 
         if form['type'] == 'agent-nym-send':
             # base listening agent code handles all proxied requests: it's agent-local, carry on
-            await self.send_nym(form['data']['agent-nym']['did'], form['data']['agent-nym']['verkey'])
+            await self.send_nym(
+                form['data']['agent-nym']['did'],
+                form['data']['agent-nym']['verkey'],
+                form['data']['agent-nym'].get('alias', None))
             rv = json.dumps({})
             logger.debug('AgentRegistrar.process_post: <<< {}'.format(rv))
             return rv
@@ -804,19 +808,12 @@ class Issuer(Origin):
                         schema['data']['name'],
                         schema['data']['version']))
                 else:
-                    logger.warn(
-                        'Issuer wallet has claim def on schema {} version {} not on ledger: resetting wallet'.format(
+                    logger.debug('Issuer.send_claim_def: <!< corrupt wallet {}'.format(self.wallet.name))
+                    raise CorruptWallet(
+                        'Corrupt Issuer wallet ({}) has claim def on schema {} version {} not on ledger'.format(
+                            self.wallet.name,
                             schema['data']['name'],
                             schema['data']['version']))
-                    seed = self.wallet._seed
-                    wallet_name = self.wallet.name
-                    wallet_cfg = self.wallet.cfg
-                    await self.wallet.close()
-                    await self.wallet.remove()
-                    self._wallet = Wallet(self.pool.name, seed, wallet_name, wallet_cfg)
-                    await self.wallet.open()
-
-                    return await self.send_claim_def(schema_json)
             else:
                 logger.debug(
                     'Issuer.send_claim_def: <!< cannot store claim def in wallet {}: indy error code {}'.format(
@@ -1383,9 +1380,12 @@ class HolderProver(_BaseAgent):
         seed = self.wallet._seed
         wallet_name = self.wallet.name
         wallet_cfg = self.wallet.cfg
+        wallet_xtype = self.wallet.xtype
+        wallet_creds = self.wallet.creds
+
         await self.wallet.close()
         await self.wallet.remove()
-        self._wallet = Wallet(self.pool.name, seed, wallet_name, wallet_cfg)
+        self._wallet = Wallet(self.pool.name, seed, wallet_name, wallet_xtype, wallet_cfg, wallet_creds)
         await self.wallet.open()
 
         await self.create_master_secret(self._master_secret)  # carry over master secret to new wallet
