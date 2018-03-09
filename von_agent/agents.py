@@ -20,7 +20,7 @@ from requests import post, HTTPError
 from time import time
 from typing import Set, Union
 
-from von_agent.error import AbsentAttribute, AbsentMasterSecret, ClaimsFocus, ProxyHop, TokenType
+from von_agent.error import AbsentAttribute, AbsentMasterSecret, ClaimsFocus, CorruptWallet, ProxyHop, TokenType
 from von_agent.nodepool import NodePool
 from von_agent.proto.validate import validate as validate_form
 from von_agent.schema import SchemaKey, SchemaStore, schema_key_for
