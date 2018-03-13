@@ -20,6 +20,7 @@ from von_agent.demo_agents import TrustAnchorAgent, SRIAgent, OrgBookAgent, BCRe
 from von_agent.error import (
     AbsentAttribute,
     AbsentMasterSecret,
+    AbsentWallet,
     ClaimsFocus,
     JSONValidation,
     ProxyRelayConfig,
@@ -53,25 +54,33 @@ async def test_agents_direct(
     await p.open()
     assert p.handle
 
+    try:
+        xag = SRIAgent(
+            p,
+            Wallet(p.name, 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', 'x-agent'),
+            {'endpoint': 'http://127.0.0.1:9999/api/v0', 'proxy-relay': True})
+    except AbsentWallet:
+        pass
+
     tag = TrustAnchorAgent(
         p,
-        Wallet(p.name, seed_trustee1, 'trust-anchor'),
+        await Wallet(p.name, seed_trustee1, 'trust-anchor').create(),
         {'endpoint': 'http://127.0.0.1:8000/api/v0', 'proxy-relay': True})
     sag = SRIAgent(
         p,
-        Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent'),
+        await Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent').create(),
         {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True})
     pspcobag = OrgBookAgent(
         p,
-        Wallet(p.name, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent'),
+        await Wallet(p.name, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent').create(),
         {'endpoint': 'http://127.0.0.1:8002/api/v0', 'proxy-relay': True})
     bcobag = OrgBookAgent(
         p,
-        Wallet(p.name, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent'),
+        await Wallet(p.name, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent').create(),
         {'endpoint': 'http://127.0.0.1:8003/api/v0', 'proxy-relay': True})
     bcrag = BCRegistrarAgent(
         p,
-        Wallet(p.name, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent'),
+        await Wallet(p.name, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent').create(),
         {'endpoint': 'http://127.0.0.1:8004/api/v0', 'proxy-relay': True})
 
     await tag.open()
@@ -692,23 +701,23 @@ async def test_agents_process_forms_local(
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True}) as p, (
             TrustAnchorAgent(
                 p,
-                Wallet(p.name, seed_trustee1, 'trust-anchor'),
+                await Wallet(p.name, seed_trustee1, 'trust-anchor').create(),
                 {'endpoint': 'http://127.0.0.1:8000/api/v0', 'proxy-relay': True})) as tag, (
             SRIAgent(
                 p,
-                Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent'),
+                await Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent').create(),
                 {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True})) as sag, (
             OrgBookAgent(
                 p,
-                Wallet(p.name, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent'),
+                await Wallet(p.name, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent').create(),
                 {'endpoint': 'http://127.0.0.1:8002/api/v0', 'proxy-relay': True})) as pspcobag, (
             OrgBookAgent(
                 p,
-                Wallet(p.name, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent'),
+                await Wallet(p.name, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent').create(),
                 {'endpoint': 'http://127.0.0.1:8003/api/v0', 'proxy-relay': True})) as bcobag, (
             BCRegistrarAgent(
                 p,
-                Wallet(p.name, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent'),
+                await Wallet(p.name, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent').create(),
                 {'endpoint': 'http://127.0.0.1:8004/api/v0', 'proxy-relay': True})) as bcrag:
 
         assert p.handle is not None
@@ -716,7 +725,7 @@ async def test_agents_process_forms_local(
         try:  # additional property in config
             SRIAgent(
                 p,
-                Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent'),
+                await Wallet(p.name, 'SRI-Agent-0000000000000000000000', 'sri-agent').create(),
                 {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True, 'additional-property': True})
             assert False
         except JSONValidation:
@@ -724,12 +733,12 @@ async def test_agents_process_forms_local(
 
         async with SRIAgent(  # send endpoint not included in configuration
             p,
-            Wallet(
+            await Wallet(
                 p.name,
                 'SRI-Agent-Non-Proxy0000000000000',
                 'sri-agent-non-proxy',
                 None,
-                {'auto-remove': True})) as xag:
+                {'auto-remove': True}).create()) as xag:
             nym_lookup_form = {
                 'type': 'agent-nym-lookup',
                 'data': {
@@ -764,7 +773,12 @@ async def test_agents_process_forms_local(
 
         async with SRIAgent(  # proxy via non-proxy-relay
                 p,
-                Wallet(p.name, 'SRI-Agent-Non-Proxy0000000000000', 'sri-agent-non-proxy', None, {'auto-remove': True}),
+                await Wallet(
+                    p.name,
+                    'SRI-Agent-Non-Proxy0000000000000',
+                    'sri-agent-non-proxy',
+                    None,
+                    {'auto-remove': True}).create(),
                 {'endpoint': 'http://127.0.0.1:8999/api/v0'}) as xag:
             nym_lookup_form = {
                 'type': 'agent-nym-lookup',

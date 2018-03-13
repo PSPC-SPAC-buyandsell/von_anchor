@@ -37,6 +37,9 @@ class ErrorCode(IntEnum):
     SchemaStoreIndex = 2000,
     SchemaKeySpec = 2001,
 
+    # Errors to do with wallet operation
+    AbsentWallet = 3000,
+
     # JSON validation
     JSONValidation = 9000
 
@@ -191,6 +194,21 @@ class SchemaKeySpec(VonAgentError):
         """
 
         super().__init__(ErrorCode.SchemaKeySpec, message)
+
+
+class AbsentWallet(VonAgentError):
+    """
+    Wallet has not been created (within indy-sdk).
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.AbsentWallet, message)
 
 
 class JSONValidation(VonAgentError):

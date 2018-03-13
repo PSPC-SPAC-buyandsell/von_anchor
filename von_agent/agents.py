@@ -20,7 +20,14 @@ from requests import post, HTTPError
 from time import time
 from typing import Set, Union
 
-from von_agent.error import AbsentAttribute, AbsentMasterSecret, ClaimsFocus, CorruptWallet, ProxyHop, TokenType
+from von_agent.error import (
+    AbsentAttribute,
+    AbsentMasterSecret,
+    AbsentWallet,
+    ClaimsFocus,
+    CorruptWallet,
+    ProxyHop,
+    TokenType)
 from von_agent.nodepool import NodePool
 from von_agent.proto.validate import validate as validate_form
 from von_agent.schema import SchemaKey, SchemaStore, schema_key_for
@@ -41,7 +48,9 @@ class _AgentCore:
 
     def __init__(self, pool: NodePool, wallet: Wallet) -> None:
         """
-        Initializer for agent. Retain input parameters; do not open wallet.
+        Initializer for agent. Retain node pool and wallet.
+
+        Raise AbsentWallet if wallet is not yet created.
 
         :param pool: node pool on which agent operates
         :param wallet: wallet for agent use
@@ -52,6 +61,9 @@ class _AgentCore:
 
         self._pool = pool
         self._wallet = wallet
+        if not self.wallet.created:
+            raise AbsentWallet('Must create wallet {} before creating agent'.format(wallet.name))
+
         self._schema_store = SchemaStore()
 
         logger.debug('_AgentCore.__init__: <<<')
@@ -1385,7 +1397,7 @@ class HolderProver(_BaseAgent):
 
         await self.wallet.close()
         await self.wallet.remove()
-        self._wallet = Wallet(self.pool.name, seed, wallet_name, wallet_xtype, wallet_cfg, wallet_creds)
+        self._wallet = await Wallet(self.pool.name, seed, wallet_name, wallet_xtype, wallet_cfg, wallet_creds).create()
         await self.wallet.open()
 
         await self.create_master_secret(self._master_secret)  # carry over master secret to new wallet

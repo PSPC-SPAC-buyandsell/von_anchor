@@ -16,8 +16,12 @@ limitations under the License.
 
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
+from von_agent.error import AbsentWallet
+
 import json
 import logging
+import sys
+
 
 class Wallet:
     """
@@ -34,7 +38,7 @@ class Wallet:
             creds: dict = None) -> None:
         """
         Initializer for wallet. Store input parameters and create wallet.
-        Does not open until open() or __enter__().
+        Does not open until open() or __aenter__().
 
         :param pool_name: name of pool on which wallet operates
         :param seed: seed for wallet user
@@ -42,14 +46,19 @@ class Wallet:
         :param wallet_type: wallet type str, None for default
         :param cfg: configuration dict, None for default
             i.e., {
-                'auto-remove': bool (default False), whether to remove serialized indy configuration data on close,
-                ... (any other indy configuration data)
+                'auto-remove': bool (default False) - whether to remove serialized indy configuration data on close,
+                ... (more keys) : ... (more types) - any other configuration data to pass through to indy-sdk
             }
         :param creds: wallet credentials dict, None for default
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('Wallet.__init__: >>> pool_name {}, seed [SEED], name {}, cfg {}'.format(pool_name, name, cfg))
+        logger.debug('Wallet.__init__: >>> pool_name {}, seed [SEED], name {}, wallet_type {}, cfg {}, creds {}'.format(
+            pool_name,
+            name,
+            wallet_type,
+            cfg,
+            creds))
 
         self._pool_name = pool_name
         self._seed = seed
@@ -57,9 +66,14 @@ class Wallet:
         self._handle = None
         self._xtype = wallet_type
         self._cfg = cfg or {}
+
+        # indy-sdk refuses extra config settings: pop and retain configuration specific to von_agent
+        self._auto_remove = self._cfg.pop('auto-remove') if self._cfg and 'auto-remove' in self._cfg else False
+
         self._creds = creds or None
         self._did = None
         self._verkey = None
+        self._created = False
 
         logger.debug('Wallet.__init__: <<<')
 
@@ -104,6 +118,16 @@ class Wallet:
         return self._cfg
 
     @property
+    def auto_remove(self) -> dict:
+        """
+        Accessor for auto-remove wallet config setting.
+
+        :return: auto-remove wallet config setting
+        """
+
+        return self._auto_remove
+
+    @property
     def creds(self) -> dict:
         """
         Accessor for wallet credentials.
@@ -143,12 +167,25 @@ class Wallet:
 
         return self._verkey
 
+    @property
+    def created(self) -> str:
+        """
+        Accessor for wallet creation state.
+
+        :return: wallet creation state
+        """
+
+        return self._created
+
+    # on purpose: don't expose seed via a property
+
     async def __aenter__(self) -> 'Wallet':
         """
-        Context manager entry. Create and open wallet as configured, for closure on context manager exit.
+        Context manager entry. Open (created) wallet as configured, for closure on context manager exit.
         For use in monolithic call opening, using, and closing wallet.
 
-        Raise any IndyError causing failure to open wallet.
+        Raise any IndyError causing failure to open wallet, or AbsentWallet on attempt to enter wallet
+        not yet created.
 
         :return: current object
         """
@@ -159,6 +196,56 @@ class Wallet:
         rv = await self.open()
         logger.debug('Wallet.__aenter__: <<<')
         return rv
+
+    async def create(self) -> 'Wallet':
+        """
+        Create wallet as configured and store DID, or else re-use any existing configuration.
+        Operation sequence create/store-DID/close does not auto-remove the wallet on close,
+        even if so configured.
+
+        Raise any IndyError causing failure to operate on wallet (create, open, store DID, close).
+
+        :return: current object
+        """
+
+        logger = logging.getLogger(__name__)
+        logger.debug('Wallet.create: >>>')
+
+        try:
+            await wallet.create_wallet(
+                pool_name=self.pool_name,
+                name=self.name,
+                xtype=self.xtype,
+                config=json.dumps(self.cfg) if self.cfg else None,
+                credentials=json.dumps(self.creds) if self.creds else None)
+            self._created = True
+            logger.info('Created wallet {} on handle {}'.format(self.name, self.handle))
+        except IndyError as e:
+            if e.error_code == ErrorCode.WalletAlreadyExistsError:
+                self._created = True
+                logger.info('Wallet already exists: {}'.format(self.name))
+
+                logger.debug('Wallet.create: <<<')
+                return self
+            else:
+                logger.debug('Wallet.create: <!< indy error code {}'.format(self.e.error_code))
+                raise
+
+        self._handle = await wallet.open_wallet(
+            self.name,
+            json.dumps(self.cfg) if self.cfg else None,
+            json.dumps(self.creds) if self.creds else None)
+        logger.info('Opened wallet {} on handle {}'.format(self.name, self.handle))
+
+        (self._did, self._verkey) = await did.create_and_store_my_did(
+            self.handle,
+            json.dumps({'seed': self._seed}))
+        logger.debug('Wallet.open: derived and stored stored {}, {}'.format(self._did, self._verkey))
+
+        await wallet.close_wallet(self.handle)
+
+        logger.debug('Wallet.create: <<<')
+        return self
 
     async def open(self) -> 'Wallet':
         """
@@ -173,35 +260,21 @@ class Wallet:
         logger = logging.getLogger(__name__)
         logger.debug('Wallet.open: >>>')
 
-        cfg = json.loads(json.dumps(self._cfg))  # deep copy
-        if 'auto-remove' in cfg:
-            cfg.pop('auto-remove')
-
-        try:
-            await wallet.create_wallet(
-                pool_name=self.pool_name,
-                name=self.name,
-                xtype=self.xtype,
-                config=json.dumps(cfg) if cfg else None,
-                credentials=json.dumps(self.creds) if self.creds else None)
-            logger.info('Created wallet {} on handle {}'.format(self.name, self.handle))
-        except IndyError as e:
-            if e.error_code == ErrorCode.WalletAlreadyExistsError:
-                logger.info('Opening existing wallet: {}'.format(self.name))
-            else:
-                logger.debug('Wallet.open: <!< indy error code {}'.format(self.e.error_code))
-                raise
+        if not self.created:
+            logger.debug('Wallet.open: <!< absent wallet {}'.format(self.name))
+            raise AbsentWallet('Cannot open wallet {}: not created'.format(self.name))
 
         self._handle = await wallet.open_wallet(
-            self.name,
-            json.dumps(cfg) if cfg else None,
-            json.dumps(self.creds) if self.creds else None)
+                self.name,
+                json.dumps(self.cfg) if self.cfg else None,
+                json.dumps(self.creds) if self.creds else None)
         logger.info('Opened wallet {} on handle {}'.format(self.name, self.handle))
 
-        (self._did, self._verkey) = await did.create_and_store_my_did(  # apparently does no harm to overwrite it
-            self._handle,
+        # populate did, verkey from seed: for now, OK to overwrite DID in wallet BUT key update will present problem
+        (self._did, self._verkey) = await did.create_and_store_my_did(
+            self.handle,
             json.dumps({'seed': self._seed}))
-        logger.debug('Wallet.open: stored {}, {}'.format(self._did, self._verkey))
+        logger.debug('Wallet.open: derived and stored {}, {} from seed'.format(self._did, self._verkey))
 
         logger.debug('Wallet.open: <<<')
         return self
@@ -233,15 +306,16 @@ class Wallet:
         logger.debug('Wallet.close: >>>')
 
         await wallet.close_wallet(self.handle)
-        auto_remove = self.cfg.get('auto-remove', False)
-        if auto_remove:
+        self._handle = None
+
+        if self.auto_remove:
             await self.remove()
 
         logger.debug('Wallet.close: <<<')
 
     async def remove(self) -> None:
         """
-        Remove serialized wallet configuration data if it exists.
+        Remove serialized wallet if it exists.
         """
 
         logger = logging.getLogger(__name__)
