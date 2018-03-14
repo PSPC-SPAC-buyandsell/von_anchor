@@ -16,6 +16,8 @@ limitations under the License.
 
 from pathlib import Path
 
+from indy import IndyError
+from indy.error import ErrorCode
 from von_agent.nodepool import NodePool
 from von_agent.wallet import Wallet
 
@@ -74,7 +76,19 @@ async def test_wallet(
         assert x.did == w_did
         assert x.verkey == w_verkey
 
-    await pool.close()
     assert not path.exists(), 'Wallet path {} still present'.format(path)
     assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
     print('\n\n== 3 == Re-use extant wallet OK')
+
+    # 4. Double-open
+    try:
+        async with await Wallet(pool, seed, name, None, {'auto-remove': True}).create() as w:
+            async with w:
+                assert False
+    except IndyError as e:
+        assert e.error_code == ErrorCode.WalletAlreadyOpenedError
+
+    assert not path.exists(), 'Wallet path {} still present'.format(path)
+    assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
+
+    await pool.close()
