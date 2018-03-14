@@ -17,6 +17,7 @@ limitations under the License.
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
 from von_agent.error import AbsentWallet
+from von_agent.nodepool import NodePool
 
 import json
 import logging
@@ -30,7 +31,7 @@ class Wallet:
 
     def __init__(
             self,
-            pool_name: str,
+            pool: NodePool,
             seed: str,
             name: str,
             wallet_type: str = None,
@@ -40,7 +41,7 @@ class Wallet:
         Initializer for wallet. Store input parameters and create wallet.
         Does not open until open() or __aenter__().
 
-        :param pool_name: name of pool on which wallet operates
+        :param pool: node pool on which wallet operates
         :param seed: seed for wallet user
         :param name: name of the wallet
         :param wallet_type: wallet type str, None for default
@@ -53,21 +54,21 @@ class Wallet:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('Wallet.__init__: >>> pool_name {}, seed [SEED], name {}, wallet_type {}, cfg {}, creds {}'.format(
-            pool_name,
+        logger.debug('Wallet.__init__: >>> pool {}, seed [SEED], name {}, wallet_type {}, cfg {}, creds {}'.format(
+            pool,
             name,
             wallet_type,
             cfg,
             creds))
 
-        self._pool_name = pool_name
+        self._pool = pool
         self._seed = seed
         self._name = name
         self._handle = None
         self._xtype = wallet_type
         self._cfg = cfg or {}
 
-        # indy-sdk refuses extra config settings: pop and retain configuration specific to von_agent
+        # indy-sdk refuses extra config settings: pop and retain configuration specific to von_agent.Wallet
         self._auto_remove = self._cfg.pop('auto-remove') if self._cfg and 'auto-remove' in self._cfg else False
 
         self._creds = creds or None
@@ -78,14 +79,14 @@ class Wallet:
         logger.debug('Wallet.__init__: <<<')
 
     @property
-    def pool_name(self) -> str:
+    def pool(self) -> NodePool:
         """
-        Accessor for pool name.
+        Accessor for pool.
 
-        :return: pool name
+        :return: pool
         """
 
-        return self._pool_name
+        return self._pool
 
     @property
     def name(self) -> str:
@@ -179,6 +180,24 @@ class Wallet:
 
     # on purpose: don't expose seed via a property
 
+    async def _seed2did(self) -> str:
+        """
+        Derive DID, as per indy-sdk, from seed.
+
+        :return: DID
+        """
+
+        temp_wallet = await Wallet(
+            self.pool,
+            self._seed,
+            '{}.seed2did'.format(self.name),
+            None,
+            {'auto-remove': True}).create()
+
+        rv = temp_wallet.did
+        await temp_wallet.remove()
+        return rv
+
     async def __aenter__(self) -> 'Wallet':
         """
         Context manager entry. Open (created) wallet as configured, for closure on context manager exit.
@@ -213,7 +232,7 @@ class Wallet:
 
         try:
             await wallet.create_wallet(
-                pool_name=self.pool_name,
+                pool_name=self.pool.name,
                 name=self.name,
                 xtype=self.xtype,
                 config=json.dumps(self.cfg) if self.cfg else None,
@@ -222,11 +241,7 @@ class Wallet:
             logger.info('Created wallet {} on handle {}'.format(self.name, self.handle))
         except IndyError as e:
             if e.error_code == ErrorCode.WalletAlreadyExistsError:
-                self._created = True
                 logger.info('Wallet already exists: {}'.format(self.name))
-
-                logger.debug('Wallet.create: <<<')
-                return self
             else:
                 logger.debug('Wallet.create: <!< indy error code {}'.format(self.e.error_code))
                 raise
@@ -237,10 +252,16 @@ class Wallet:
             json.dumps(self.creds) if self.creds else None)
         logger.info('Opened wallet {} on handle {}'.format(self.name, self.handle))
 
-        (self._did, self._verkey) = await did.create_and_store_my_did(
-            self.handle,
-            json.dumps({'seed': self._seed}))
-        logger.debug('Wallet.open: derived and stored stored {}, {}'.format(self._did, self._verkey))
+        if self._created:
+            (self._did, self._verkey) = await did.create_and_store_my_did(
+                self.handle,
+                json.dumps({'seed': self._seed}))
+            logger.debug('Wallet.open: derived and stored stored {}, {} from seed'.format(self._did, self._verkey))
+            # print('\n\n-- W.0: {} created did, {}, key {}'.format(self.name, self._did, self._verkey))
+        else:
+            self._created = True
+            self._did = await self._seed2did()
+            self._verkey = await did.key_for_did(self.pool.handle, self.handle, self.did)
 
         await wallet.close_wallet(self.handle)
 
@@ -265,16 +286,14 @@ class Wallet:
             raise AbsentWallet('Cannot open wallet {}: not created'.format(self.name))
 
         self._handle = await wallet.open_wallet(
-                self.name,
-                json.dumps(self.cfg) if self.cfg else None,
-                json.dumps(self.creds) if self.creds else None)
+            self.name,
+            json.dumps(self.cfg) if self.cfg else None,
+            json.dumps(self.creds) if self.creds else None)
         logger.info('Opened wallet {} on handle {}'.format(self.name, self.handle))
 
-        # populate did, verkey from seed: for now, OK to overwrite DID in wallet BUT key update will present problem
-        (self._did, self._verkey) = await did.create_and_store_my_did(
-            self.handle,
-            json.dumps({'seed': self._seed}))
-        logger.debug('Wallet.open: derived and stored {}, {} from seed'.format(self._did, self._verkey))
+        self._did = await self._seed2did()
+        self._verkey = await did.key_for_did(self.pool.handle, self.handle, self.did)
+        # print('\n\n-- W.1: {} assigned from prior did, {}, key {}'.format(self.name, self._did, self._verkey))
 
         logger.debug('Wallet.open: <<<')
         return self
@@ -337,6 +356,6 @@ class Wallet:
         
         return '{}({}, [SEED], {}, {})'.format(
             self.__class__.__name__,
-            self.pool_name,
+            self.pool,
             self.name,
             self.cfg)

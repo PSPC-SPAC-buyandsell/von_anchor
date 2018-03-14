@@ -1397,7 +1397,7 @@ class HolderProver(_BaseAgent):
 
         await self.wallet.close()
         await self.wallet.remove()
-        self._wallet = await Wallet(self.pool.name, seed, wallet_name, wallet_xtype, wallet_cfg, wallet_creds).create()
+        self._wallet = await Wallet(self.pool, seed, wallet_name, wallet_xtype, wallet_cfg, wallet_creds).create()
         await self.wallet.open()
 
         await self.create_master_secret(self._master_secret)  # carry over master secret to new wallet

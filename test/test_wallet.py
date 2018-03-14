@@ -37,9 +37,10 @@ async def test_wallet(
     seed = '00000000000000000000000000000000'
     name = 'my-wallet'
     path = Path(path_home, 'wallet', name)
+    path_seed2did = path.with_name('{}.seed2did'.format(path.name))
 
     # 1. Configuration with auto-remove set
-    w = Wallet(pool.name, seed, name, None, {'auto-remove': True})
+    w = Wallet(pool, seed, name, None, {'auto-remove': True})
     await w.create()
     assert path.exists(), 'Wallet path {} not present'.format(path)
     await w.open()
@@ -47,12 +48,14 @@ async def test_wallet(
     assert w.verkey
     await w.close()
     assert not path.exists(), 'Wallet path {} still present'.format(path)
+    assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
     print('\n\n== 1 == New wallet with auto-remove OK')
 
     # 2. Default configuration (auto-remove=False)
-    w = Wallet(pool.name, seed, name)
+    w = Wallet(pool, seed, name)
     await w.create()
     assert path.exists(), 'Wallet path {} not present'.format(path)
+    assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
 
     await w.open()
     assert w.did
@@ -60,10 +63,11 @@ async def test_wallet(
     (w_did, w_verkey) = (w.did, w.verkey)
     await w.close()
     assert path.exists(), 'Wallet path {} not present'.format(path)
+    assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
     print('\n\n== 2 == New wallet with default config (no auto-remove) OK')
 
     # 3. Make sure wallet opens from extant file
-    x = Wallet(pool.name, seed, name, None, {'auto-remove': True})
+    x = Wallet(pool, seed, name, None, {'auto-remove': True})
     await x.create()
 
     async with x:
@@ -72,4 +76,5 @@ async def test_wallet(
 
     await pool.close()
     assert not path.exists(), 'Wallet path {} still present'.format(path)
+    assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
     print('\n\n== 3 == Re-use extant wallet OK')
