@@ -20,6 +20,7 @@ from indy import IndyError
 from indy.error import ErrorCode
 from von_agent.nodepool import NodePool
 from von_agent.wallet import Wallet
+from von_agent.error import ClosedPool
 
 import pytest
 
@@ -33,6 +34,7 @@ async def test_wallet(
     path_home):
 
     pool = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
+
     await pool.open()
     assert pool.handle is not None
 
@@ -92,3 +94,14 @@ async def test_wallet(
     assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
 
     await pool.close()
+
+    # 5. Pool closed
+    try:
+        x = await Wallet(pool, seed, name, None, {'auto-remove': True}).create()
+        await x.open()
+        assert False
+    except ClosedPool:
+        pass
+    assert not path.exists(), 'Wallet path {} still present'.format(path)
+    assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
+    print('\n\n== 4 == Error cases error as expected')

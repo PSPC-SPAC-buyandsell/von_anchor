@@ -40,6 +40,9 @@ class ErrorCode(IntEnum):
     # Errors to do with wallet operation
     AbsentWallet = 3000,
 
+    # Errors to do with node pool operation
+    ClosedPool = 4000,
+
     # JSON validation
     JSONValidation = 9000
 
@@ -209,6 +212,21 @@ class AbsentWallet(VonAgentError):
         """
 
         super().__init__(ErrorCode.AbsentWallet, message)
+
+
+class ClosedPool(VonAgentError):
+    """
+    Pool needs to be open.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.ClosedPool, message)
 
 
 class JSONValidation(VonAgentError):
