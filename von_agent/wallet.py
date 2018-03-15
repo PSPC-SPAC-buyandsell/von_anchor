@@ -76,6 +76,7 @@ class Wallet:
         self._verkey = None
         self._created = False
 
+        logger.warn('.. Wallet {} init complete on pool {}={}'.format(self.name, self.pool.handle, self.pool.name))
         logger.debug('Wallet.__init__: <<<')
 
     @property
@@ -231,6 +232,10 @@ class Wallet:
         logger.debug('Wallet.create: >>>')
 
         try:
+            logger.warn('.. Wallet {} create() trying indy-sdk create_wallet on pool {}={}'.format(
+                self.name,
+                self.pool.handle,
+                self.pool.name))
             await wallet.create_wallet(
                 pool_name=self.pool.name,
                 name=self.name,
@@ -238,10 +243,11 @@ class Wallet:
                 config=json.dumps(self.cfg) if self.cfg else None,
                 credentials=json.dumps(self.creds) if self.creds else None)
             self._created = True
-            logger.info('Created wallet {} on handle {}'.format(self.name, self.handle))
+            logger.info('Created wallet {}'.format(self.name))
         except IndyError as e:
             if e.error_code == ErrorCode.WalletAlreadyExistsError:
                 logger.info('Wallet already exists: {}'.format(self.name))
+                logger.warn('.. Wallet already exists: {}'.format(self.name))
             else:
                 logger.debug('Wallet.create: <!< indy error code {}'.format(self.e.error_code))
                 raise
@@ -251,6 +257,11 @@ class Wallet:
             json.dumps(self.cfg) if self.cfg else None,
             json.dumps(self.creds) if self.creds else None)
         logger.info('Opened wallet {} on handle {}'.format(self.name, self.handle))
+        logger.warn('.. Wallet {} create() done indy-sdk open_wallet now pool {}={}, wallet-handle={}'.format(
+            self.name,
+            self.pool.handle,
+            self.pool.name,
+            self.handle))
 
         if self._created:
             (self._did, self._verkey) = await did.create_and_store_my_did(
@@ -258,10 +269,28 @@ class Wallet:
                 json.dumps({'seed': self._seed}))
             logger.debug('Wallet.open: derived and stored stored {}, {} from seed'.format(self._did, self._verkey))
             # print('\n\n-- W.0: {} created did, {}, key {}'.format(self.name, self._did, self._verkey))
+            logger.warn('.. Wallet {} create() just created+opened new wallet, now pool {}={}, wallet-handle={}'.format(
+                self.name,
+                self.pool.handle,
+                self.pool.name,
+                self.handle))
         else:
             self._created = True
+            logger.warn('.. Wallet {} create() re-using existing wallet, now pool {}={}, wallet-handle={}'.format(
+                self.name,
+                self.pool.handle,
+                self.pool.name,
+                self.handle))
             self._did = await self._seed2did()
+            logger.warn('.. Wallet {} create() used seed2did: {} -> {}, have pool {}={}, wallet-handle={}'.format(
+                self.name,
+                self._seed,
+                self.did,
+                self.pool.handle,
+                self.pool.name,
+                self.handle))
             self._verkey = await did.key_for_did(self.pool.handle, self.handle, self.did)
+            logger.warn('.. Wallet {} create() got verkey {}'.format(self.name, self.verkey))
 
         await wallet.close_wallet(self.handle)
 
@@ -291,7 +320,18 @@ class Wallet:
             json.dumps(self.creds) if self.creds else None)
         logger.info('Opened wallet {} on handle {}'.format(self.name, self.handle))
 
+        logger.warn('.. Wallet {} open() called indy-sdk open_wallet, now pool {}={}, wallet-handle={}'.format(
+            self.name,
+            self.pool.handle,
+            self.pool.name,
+            self.handle))
         self._did = await self._seed2did()
+        logger.warn('.. Wallet {} open() used seed2did: {} -> {}, have pool {}={}'.format(
+            self.name,
+            self._seed,
+            self.did,
+            self.pool.name,
+            self.handle))
         self._verkey = await did.key_for_did(self.pool.handle, self.handle, self.did)
         # print('\n\n-- W.1: {} assigned from prior did, {}, key {}'.format(self.name, self._did, self._verkey))
 
@@ -325,10 +365,10 @@ class Wallet:
         logger.debug('Wallet.close: >>>')
 
         await wallet.close_wallet(self.handle)
-        self._handle = None
 
         if self.auto_remove:
             await self.remove()
+        self._handle = None
 
         logger.debug('Wallet.close: <<<')
 

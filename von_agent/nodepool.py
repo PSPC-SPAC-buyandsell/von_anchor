@@ -159,6 +159,8 @@ class NodePool:
         if self._cfg and 'auto-remove' in self._cfg and self._cfg['auto-remove']:
             await pool.delete_pool_ledger_config(self.name)
 
+        self._handle = None
+
         logger.debug('NodePool.close: <<<')
 
     def __repr__(self) -> str:

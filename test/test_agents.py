@@ -57,7 +57,7 @@ async def test_agents_direct(
     try:
         xag = SRIAgent(
             p,
-            Wallet(p.name, 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', 'x-agent'),
+            Wallet(p, 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', 'x-agent'),
             {'endpoint': 'http://127.0.0.1:9999/api/v0', 'proxy-relay': True})
     except AbsentWallet:
         pass
