@@ -60,6 +60,7 @@ class Wallet:
             wallet_type,
             cfg,
             creds))
+        assert isinstance(pool, NodePool), 'Wallet {} pool input is a {}, not a NodePool'.format(name, type(pool))
 
         self._pool = pool
         self._seed = seed
@@ -231,6 +232,10 @@ class Wallet:
         logger = logging.getLogger(__name__)
         logger.debug('Wallet.create: >>>')
 
+        assert isinstance(self.pool, NodePool), 'Wallet {} pool input is a {}, not a NodePool'.format(  
+            name,
+            type(self.pool))
+
         try:
             logger.warn('.. Wallet {} create() trying indy-sdk create_wallet on pool {}={}'.format(
                 self.name,
@@ -309,6 +314,10 @@ class Wallet:
 
         logger = logging.getLogger(__name__)
         logger.debug('Wallet.open: >>>')
+
+        assert isinstance(self.pool, NodePool), 'Wallet {} pool input is a {}, not a NodePool'.format(  
+            name,
+            type(self.pool))
 
         if not self.created:
             logger.debug('Wallet.open: <!< absent wallet {}'.format(self.name))
