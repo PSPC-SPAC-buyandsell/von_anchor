@@ -16,7 +16,7 @@ limitations under the License.
 
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
-from von_agent.error import AbsentWallet, ClosedPool
+from von_agent.error import AbsentWallet, ClosedPool, JSONValidation
 from von_agent.nodepool import NodePool
 
 import json
@@ -66,10 +66,17 @@ class Wallet:
         self._name = name
         self._handle = None
         self._xtype = wallet_type
-        self._cfg = cfg or {}
 
-        # indy-sdk refuses extra config settings: pop and retain configuration specific to von_agent.Wallet
+        self._cfg = cfg or {}
+        if not isinstance(self.cfg.get('auto-remove', False), bool):
+            # enterprise wallet development was having trouble with validate_config.validate_config() - check manually
+            raise JSONValidation('JSON validation error on wallet configuration: {}'.format(
+                "'{}' is not of type 'boolean'".format(self.cfg['auto-remove'])))
+
+        # pop and retain configuration specific to von_agent.Wallet, extrinsic to indy-sdk
         self._auto_remove = self._cfg.pop('auto-remove') if self._cfg and 'auto-remove' in self._cfg else False
+        if 'freshness_time' not in self._cfg:
+            self._cfg['freshness_time'] = 0
 
         self._creds = creds or None
         self._did = None
@@ -119,7 +126,7 @@ class Wallet:
         return self._cfg
 
     @property
-    def auto_remove(self) -> dict:
+    def auto_remove(self) -> bool:
         """
         Accessor for auto-remove wallet config setting.
 
@@ -240,7 +247,7 @@ class Wallet:
                 pool_name=self.pool.name,
                 name=self.name,
                 xtype=self.xtype,
-                config=json.dumps(self.cfg) if self.cfg else None,
+                config=json.dumps(self.cfg),
                 credentials=json.dumps(self.creds) if self.creds else None)
             self._created = True
             logger.info('Created wallet {} on pool {}:{}'.format(self.name, self.pool.handle, self.pool.name))
@@ -253,7 +260,7 @@ class Wallet:
 
         self._handle = await wallet.open_wallet(
             self.name,
-            json.dumps(self.cfg) if self.cfg else None,
+            json.dumps(self.cfg),
             json.dumps(self.creds) if self.creds else None)
         logger.info('Opened wallet {} on handle {}'.format(self.name, self.handle))
 
@@ -297,7 +304,7 @@ class Wallet:
 
         self._handle = await wallet.open_wallet(
             self.name,
-            json.dumps(self.cfg) if self.cfg else None,
+            json.dumps(self.cfg),
             json.dumps(self.creds) if self.creds else None)
         logger.info('Opened wallet {} on handle {}'.format(self.name, self.handle))
 
@@ -334,10 +341,12 @@ class Wallet:
         logger = logging.getLogger(__name__)
         logger.debug('Wallet.close: >>>')
 
-        await wallet.close_wallet(self.handle)
-
-        if self.auto_remove:
-            await self.remove()
+        if not self.handle:
+            logger.warn('Abstaining from closing wallet {}: already closed'.format(self.name))
+        else:
+            await wallet.close_wallet(self.handle)
+            if self.auto_remove:
+                await self.remove()
         self._handle = None
 
         logger.debug('Wallet.close: <<<')
@@ -351,7 +360,7 @@ class Wallet:
         logger.debug('Wallet.remove: >>>')
 
         try:
-            await wallet.delete_wallet(self.name, None)
+            await wallet.delete_wallet(self.name, self.creds)
         except Exception:
             logger.info('Abstaining from wallet removal: {}'.format(sys.exc_info()[0]))
 

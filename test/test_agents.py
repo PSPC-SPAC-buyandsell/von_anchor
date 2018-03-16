@@ -56,30 +56,24 @@ async def test_agents_direct(
 
     try:
         xag = SRIAgent(
-            p,
             Wallet(p, 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', 'x-agent'),
             {'endpoint': 'http://127.0.0.1:9999/api/v0', 'proxy-relay': True})
     except AbsentWallet:
         pass
 
     tag = TrustAnchorAgent(
-        p,
         await Wallet(p, seed_trustee1, 'trust-anchor').create(),
         {'endpoint': 'http://127.0.0.1:8000/api/v0', 'proxy-relay': True})
     sag = SRIAgent(
-        p,
         await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri-agent').create(),
         {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True})
     pspcobag = OrgBookAgent(
-        p,
         await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent').create(),
         {'endpoint': 'http://127.0.0.1:8002/api/v0', 'proxy-relay': True})
     bcobag = OrgBookAgent(
-        p,
         await Wallet(p, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent').create(),
         {'endpoint': 'http://127.0.0.1:8003/api/v0', 'proxy-relay': True})
     bcrag = BCRegistrarAgent(
-        p,
         await Wallet(p, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent').create(),
         {'endpoint': 'http://127.0.0.1:8004/api/v0', 'proxy-relay': True})
 
@@ -699,23 +693,18 @@ async def test_agents_process_forms_local(
     # 1. Open pool, init agents, exercise bad configuration and ops inconsistent with configuration
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True}) as p, (
             TrustAnchorAgent(
-                p,
                 await Wallet(p, seed_trustee1, 'trust-anchor').create(),
                 {'endpoint': 'http://127.0.0.1:8000/api/v0', 'proxy-relay': True})) as tag, (
             SRIAgent(
-                p,
                 await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri-agent').create(),
                 {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True})) as sag, (
             OrgBookAgent(
-                p,
                 await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent').create(),
                 {'endpoint': 'http://127.0.0.1:8002/api/v0', 'proxy-relay': True})) as pspcobag, (
             OrgBookAgent(
-                p,
                 await Wallet(p, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent').create(),
                 {'endpoint': 'http://127.0.0.1:8003/api/v0', 'proxy-relay': True})) as bcobag, (
             BCRegistrarAgent(
-                p,
                 await Wallet(p, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent').create(),
                 {'endpoint': 'http://127.0.0.1:8004/api/v0', 'proxy-relay': True})) as bcrag:
 
@@ -723,7 +712,6 @@ async def test_agents_process_forms_local(
 
         try:  # additional property in config
             SRIAgent(
-                p,
                 await Wallet(p, 'X-Agent-XXXXXXXXXXXXXXXXXXXXXXXX', 'x-agent').create(),
                 {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True, 'additional-property': True})
             assert False
@@ -731,13 +719,12 @@ async def test_agents_process_forms_local(
             pass
 
         try:  # double-open
-            SRIAgent(p, await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri-agent').create())
+            SRIAgent(await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri-agent').create())
             assert False
         except IndyError as e:
             assert e.error_code == ErrorCode.WalletAlreadyOpenedError
 
         async with SRIAgent(  # send endpoint not included in configuration
-            p,
             await Wallet(
                 p,
                 'SRI-Agent-Non-Proxy0000000000000',
@@ -777,7 +764,6 @@ async def test_agents_process_forms_local(
                 pass
 
         async with SRIAgent(  # proxy via non-proxy-relay
-                p,
                 await Wallet(
                     p,
                     'SRI-Agent-Non-Proxy0000000000000',

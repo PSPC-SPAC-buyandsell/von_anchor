@@ -20,6 +20,7 @@ from von_agent.validate_config import validate_config
 
 import json
 import logging
+import sys
 
 
 class NodePool:
@@ -48,6 +49,13 @@ class NodePool:
         self._cfg = cfg or {}
         validate_config('pool', self._cfg)
 
+        # pop and retain configuration specific to von_agent.NodePool, extrinsic to indy-sdk
+        self._auto_remove = self._cfg.pop('auto-remove') if self._cfg and 'auto-remove' in self._cfg else False
+        if 'refresh_on_open' not in self._cfg:
+            self._cfg['refresh_on_open'] = True
+        if 'auto_refresh_time' not in self._cfg:
+            self._cfg['auto_refresh_time'] = 0
+
         self._name = name
         self._genesis_txn_path = genesis_txn_path
         self._handle = None
@@ -57,7 +65,7 @@ class NodePool:
     @property
     def name(self) -> str:
         """
-        Accessor for pool name
+        Accessor for pool name.
 
         :return: pool name
         """
@@ -67,7 +75,7 @@ class NodePool:
     @property
     def genesis_txn_path(self) -> str:
         """
-        Accessor for path to genesis transaction file
+        Accessor for path to genesis transaction file.
 
         :return: path to genesis transaction file
         """
@@ -77,12 +85,32 @@ class NodePool:
     @property
     def handle(self) -> int:
         """
-        Accessor for indy-sdk pool handle
+        Accessor for indy-sdk pool handle.
 
         :return: indy-sdk pool handle
         """
 
         return self._handle
+
+    @property
+    def cfg(self) -> dict:
+        """
+        Accessor for pool config.
+
+        :return: pool config
+        """
+
+        return self._cfg
+
+    @property
+    def auto_remove(self) -> bool:
+        """
+        Accessor for auto-remove pool config setting.
+
+        :return: auto-remove pool config setting
+        """
+
+        return self._auto_remove
 
     async def __aenter__(self) -> 'NodePool':
         """
@@ -122,7 +150,7 @@ class NodePool:
                 logger.debug('NodePool.open: <!< indy error code {}'.format(e.error_code))
                 raise e
 
-        self._handle = await pool.open_pool_ledger(self.name, None)
+        self._handle = await pool.open_pool_ledger(self.name, json.dumps(self.cfg))
 
         logger.debug('NodePool.open: <<<')
         return self
@@ -159,12 +187,26 @@ class NodePool:
             logger.warn('Abstaining from closing pool {}: already closed'.format(self.name))
         else:
             await pool.close_pool_ledger(self.handle)
-            if self._cfg and 'auto-remove' in self._cfg and self._cfg['auto-remove']:
-                await pool.delete_pool_ledger_config(self.name)
-
+            if self.auto_remove:
+                await self.remove()
         self._handle = None
 
         logger.debug('NodePool.close: <<<')
+
+    async def remove(self) -> None:
+        """
+        Remove serialized pool info if it exists.
+        """
+
+        logger = logging.getLogger(__name__)
+        logger.debug('NodePool.remove: >>>')
+
+        try:
+            await pool.delete_pool_ledger_config(self.name)
+        except Exception:
+            logger.info('Abstaining from pool removal: {}'.format(sys.exc_info()[0]))
+
+        logger.debug('NodePool.remove: <<<')
 
     def __repr__(self) -> str:
         """

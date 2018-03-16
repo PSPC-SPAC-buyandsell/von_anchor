@@ -46,20 +46,18 @@ class _AgentCore:
     Base class for agent implementing low-level functionality.
     """
 
-    def __init__(self, pool: NodePool, wallet: Wallet) -> None:
+    def __init__(self, wallet: Wallet) -> None:
         """
-        Initializer for agent. Retain node pool and wallet.
+        Initializer for agent. Retain wallet.
 
         Raise AbsentWallet if wallet is not yet created.
 
-        :param pool: node pool on which agent operates
         :param wallet: wallet for agent use
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.__init__: >>> pool: {}, wallet: {}'.format(pool, wallet))
+        logger.debug('_AgentCore.__init__: >>> wallet: {}'.format(wallet))
 
-        self._pool = pool
         self._wallet = wallet
         if not self.wallet.created:
             raise AbsentWallet('Must create wallet {} before creating agent'.format(wallet.name))
@@ -76,7 +74,7 @@ class _AgentCore:
         :return: node pool
         """
 
-        return self._pool
+        return self.wallet.pool
 
     @property
     def wallet(self) -> 'Wallet':
@@ -295,15 +293,6 @@ class _AgentCore:
         :return: representation for current object
         """
 
-        return '{}({}, {})'.format(self.__class__.__name__, repr(self.pool), self.wallet)
-
-    def __str__(self) -> str:
-        """
-        Return informal string identifying current object.
-
-        :return: string identifying current object
-        """
-
         return '{}({})'.format(self.__class__.__name__, self.wallet)
 
 
@@ -317,11 +306,10 @@ class _BaseAgent(_AgentCore):
     and it receives and responds to (json) VON protocol messages (via a VON connector).
     """
 
-    def __init__(self, pool: NodePool, wallet: Wallet, cfg: dict = None) -> None:
+    def __init__(self, wallet: Wallet, cfg: dict = None) -> None:
         """
         Initializer for agent. Retain input parameters; do not open wallet.
 
-        :param pool: node pool on which agent operates
         :param wallet: wallet for agent use
         :param cfg: configuration, None for default with no endpoint and proxy-relay=False;
             e.g., {
@@ -331,9 +319,9 @@ class _BaseAgent(_AgentCore):
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent.__init__: >>> pool: {}, wallet: {}, cfg: {}'.format(pool, wallet, cfg))
+        logger.debug('_BaseAgent.__init__: >>> wallet: {}, cfg: {}'.format(wallet, cfg))
 
-        super().__init__(pool, wallet)
+        super().__init__(wallet)
 
         self._cfg = cfg or {}
         validate_config('agent', self._cfg)
@@ -966,11 +954,10 @@ class HolderProver(_BaseAgent):
     and a Prover produces proof for claims.
     """
 
-    def __init__(self, pool: NodePool, wallet: Wallet, cfg: dict = None) -> None:
+    def __init__(self, wallet: Wallet, cfg: dict = None) -> None:
         """
         Initializer for HolderProver agent. Retain input parameters; do not open wallet.
 
-        :param pool: node pool on which agent operates
         :param wallet: wallet for agent use
         :param cfg: configuration, None for default with no endpoint and proxy-relay=False;
             e.g., {
@@ -980,9 +967,9 @@ class HolderProver(_BaseAgent):
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.__init__: >>> pool: {}, wallet: {}, cfg: {}'.format(pool, wallet, cfg))
+        logger.debug('HolderProver.__init__: >>> wallet: {}, cfg: {}'.format(wallet, cfg))
 
-        super().__init__(pool, wallet, cfg)
+        super().__init__(wallet, cfg)
         self._master_secret = None
 
         logger.debug('HolderProver.__init__: <<<')

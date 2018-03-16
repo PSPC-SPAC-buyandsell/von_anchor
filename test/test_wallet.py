@@ -14,13 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from pathlib import Path
 
 from indy import IndyError
 from indy.error import ErrorCode
+from pathlib import Path
 from von_agent.nodepool import NodePool
 from von_agent.wallet import Wallet
-from von_agent.error import ClosedPool
+from von_agent.error import ClosedPool, JSONValidation
 
 import pytest
 
@@ -28,10 +28,10 @@ import pytest
 #noinspection PyUnusedLocal
 @pytest.mark.asyncio
 async def test_wallet(
+    path_home,
     pool_name,
     pool_genesis_txn_path,
-    pool_genesis_txn_file,
-    path_home):
+    pool_genesis_txn_file):
 
     pool = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
 
@@ -104,4 +104,10 @@ async def test_wallet(
         pass
     assert not path.exists(), 'Wallet path {} still present'.format(path)
     assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
+
+    # 6. Bad config
+    try:
+        Wallet(pool, seed, name, None, {'auto-remove': 'a suffusion of yellow'})
+    except JSONValidation:
+        pass
     print('\n\n== 4 == Error cases error as expected')

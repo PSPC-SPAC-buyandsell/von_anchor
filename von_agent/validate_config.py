@@ -28,7 +28,7 @@ CONFIG_JSON_SCHEMA = {
                 'type': 'boolean'
             }
         },
-        'additionalProperties': False
+        'additionalProperties': True
     },
 
     'agent': {
