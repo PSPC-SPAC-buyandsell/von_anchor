@@ -146,7 +146,7 @@ class Wallet:
         return self._creds
 
     @property
-    def xtype(self) -> dict:
+    def xtype(self) -> str:
         """
         Accessor for wallet type.
 

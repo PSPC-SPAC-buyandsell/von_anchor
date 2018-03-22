@@ -59,9 +59,6 @@ class _AgentCore:
         logger.debug('_AgentCore.__init__: >>> wallet: {}'.format(wallet))
 
         self._wallet = wallet
-        if not self.wallet.created:
-            raise AbsentWallet('Must create wallet {} before creating agent'.format(wallet.name))
-
         self._schema_store = SchemaStore()
 
         logger.debug('_AgentCore.__init__: <<<')
@@ -166,6 +163,39 @@ class _AgentCore:
         await self.wallet.close()
 
         logger.debug('_AgentCore.close: <<<')
+
+    async def _sign_submit(self, req_json: str) -> str:
+        """
+        Sign and submit (json) request to ledger; return (json) result.
+
+        Raise CorruptWallet if existing wallet's pool is no longer extant,
+        or any other responsible indy-sdk exception on failure.
+
+        :param req_json: json of request to sign and submit
+        :return: json response
+        """
+
+        logger = logging.getLogger(__name__)
+        logger.debug('_AgentCore._sign_submit: >>> json: {}'.format(json))
+
+        try:
+            rv_json = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
+            await asyncio.sleep(0)
+        except IndyError as e:
+            if e.error_code == ErrorCode.WalletIncompatiblePoolError:
+                logger.debug('_AgentCore._sign_submit: <!< Corrupt wallet {} is not compatible with pool {}'.format(
+                    self.wallet.name,
+                    self.pool.name))
+                raise CorruptWallet(
+                    'Corrupt wallet {} is not compatible with pool {}'.format(self.wallet.name, self.pool.name))
+            else:
+                logger.debug(   
+                    '_AgentCore._sign_submit: <!<  cannot sign request for ledger, indy error code {}'.format(
+                        self.wallet.name))
+                raise e
+
+        logger.debug('_AgentCore._sign_submit: <<< {}'.format(rv_json))
+        return rv_json
 
     async def get_nym(self, did: str) -> str:
         """
@@ -351,8 +381,7 @@ class _BaseAgent(_AgentCore):
                 }  # indy-sdk needs value itself to be a dict; {'endpoint': '...'} is no good
             })
             req_json = await ledger.build_attrib_request(self.did, self.did, None, raw_json, None)
-            resp_json = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
-            await asyncio.sleep(0)
+            resp_json = await self._sign_submit(req_json)
             resp = json.loads(resp_json)
             if ('op' in resp) and (resp['op'] == 'REQNACK'):
                 logger.error('_BaseAgent.send_endpoint: {}'.format(resp['reason']))
@@ -634,12 +663,7 @@ class AgentRegistrar(_BaseAgent):
             verkey,
             alias,
             None)
-        await ledger.sign_and_submit_request(
-            self.pool.handle,
-            self.wallet.handle,
-            self.did,
-            req_json)
-        await asyncio.sleep(0)
+        await self._sign_submit(req_json)
 
         logger.debug('AgentRegistrar.send_nym: <<<')
 
@@ -713,9 +737,7 @@ class Origin(_BaseAgent):
 
         else:
             req_json = await ledger.build_schema_request(self.did, schema_data_json)
-            resp_json = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
-            await asyncio.sleep(0)
-
+            resp_json = await self._sign_submit(req_json)
             resp = json.loads(resp_json)
             if ('op' in resp) and (resp['op'] == 'REQNACK'):
                 logger.error('_BaseAgent.send_schema: {}'.format(resp['reason']))
@@ -810,14 +832,14 @@ class Issuer(Origin):
                 else:
                     logger.debug('Issuer.send_claim_def: <!< corrupt wallet {}'.format(self.wallet.name))
                     raise CorruptWallet(
-                        'Corrupt Issuer wallet ({}) has claim def on schema {} version {} not on ledger'.format(
+                        'Corrupt Issuer wallet {} has claim def on schema {} version {} not on ledger'.format(
                             self.wallet.name,
                             schema['data']['name'],
                             schema['data']['version']))
             else:
                 logger.debug(
                     'Issuer.send_claim_def: <!< cannot store claim def in wallet {}: indy error code {}'.format(
-                        self.name,
+                        self.wallet.name,
                         self.e.error_code))
                 raise
 
@@ -993,8 +1015,8 @@ class HolderProver(_BaseAgent):
                 logger.info('HolderProver did not create master secret - it already exists')
             else:
                 logger.debug(   
-                    'HolderProver.create_master_secret: <<<  cannot create master secret {}, indy error code {}'.format(
-                        self.name,
+                    'HolderProver.create_master_secret: <!<  cannot create master secret {}, indy error code {}'.format(
+                        self.wallet.name,
                         self.e.error_code))
                 raise
 
