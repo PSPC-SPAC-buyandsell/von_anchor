@@ -873,6 +873,8 @@ class Issuer(Origin):
         """
         Create claim offer as Issuer for given schema and agent on specified DID.
 
+        Raise CorruptWallet if the wallet has no private key for the corresponding claim definition.
+
         :param schema_json: schema as it appears on ledger via get_schema()
         :return: json claim offer for use in storing claims at HolderProver.
         """
@@ -882,11 +884,26 @@ class Issuer(Origin):
             schema_json,
             holder_prover_did))
 
-        rv = await anoncreds.issuer_create_claim_offer(
-            self.wallet.handle,
-            schema_json,
-            self.did,
-            holder_prover_did)
+        rv = None
+
+        try:
+            rv = await anoncreds.issuer_create_claim_offer(
+                self.wallet.handle,
+                schema_json,
+                self.did,
+                holder_prover_did)
+        except IndyError as e:
+            if e.error_code == ErrorCode.WalletNotFoundError:
+                logger.debug(   
+                    'Issuer.create_claim_offer: <!< did not issue claim definition from wallet {}'.format(
+                        self.wallet.name))
+                raise CorruptWallet('Cannot create claim offer: did not issue claim definition from wallet {}'.format(
+                    self.wallet.name))
+            else:
+                logger.debug(   
+                    'Issuer.create_claim_offer: <!<  cannot create claim offer, indy error code {}'.format(
+                        self.e.error_code))
+                raise
 
         logger.debug('Issuer.create_claim_offer: <<< {}'.format(rv))
         return rv
