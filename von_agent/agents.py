@@ -224,9 +224,10 @@ class _AgentCore:
 
     async def get_schema(self, index: Union[SchemaKey, int]) -> str:
         """
-        Get schema from ledger by origin DID, name, and version; return empty production {} for none.
+        Get schema from ledger by transaction number or schema key (origin DID, name, and version).
+        Return empty production {} for no such schema.
 
-        The operation retrieves the schema from the agent's schema store if it has it, and caches it
+        Retrieve the schema from the agent's schema store if it has it; cache it
         en passant if it does not (and if there is a corresponding schema on the ledger).
 
         :param index: schema key (origin DID, name, version) or sequence number
@@ -236,47 +237,46 @@ class _AgentCore:
         logger = logging.getLogger(__name__)
         logger.debug('_AgentCore.get_schema: >>> index: {}'.format(index))
 
+        if self._schema_store.contains(index):
+            logger.info('_AgentCore.get_schema: got schema {} from schema store'.format(index))
+            rv = self._schema_store[index]
+            logger.debug('_AgentCore.get_schema: <<< {}'.format(rv))
+            return json.dumps(rv)
+
         rv = json.dumps({})
-
         if isinstance(index, SchemaKey):
-            if self._schema_store.contains(index):
-                rv = json.dumps(self._schema_store[index])
-            else:
-                req_json = await ledger.build_get_schema_request(
-                    self.did,
-                    index.origin_did,
-                    json.dumps({'name': index.name, 'version': index.version}))
-                resp_json = await ledger.submit_request(self.pool.handle, req_json)
-                await asyncio.sleep(0)
+            req_json = await ledger.build_get_schema_request(
+                self.did,
+                index.origin_did,
+                json.dumps({'name': index.name, 'version': index.version}))
+            resp_json = await ledger.submit_request(self.pool.handle, req_json)
+            await asyncio.sleep(0)
 
-                resp = json.loads(resp_json)
-                if ('op' in resp) and (resp['op'] == 'REQNACK'):
-                    logger.error('_AgentCore.get_schema: {}'.format(resp['reason']))
+            resp = json.loads(resp_json)
+            if ('op' in resp) and (resp['op'] == 'REQNACK'):
+                logger.error('_AgentCore.get_schema: {}'.format(resp['reason']))
+            else:
+                schema = resp['result']
+                data_json = schema['data']  # response result data is double-encoded on the ledger
+                if data_json and 'attr_names' in data_json:
+                    self._schema_store[index] = schema  # schema store indexes by both txn# and schema key en passant
+                    rv = json.dumps(schema)
                 else:
-                    schema = resp['result']
-                    data_json = schema['data']  # response result data is double-encoded on the ledger
-                    if data_json and 'attr_names' in data_json:
-                        self._schema_store[index] = schema
-                        rv = json.dumps(schema)
-                    else:
-                        logger.info('_AgentCore.get_schema: ledger query returned response with no data')
+                    logger.info('_AgentCore.get_schema: ledger query returned response with no data')
 
         elif isinstance(index, int):
-            if self._schema_store.contains(index):
-                rv = json.dumps(self._schema_store[index])
-            else:
-                req_json = await ledger.build_get_txn_request(self.did, index)
-                resp = json.loads(await ledger.submit_request(self.pool.handle, req_json))
-                await asyncio.sleep(0)
+            req_json = await ledger.build_get_txn_request(self.did, index)
+            resp = json.loads(await ledger.submit_request(self.pool.handle, req_json))
+            await asyncio.sleep(0)
 
-                if ('op' in resp) and (resp['op'] == 'REQNACK'):
-                    logger.error('_AgentCore.get_schema: {}'.format(resp['reason']))
-                elif resp['result']['data'] and (resp['result']['data']['type'] == '101'):  # type '101' == schema
-                    # getting it as a transaction misses the 'dest' field: look it up from schema key data
-                    rv = await self.get_schema(SchemaKey(
-                        resp['result']['data']['identifier'],
-                        resp['result']['data']['data']['name'],
-                        resp['result']['data']['data']['version']))
+            if ('op' in resp) and (resp['op'] == 'REQNACK'):
+                logger.error('_AgentCore.get_schema: {}'.format(resp['reason']))
+            elif resp['result']['data'] and (resp['result']['data']['type'] == '101'):  # type '101' == schema
+                # getting it as a transaction misses the 'dest' field: look it up from schema key data
+                rv = await self.get_schema(SchemaKey(
+                    resp['result']['data']['identifier'],
+                    resp['result']['data']['data']['name'],
+                    resp['result']['data']['data']['version']))
 
         logger.debug('_AgentCore.get_schema: <<< {}'.format(rv))
         return rv
@@ -356,6 +356,8 @@ class _BaseAgent(_AgentCore):
         self._cfg = cfg or {}
         validate_config('agent', self._cfg)
 
+        self._claim_def_store = {}
+
         logger.debug('_BaseAgent.__init__: <<<')
 
     @property
@@ -395,9 +397,12 @@ class _BaseAgent(_AgentCore):
 
     async def get_claim_def(self, schema_seq_no: int, issuer_did: str) -> str:
         """
-        Get claim definition from ledger by its parent schema and issuer DID; return
-        empty production {} for none, IndyError with error_code = ErrorCode.LedgerInvalidTransaction
-        for bad request.
+        Get claim definition from ledger by its parent schema transaction number and issuer DID.
+        Return empty production {} for no such claim definition, or IndyError with
+        error_code = ErrorCode.LedgerInvalidTransaction for bad request.
+
+        Retrieve the schema from the agent's claim definition store if it has it; cache it
+        en passant if it does not (and if there is a corresponding claim definition on the ledger).
 
         :param schema_seq_no: schema sequence number on the ledger
         :param issuer_did: (claim def) issuer DID
@@ -408,6 +413,14 @@ class _BaseAgent(_AgentCore):
         logger.debug('_BaseAgent.get_claim_def: >>> schema_seq_no: {}, issuer_did: {}'.format(
             schema_seq_no,
             issuer_did))
+
+        if (schema_seq_no, issuer_did) in self._claim_def_store:
+            logger.info('_BaseAgent.get_claim_def: got claim def for schema ({}, {}) from claim def store'.format(
+                schema_seq_no,
+                issuer_did))
+            rv = self._claim_def_store[(schema_seq_no, issuer_did)]
+            logger.debug('_BaseAgent.get_claim_def: <<< {}'.format(rv))
+            return json.dumps(rv)
 
         rv = json.dumps({})
         req_json = await ledger.build_get_claim_def_txn(
@@ -426,6 +439,7 @@ class _BaseAgent(_AgentCore):
             data = resp['result']['data']
             if 'revocation' in data and data['revocation'] is not None:
                 resp['result']['data']['revocation'] = None  #TODO: support revocation
+            self._claim_def_store[(schema_seq_no, issuer_did)] = resp['result']  # update claim def store
             rv = json.dumps(resp['result'])
         else:
             logger.info('_BaseAgent.get_claim_def: ledger query returned response with no data')

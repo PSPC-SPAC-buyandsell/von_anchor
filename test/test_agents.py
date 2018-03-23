@@ -56,7 +56,7 @@ async def test_agents_direct(
 
     try:
         xag = SRIAgent(
-            Wallet(p, 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', 'x-agent'),
+            Wallet(p, 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', 'xxx'),
             {'endpoint': 'http://127.0.0.1:9999/api/v0', 'proxy-relay': True})
     except AbsentWallet:
         pass
@@ -65,16 +65,16 @@ async def test_agents_direct(
         await Wallet(p, seed_trustee1, 'trust-anchor').create(),
         {'endpoint': 'http://127.0.0.1:8000/api/v0', 'proxy-relay': True})
     sag = SRIAgent(
-        await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri-agent').create(),
+        await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create(),
         {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True})
     pspcobag = OrgBookAgent(
-        await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent').create(),
+        await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create(),
         {'endpoint': 'http://127.0.0.1:8002/api/v0', 'proxy-relay': True})
     bcobag = OrgBookAgent(
-        await Wallet(p, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent').create(),
+        await Wallet(p, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book').create(),
         {'endpoint': 'http://127.0.0.1:8003/api/v0', 'proxy-relay': True})
     bcrag = BCRegistrarAgent(
-        await Wallet(p, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent').create(),
+        await Wallet(p, 'BC-Registrar-Agent-0000000000000', 'bc-registrar').create(),
         {'endpoint': 'http://127.0.0.1:8004/api/v0', 'proxy-relay': True})
 
     await tag.open()
@@ -696,30 +696,30 @@ async def test_agents_process_forms_local(
                 await Wallet(p, seed_trustee1, 'trust-anchor').create(),
                 {'endpoint': 'http://127.0.0.1:8000/api/v0', 'proxy-relay': True})) as tag, (
             SRIAgent(
-                await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri-agent').create(),
+                await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create(),
                 {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True})) as sag, (
             OrgBookAgent(
-                await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book-agent').create(),
+                await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create(),
                 {'endpoint': 'http://127.0.0.1:8002/api/v0', 'proxy-relay': True})) as pspcobag, (
             OrgBookAgent(
-                await Wallet(p, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book-agent').create(),
+                await Wallet(p, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book').create(),
                 {'endpoint': 'http://127.0.0.1:8003/api/v0', 'proxy-relay': True})) as bcobag, (
             BCRegistrarAgent(
-                await Wallet(p, 'BC-Registrar-Agent-0000000000000', 'bc-registrar-agent').create(),
+                await Wallet(p, 'BC-Registrar-Agent-0000000000000', 'bc-registrar').create(),
                 {'endpoint': 'http://127.0.0.1:8004/api/v0', 'proxy-relay': True})) as bcrag:
 
         assert p.handle is not None
 
         try:  # additional property in config
             SRIAgent(
-                await Wallet(p, 'X-Agent-XXXXXXXXXXXXXXXXXXXXXXXX', 'x-agent').create(),
+                await Wallet(p, 'X-Agent-XXXXXXXXXXXXXXXXXXXXXXXX', 'xxx').create(),
                 {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True, 'additional-property': True})
             assert False
         except JSONValidation:
             pass
 
         try:  # double-open
-            SRIAgent(await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri-agent').create())
+            SRIAgent(await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create())
             assert False
         except IndyError as e:
             assert e.error_code == ErrorCode.WalletAlreadyOpenedError
@@ -728,7 +728,7 @@ async def test_agents_process_forms_local(
             await Wallet(
                 p,
                 'SRI-Agent-Non-Proxy0000000000000',
-                'sri-agent-non-proxy',
+                'sri-non-proxy',
                 None,
                 {'auto-remove': True}).create()) as xag:
             nym_lookup_form = {
@@ -767,7 +767,7 @@ async def test_agents_process_forms_local(
                 await Wallet(
                     p,
                     'SRI-Agent-Non-Proxy0000000000000',
-                    'sri-agent-non-proxy',
+                    'sri-non-proxy',
                     None,
                     {'auto-remove': True}).create(),
                 {'endpoint': 'http://127.0.0.1:8999/api/v0'}) as xag:
