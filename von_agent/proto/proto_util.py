@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from von_agent.schema import SchemaKey
+from von_agent.schemakey import SchemaKey
 
 SCHEMA_KEY_KEYS = ['origin-did', 'name', 'version']
 PRED_MATCH_MATCH_KEYS = ['attr', 'pred-type', 'value']

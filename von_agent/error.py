@@ -33,15 +33,17 @@ class ErrorCode(IntEnum):
     AbsentMasterSecret = 1005,
     CorruptWallet = 1006,
 
-    # Errors to do with schema stores and schema keys
-    SchemaStoreIndex = 2000,
-    SchemaKeySpec = 2001,
+    # Errors to do with schema keys
+    SchemaKeySpec = 2000,
 
     # Errors to do with wallet operation
     AbsentWallet = 3000,
 
     # Errors to do with node pool operation
     ClosedPool = 4000,
+
+    # Errors to do with caching
+    CacheIndex = 5000,
 
     # JSON validation
     JSONValidation = 9000
@@ -169,21 +171,6 @@ class AbsentMasterSecret(VonAgentError):
         super().__init__(ErrorCode.AbsentMasterSecret, message)
 
 
-class SchemaStoreIndex(VonAgentError):
-    """
-    Schema store has no entry for a given index.
-    """
-
-    def __init__(self, message: str):
-        """
-        Initialize on message.
-
-        :param message: error message
-        """
-
-        super().__init__(ErrorCode.SchemaStoreIndex, message)
-
-
 class SchemaKeySpec(VonAgentError):
     """
     Cannot derive a schema key from a given specification.
@@ -227,6 +214,21 @@ class ClosedPool(VonAgentError):
         """
 
         super().__init__(ErrorCode.ClosedPool, message)
+
+
+class CacheIndex(VonAgentError):
+    """
+    Indexation error on cache for schemata or claim definitions.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.CacheIndex, message)
 
 
 class JSONValidation(VonAgentError):

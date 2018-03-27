@@ -27,7 +27,7 @@ from von_agent.error import (
     TokenType)
 from von_agent.nodepool import NodePool
 from von_agent.proto.proto_util import attr_match, list_schemata, pred_match, pred_match_match, req_attrs
-from von_agent.schema import SchemaKey
+from von_agent.schemakey import SchemaKey
 from von_agent.util import decode, encode, revealed_attrs, claims_for, prune_claims_json, schema_keys_for, ppjson
 from von_agent.wallet import Wallet
 

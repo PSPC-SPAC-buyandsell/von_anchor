@@ -14,52 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from von_agent.error import SchemaKeySpec, SchemaStoreIndex
-from von_agent.schema import SchemaKey, SchemaStore, schema_key_for
+from von_agent.error import SchemaKeySpec
+from von_agent.schemakey import SchemaKey, schema_key_for
 from von_agent.util import ppjson
 
 import pytest
-
-
-#noinspection PyUnusedLocal
-@pytest.mark.asyncio
-async def test_schema_store():
-    N = 5 
-    ss = SchemaStore()
-    s_key = []
-    schema = []
-    for i in range(N):
-        s_key.append(SchemaKey('did.{}'.format(i), 'schema-{}'.format(i//5), '{}'.format(i%5)))
-        schema.append({
-            'seqNo': i,
-            'identifier': s_key[i].origin_did,
-            'data': {
-                'name': s_key[i].name,
-                'version': s_key[i].version
-            }
-        })
-
-    for i in range(N):
-        if i % 2:
-            ss[s_key[i]] = schema[i]
-        else:
-            ss[schema[i]['seqNo']] = schema[i]
-
-    for i in range(N):
-        assert ss.contains(s_key[i])
-        assert ss.contains(schema[i]['seqNo'])
-        assert ss[s_key[i]] == ss[schema[i]['seqNo']]
-
-    assert len(ss.index()) == N
-    assert not ss.contains(-1)
-
-    print(str(ss))
-    print(ppjson(ss.dict()))
-
-    try:
-        ss[-1]
-    except SchemaStoreIndex:
-        pass
 
 
 #noinspection PyUnusedLocal
