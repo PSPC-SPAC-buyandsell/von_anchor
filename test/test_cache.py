@@ -78,7 +78,7 @@ def do(coro):
     return get_loop().run_until_complete(coro)
 
 
-DELAY=3
+DELAY = 3
 async def simulate_get(ser_no, did):
     rv = None
     with claim_def_cache_lock:
