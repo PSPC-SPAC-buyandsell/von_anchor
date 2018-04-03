@@ -854,7 +854,7 @@ class Issuer(Origin):
                 logger.debug(
                     'Issuer.send_claim_def: <!< cannot store claim def in wallet {}: indy error code {}'.format(
                         self.wallet.name,
-                        self.e.error_code))
+                        e.error_code))
                 raise
 
         if not json.loads(rv):  # checking the ledger returned no claim def: send it
@@ -916,7 +916,7 @@ class Issuer(Origin):
             else:
                 logger.debug(   
                     'Issuer.create_claim_offer: <!<  cannot create claim offer, indy error code {}'.format(
-                        self.e.error_code))
+                        e.error_code))
                 raise
 
         logger.debug('Issuer.create_claim_offer: <<< {}'.format(rv))
@@ -1048,7 +1048,7 @@ class HolderProver(_BaseAgent):
                 logger.debug(   
                     'HolderProver.create_master_secret: <!<  cannot create master secret {}, indy error code {}'.format(
                         self.wallet.name,
-                        self.e.error_code))
+                        e.error_code))
                 raise
 
         self._master_secret = master_secret
