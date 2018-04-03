@@ -20,7 +20,7 @@ from requests import post, HTTPError
 from threading import Lock
 from time import time
 from typing import Set, Union
-from von_agent.cache import claim_def_cache, claim_def_cache_lock, schema_cache, schema_cache_lock
+from von_agent.cache import claim_def_cache, schema_cache
 from von_agent.error import (
     AbsentAttribute,
     AbsentMasterSecret,
@@ -238,7 +238,7 @@ class _AgentCore:
         logger.debug('_AgentCore.get_schema: >>> index: {}'.format(index))
 
         rv = json.dumps({})
-        with schema_cache_lock:
+        with schema_cache.lock:
             if schema_cache.contains(index):
                 logger.info('_AgentCore.get_schema: got schema {} from schema cache'.format(index))
                 rv = schema_cache[index]
@@ -414,7 +414,7 @@ class _BaseAgent(_AgentCore):
             issuer_did))
 
         rv = json.dumps({})
-        with claim_def_cache_lock:
+        with claim_def_cache.lock:
             if (schema_seq_no, issuer_did) in claim_def_cache:
                 logger.info('_BaseAgent.get_claim_def: got claim def for schema ({}, {}) from claim def cache'.format(
                     schema_seq_no,

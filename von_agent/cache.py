@@ -25,7 +25,12 @@ import logging
 class SchemaCache:
     """
     Retain schemata and fetch by key (origin_did, name, version) or by sequence number.
+
+    A lock shares access to critical sections as relying code specifies them (e.g., check and get/set).
+    Note that this one lock applies across all instances - the design of this class intends it to be a singleton.
     """
+
+    lock = Lock()
 
     def __init__(self) -> None:
         """
@@ -165,7 +170,16 @@ class SchemaCache:
         return 'SchemaCache({})'.format(self.dict())
 
 
-schema_cache_lock = Lock()
-claim_def_cache_lock = Lock()
+class ClaimDefCache(dict):
+    """
+    Retain claim definitions and fetch by (schema sequence number, issuer DID) tuple.
+
+    A lock shares access to critical sections as relying code specifies them (e.g., check and get/set).
+    Note that this one lock applies across all instances - the design of this class intends it to be a singleton.
+    """
+
+    lock = Lock()
+
+
 schema_cache = SchemaCache()
-claim_def_cache = {}
+claim_def_cache = ClaimDefCache()

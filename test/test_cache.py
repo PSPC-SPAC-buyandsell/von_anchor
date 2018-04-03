@@ -18,7 +18,7 @@ from math import ceil
 from random import shuffle
 from threading import Thread
 from time import time as epoch
-from von_agent.cache import claim_def_cache, claim_def_cache_lock, schema_cache, schema_cache_lock
+from von_agent.cache import claim_def_cache, schema_cache
 from von_agent.error import CacheIndex
 from von_agent.schemakey import SchemaKey
 from von_agent.util import ppjson
@@ -81,7 +81,7 @@ def do(coro):
 DELAY = 3
 async def simulate_get(ser_no, did):
     rv = None
-    with claim_def_cache_lock:
+    with claim_def_cache.lock:
         if (ser_no, did) in claim_def_cache:
             rv = claim_def_cache[(ser_no, did)]
             # print('<< got from cache[{}] = {}'.format((ser_no, did), rv))
