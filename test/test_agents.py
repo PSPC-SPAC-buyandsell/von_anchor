@@ -16,6 +16,10 @@ limitations under the License.
 
 from indy import IndyError
 from indy.error import ErrorCode
+from math import ceil
+from random import choice, shuffle
+from threading import current_thread, Thread
+from time import time as epoch
 from von_agent.demo_agents import TrustAnchorAgent, SRIAgent, OrgBookAgent, BCRegistrarAgent
 from von_agent.error import (
     AbsentAttribute,
@@ -31,6 +35,7 @@ from von_agent.schemakey import SchemaKey
 from von_agent.util import decode, encode, revealed_attrs, claims_for, prune_claims_json, schema_keys_for, ppjson
 from von_agent.wallet import Wallet
 
+import asyncio
 import datetime
 import pytest
 import json
@@ -50,13 +55,13 @@ async def test_agents_direct(
         path_home):
 
     # 1. Open pool, init agents
-    p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
+    p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
     await p.open()
     assert p.handle
 
     try:
         xag = SRIAgent(
-            Wallet(p, 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', 'xxx'),
+            Wallet(p, 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', 'xxx', None, {'auto-remove': True}),
             {'endpoint': 'http://127.0.0.1:9999/api/v0', 'proxy-relay': True})
     except AbsentWallet:
         pass
@@ -691,7 +696,7 @@ async def test_agents_process_forms_local(
         path_home):
 
     # 1. Open pool, init agents, exercise bad configuration and ops inconsistent with configuration
-    async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True}) as p, (
+    async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
             TrustAnchorAgent(
                 await Wallet(p, seed_trustee1, 'trust-anchor').create(),
                 {'endpoint': 'http://127.0.0.1:8000/api/v0', 'proxy-relay': True})) as tag, (
@@ -712,7 +717,7 @@ async def test_agents_process_forms_local(
 
         try:  # additional property in config
             SRIAgent(
-                await Wallet(p, 'X-Agent-XXXXXXXXXXXXXXXXXXXXXXXX', 'xxx').create(),
+                await Wallet(p, 'X-Agent-XXXXXXXXXXXXXXXXXXXXXXXX', 'xxx', None, {'auto-remove': True}).create(),
                 {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True, 'additional-property': True})
             assert False
         except JSONValidation:
@@ -1629,3 +1634,101 @@ async def test_agents_process_forms_local(
         did_json = await bcrag.process_get_did()
         print('\n\n== 35 == BC Registrar agent did: {}'.format(ppjson(did_json)))
         assert json.loads(did_json)
+
+
+def do(coro):
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
+
+
+def get_schema_or_claim_def(agent, schema_key, seq_no, issuer_did):
+    discriminant = hash(current_thread()) % 3
+    if discriminant == 0:
+        result = do(agent.get_schema(seq_no))
+        print('.. Thread {} got schema {} v{} by seq #{}'.format(
+            current_thread(),
+            schema_key.name,
+            schema_key.version,
+            seq_no))
+    elif discriminant == 1:
+        result = do(agent.get_schema(schema_key))
+        print('.. Thread {} got schema {} v{} by key'.format(
+            current_thread(),
+            schema_key.name,
+            schema_key.version))
+    elif discriminant == 2:
+        result = do(agent.get_claim_def(seq_no, issuer_did))
+        print('.. Thread {} got claim def for schema {} v{} by seq #{}'.format(
+            current_thread(),
+            schema_key.name,
+            schema_key.version,
+            seq_no))
+
+
+#noinspection PyUnusedLocal
+@pytest.mark.asyncio
+async def test_cache_locking(pool_name, pool_genesis_txn_path):
+    THREADS = 64
+    threads = []
+
+    async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
+        SRIAgent(await Wallet(
+            p,
+            'SRI-Agent-0000000000000000000000',
+            'sri-0',
+            None,
+            {'auto-remove': True}).create())) as sag0, (
+        SRIAgent(await Wallet(
+            p,
+            'SRI-Agent-1111111111111111111111',
+            'sri-1',
+            None,
+            {'auto-remove': True}).create())) as sag1, (
+        SRIAgent(await Wallet(
+            p,
+            'SRI-Agent-2222222222222222222222',
+            'sri-2',
+            None,
+            {'auto-remove': True}).create())) as sag2:
+
+        sri_did = sag0.did
+        schema_key2seq_no = {
+            SchemaKey(sri_did, 'sri', '1.0'): 0,
+            SchemaKey(sri_did, 'sri', '1.1'): 0,
+            SchemaKey(sri_did, 'green', '1.0'): 0,
+        }
+
+        for s_key in schema_key2seq_no:
+            schema_json = await sag0.get_schema(s_key)  # should exist from prior test
+            seq_no = json.loads(schema_json)['seqNo']
+            schema_key2seq_no[s_key] = seq_no
+            assert isinstance(seq_no, int) and seq_no > 0
+
+        print('\n\n== 1 == Exercising schema and claim def cache locks, SRI agent DID {}'.format(sri_did))
+        agents = [sag0, sag1, sag2]
+
+        epoch_start = epoch()
+        modulus = len(schema_key2seq_no)
+
+        for t in range(THREADS):
+            s_key = choice(list(schema_key2seq_no.keys()))
+            threads.append(Thread(target=get_schema_or_claim_def, args=(
+                agents[t % modulus],
+                s_key,
+                schema_key2seq_no[s_key],
+                sri_did)))
+
+        shuffle(threads)
+        for thread in threads:
+            # print('Starting thread {}'.format(threads.index(thread)))
+            thread.start()
+        for thread in threads:
+            thread.join()
+        elapsed = ceil(epoch() - epoch_start)
+
+    print('\n\n== 2 == END: exercised schema and claim def cache locks, elapsed time: {} sec'.format(elapsed))
+

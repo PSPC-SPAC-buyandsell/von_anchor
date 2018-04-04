@@ -16,7 +16,7 @@ limitations under the License.
 
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
-from von_agent.error import AbsentWallet, ClosedPool, JSONValidation
+from von_agent.error import AbsentWallet, ClosedPool, CorruptWallet, JSONValidation
 from von_agent.nodepool import NodePool
 
 import json
@@ -205,24 +205,6 @@ class Wallet:
         await temp_wallet.remove()
         return rv
 
-    async def __aenter__(self) -> 'Wallet':
-        """
-        Context manager entry. Open (created) wallet as configured, for closure on context manager exit.
-        For use in monolithic call opening, using, and closing wallet.
-
-        Raise any IndyError causing failure to open wallet, or AbsentWallet on attempt to enter wallet
-        not yet created.
-
-        :return: current object
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('Wallet.__aenter__: >>>')
-
-        rv = await self.open()
-        logger.debug('Wallet.__aenter__: <<<')
-        return rv
-
     async def create(self) -> 'Wallet':
         """
         Create wallet as configured and store DID, or else re-use any existing configuration.
@@ -258,6 +240,7 @@ class Wallet:
                 logger.debug('Wallet.create: <!< indy error code {}'.format(self.e.error_code))
                 raise
 
+        logger.debug('Attempting to open wallet {}'.format(self.name))
         self._handle = await wallet.open_wallet(
             self.name,
             json.dumps(self.cfg),
@@ -271,14 +254,43 @@ class Wallet:
             logger.debug('Wallet {} stored new DID {}, verkey {} from seed'.format(self.name, self.did, self.verkey))
         else:
             self._created = True
+            logger.debug('Attempting to derive seed to did for wallet {}'.format(self.name))
             self._did = await self._seed2did()
-            self._verkey = await did.key_for_did(self.pool.handle, self.handle, self.did)
+            try:
+                self._verkey = await did.key_for_did(self.pool.handle, self.handle, self.did)
+            except IndyError:
+                logger.debug(
+                    'Wallet.create: <!< no verkey for DID {} on ledger, wallet {} may pertain to another'.format(
+                        self.did,
+                        self.name))
+                raise CorruptWallet(
+                    'No verkey for DID {} on ledger, wallet {} may pertain to another'.format(
+                        self.did,
+                        self.name))
             logger.info('Wallet {} got verkey {} for existing DID {}'.format(self.name, self.verkey, self.did))
 
         await wallet.close_wallet(self.handle)
 
         logger.debug('Wallet.create: <<<')
         return self
+
+    async def __aenter__(self) -> 'Wallet':
+        """
+        Context manager entry. Open (created) wallet as configured, for closure on context manager exit.
+        For use in monolithic call opening, using, and closing wallet.
+
+        Raise any IndyError causing failure to open wallet, or AbsentWallet on attempt to enter wallet
+        not yet created.
+
+        :return: current object
+        """
+
+        logger = logging.getLogger(__name__)
+        logger.debug('Wallet.__aenter__: >>>')
+
+        rv = await self.open()
+        logger.debug('Wallet.__aenter__: <<<')
+        return rv
 
     async def open(self) -> 'Wallet':
         """
@@ -344,8 +356,10 @@ class Wallet:
         if not self.handle:
             logger.warn('Abstaining from closing wallet {}: already closed'.format(self.name))
         else:
+            logger.debug('Closing wallet {}'.format(self.name))
             await wallet.close_wallet(self.handle)
             if self.auto_remove:
+                logger.info('Auto-removing wallet {}'.format(self.name))
                 await self.remove()
         self._handle = None
 
@@ -360,6 +374,7 @@ class Wallet:
         logger.debug('Wallet.remove: >>>')
 
         try:
+            logger.info('Removing wallet: {}'.format(self.name))
             await wallet.delete_wallet(self.name, self.creds)
         except Exception:
             logger.info('Abstaining from wallet removal: {}'.format(sys.exc_info()[0]))

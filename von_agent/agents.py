@@ -17,13 +17,14 @@ limitations under the License.
 from indy import anoncreds, ledger
 from indy.error import IndyError, ErrorCode
 from requests import post, HTTPError
-from threading import Lock
 from time import time
 from typing import Set, Union
 from von_agent.cache import claim_def_cache, schema_cache
 from von_agent.error import (
     AbsentAttribute,
+    AbsentClaimDef,
     AbsentMasterSecret,
+    AbsentSchema,
     AbsentWallet,
     ClaimsFocus,
     CorruptWallet,
@@ -405,7 +406,8 @@ class _BaseAgent(_AgentCore):
 
         :param schema_seq_no: schema sequence number on the ledger
         :param issuer_did: (claim def) issuer DID
-        :return: claim definition json as retrieved from ledger
+        :return: claim definition json as retrieved from ledger,
+            empty production {} for no such claim definition
         """
 
         logger = logging.getLogger(__name__)
@@ -562,11 +564,6 @@ class _BaseAgent(_AgentCore):
 
             s_key = schema_key_for(form['data']['schema'])
             schema_json = await self.get_schema(s_key)
-            schema = json.loads(schema_json)
-            if not schema:
-                rv = schema_json
-                logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
-                return rv
 
             rv = schema_json
             logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
@@ -821,13 +818,15 @@ class Issuer(Origin):
         logger.debug('Issuer.send_claim_def: >>> schema_json: {}'.format(schema_json))
 
         schema = json.loads(schema_json)
-        rv = await self.get_claim_def(schema['seqNo'], schema['identifier'])
+
+        rv = await self.get_claim_def(schema['seqNo'], schema['dest'])
         if json.loads(rv):
             # TODO: revocation support will definitely change this check
             logger.info(
-                'Claim def on schema {} version {} already exists on ledger; Issuer not sending another'.format(
+                'Claim def on schema {} version {} already exists on ledger; Issuer {} not sending another'.format(
                     schema['data']['name'],
-                    schema['data']['version']))
+                    schema['data']['version'],
+                    self.wallet.name))
 
         try:
             claim_def_json = await anoncreds.issuer_create_and_store_claim_def(
@@ -840,7 +839,8 @@ class Issuer(Origin):
             # TODO: revocation support may change this check
             if e.error_code == ErrorCode.AnoncredsClaimDefAlreadyExistsError:
                 if json.loads(rv):
-                    logger.info('Issuer wallet reusing existing claim def on schema {} version {}'.format(
+                    logger.info('Issuer wallet {} reusing existing claim def on schema {} version {}'.format(
+                        self.wallet.name,
                         schema['data']['name'],
                         schema['data']['version']))
                 else:
@@ -953,7 +953,7 @@ class Issuer(Origin):
         Take a request from service wrapper POST and dispatch the applicable agent action.
         Return (json) response arising from processing.
 
-        Raise TokenType on demurral.
+        Raise TokenType on demurral, or any other exception on its occurrence.
 
         :param form: request form on which to operate
         :return: json response
@@ -973,14 +973,30 @@ class Issuer(Origin):
                 pass
 
         if form['type'] == 'claim-def-send':
-            schema_json = await self.get_schema(schema_key_for(form['data']['schema']))
+            s_key = schema_key_for(form['data']['schema'])
+            schema_json = await self.get_schema(s_key)
+            schema = json.loads(schema_json)
+            if not schema:
+                logger.debug(
+                    'Issuer.process_post: <!< absent schema {}, claim def may pertain to another ledger'.format(
+                        s_key))
+                raise AbsentSchema(
+                    'Absent schema {}, claim def may pertain to another ledger'.format(s_key))
             await self.send_claim_def(schema_json)
             rv = json.dumps({})
             logger.debug('Issuer.process_post: <<< {}'.format(rv))
             return rv
 
         elif form['type'] == 'claim-offer-create':
-            schema_json = await self.get_schema(schema_key_for(form['data']['schema']))
+            s_key = schema_key_for(form['data']['schema'])
+            schema_json = await self.get_schema(s_key)
+            schema = json.loads(schema_json)
+            if not schema:
+                logger.debug(
+                    'Issuer.process_post: <!< absent schema {}, claim offer may pertain to another ledger'.format(
+                        s_key))
+                raise AbsentSchema(
+                    'Absent schema {}, claim offer may pertain to another ledger'.format(s_key))
             rv = await self.create_claim_offer(schema_json, form['data']['holder-did'])  # claim offer json
             logger.debug('Issuer.process_post: <<< {}'.format(rv))
             return rv
@@ -1079,7 +1095,14 @@ class HolderProver(_BaseAgent):
             claim_offer_json)
 
         schema_seq_no = json.loads(claim_def_json)['ref']  # = schema seq no in claim def
-        await self.get_schema(schema_seq_no)  # update schema cache en passant if need be
+        schema_json = await self.get_schema(schema_seq_no)  # update schema cache en passant if need be
+        schema = json.loads(schema_json)
+        if not schema:
+            logger.debug(
+                'HolderProver.store_claim_req: <!< absent schema@#{}, claim req may pertain to another ledger'.format(
+                    schema_seq_no))
+            raise AbsentSchema(
+                'Absent schema@#{}, claim req may pertain to another ledger'.format(schema_seq_no))
         s_key = schema_cache.schema_key_for(schema_seq_no)
         rv = await anoncreds.prover_create_and_store_claim_req(
             self.wallet.handle,
@@ -1211,11 +1234,26 @@ class HolderProver(_BaseAgent):
         for attr_uuid in claims['attrs']:
             s_key = schema_key_for(claims['attrs'][attr_uuid][0]['schema_key'])
             schema = json.loads(await self.get_schema(s_key))  # make sure it's in the schema cache
+            if not schema:
+                logger.debug(
+                    'HolderProver.create_proof: <!< absent schema {}, proof req may pertain to another ledger'.format(
+                        s_key))
+                raise AbsentSchema(
+                    'Absent schema {}, proof req may pertain to another ledger'.format(s_key))
             referent2schema[claims['attrs'][attr_uuid][0]['referent']] = schema
             referent2claim_def[claims['attrs'][attr_uuid][0]['referent']] = (
                 json.loads(await self.get_claim_def(
                     schema['seqNo'],
                     claims['attrs'][attr_uuid][0]['issuer_did'])))
+            if not referent2claim_def[claims['attrs'][attr_uuid][0]['referent']]:
+                logger.debug(
+                    'HolderProver.create_proof: <!< absent claim def for schema@#{}, issuer-did {}'.format(
+                        schema['seqNo'],
+                        claims['attrs'][attr_uuid][0]['issuer_did']))
+                raise AbsentSchema(
+                    'Absent claim def for schema@#{}, issuer-did {}'.format(
+                        schema['seqNo'],
+                        claims['attrs'][attr_uuid][0]['issuer_did']))
 
         rv = await anoncreds.prover_create_proof(
             self.wallet.handle,
@@ -1486,7 +1524,24 @@ class HolderProver(_BaseAgent):
             issuer_did = form['data']['claim-offer']['issuer_did']
             schema_json = await self.get_schema(s_key)
             schema = json.loads(schema_json)
+            if not schema:
+                logger.debug(
+                    'HolderProver.process_post: <!< absent schema {}, {} may pertain to another ledger'.format(
+                        s_key,
+                        form['type']))
+                raise AbsentSchema(
+                    'Absent schema {}, {} may pertain to another ledger'.format(s_key, form['type']))
             claim_def_json = await self.get_claim_def(schema['seqNo'], issuer_did)
+            claim_def = json.loads(claim_def_json)
+            if not claim_def:
+                logger.debug(
+                    'HolderProver.process_post: <!< absent claim def for schema@#{}, issuer-did {}'.format(
+                        schema['seqNo'],
+                        issuer_did))
+                raise AbsentSchema(
+                    'Absent claim def for schema@#{}, issuer-did {}'.format(
+                        schema['seqNo'],
+                        issuer_did))
             rv = await self.store_claim_req(json.dumps(form['data']['claim-offer']), claim_def_json)
 
             logger.debug('HolderProver.process_post: <<< {}'.format(rv))
@@ -1500,7 +1555,15 @@ class HolderProver(_BaseAgent):
                     [pred_matcher['schema'] for pred_matcher in form['data']['claim-filter']['pred-match']] +
                     [r_attr['schema'] for r_attr in form['data']['requested-attrs']]):
                 s_key = schema_key_for(form_s_key_spec)
-                await self.get_schema(s_key)  # add to cache en passant
+                schema_json = await self.get_schema(s_key)  # add to cache en passant
+                schema = json.loads(schema_json)
+                if not schema:
+                    logger.debug(
+                        'HolderProver.process_post: <!< absent schema {}, {} may pertain to another ledger'.format(
+                            s_key,
+                            form['type']))
+                    raise AbsentSchema(
+                        'Absent schema {}, {} may pertain to another ledger'.format(s_key, form['type']))
                 form_schema_keys.append(s_key)
 
             req_preds = {}  # do preds first: there may be defaulting req-attrs to compute, avoid collision with preds
@@ -1624,7 +1687,15 @@ class HolderProver(_BaseAgent):
             for form_s_key_spec in (form['data']['schemata'] +
                     [r_attr['schema'] for r_attr in form['data']['requested-attrs']]):
                 s_key = schema_key_for(form_s_key_spec)
-                await self.get_schema(s_key)  # add to cache en passant
+                schema_json = await self.get_schema(s_key)  # add to cache en passant
+                schema = json.loads(schema_json)
+                if not schema:
+                    logger.debug(
+                        'HolderProver.process_post: <!< absent schema {}, {} may pertain to another ledger'.format(
+                            s_key,
+                            form['type']))
+                    raise AbsentSchema(
+                        'Absent schema {}, {} may pertain to another ledger'.format(s_key, form['type']))
                 form_schema_keys.append(s_key)
 
             req_attrs = {}
@@ -1809,10 +1880,25 @@ class Verifier(_BaseAgent):
         for claim_uuid in claims:
             claim_s_key = schema_key_for(claims[claim_uuid]['schema_key'])
             schema = json.loads(await self.get_schema(claim_s_key))
+            if not schema:
+                logger.debug(
+                    'Verifier.verify_proof: <!< absent schema {}, proof may pertain to another ledger'.format(
+                        claim_s_key))
+                raise AbsentSchema(
+                    'Absent schema {}, proof may pertain to another ledger'.format(claim_s_key))
             uuid2schema[claim_uuid] = schema
             uuid2claim_def[claim_uuid] = json.loads(await self.get_claim_def(
                 schema['seqNo'],
                 claims[claim_uuid]['issuer_did']))
+            if not uuid2claim_def[claim_uuid]:
+                logger.debug(
+                    'Verifier.verify_proof: <!< absent claim def for schema@#{}, issuer-did {}'.format(
+                        schema['seqNo'],
+                        claims[claim_uuid]['issuer_did']))
+                raise AbsentSchema(
+                    'Absent claim def for schema@#{}, issuer-did {}'.format(
+                        schema['seqNo'],
+                        claims[claim_uuid]['issuer_did']))
 
         rv = json.dumps(await anoncreds.verifier_verify_proof(
             json.dumps(proof_req),

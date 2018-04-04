@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 from von_agent.schemakey import SchemaKey
-from threading import Lock
+from threading import RLock
 from typing import Union
 from von_agent.error import SchemaKeySpec, CacheIndex
 
@@ -30,7 +30,7 @@ class SchemaCache:
     Note that this one lock applies across all instances - the design of this class intends it to be a singleton.
     """
 
-    lock = Lock()
+    lock = RLock()
 
     def __init__(self) -> None:
         """
@@ -178,7 +178,7 @@ class ClaimDefCache(dict):
     Note that this one lock applies across all instances - the design of this class intends it to be a singleton.
     """
 
-    lock = Lock()
+    lock = RLock()
 
 
 schema_cache = SchemaCache()
