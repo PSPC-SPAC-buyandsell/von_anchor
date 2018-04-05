@@ -14,12 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from requests import post
+import logging
+
 from von_agent.agents import AgentRegistrar, Origin, Verifier, Issuer, HolderProver
 from von_agent.error import TokenType
-
-import json
-import logging
 
 
 class TrustAnchorAgent(AgentRegistrar, Origin):
@@ -43,9 +41,9 @@ class TrustAnchorAgent(AgentRegistrar, Origin):
 
         # Try dispatching to each ancestor from BaseListeningAgent first
         mro = TrustAnchorAgent._mro_dispatch()
-        for ResponderClass in mro:
+        for responder_class in mro:
             try:
-                rv = await ResponderClass.process_post(self, form)
+                rv = await responder_class.process_post(self, form)
                 logger.debug('TrustAnchorAgent.process_post: <<< {}'.format(rv))
                 return rv
             except TokenType:
@@ -80,9 +78,9 @@ class SRIAgent(Verifier, Issuer):
 
         # Try dispatching to each ancestor from BaseListeningAgent first
         mro = SRIAgent._mro_dispatch()
-        for ResponderClass in mro:
+        for responder_class in mro:
             try:
-                rv = await ResponderClass.process_post(self, form)
+                rv = await responder_class.process_post(self, form)
                 logger.debug('SRIAgent.process_post: <<< {}'.format(rv))
                 return rv
             except TokenType:
@@ -113,9 +111,9 @@ class BCRegistrarAgent(Issuer):
 
         # Try dispatching to each ancestor from BaseListeningAgent first
         mro = SRIAgent._mro_dispatch()
-        for ResponderClass in mro:
+        for responder_class in mro:
             try:
-                rv = await ResponderClass.process_post(self, form)
+                rv = await responder_class.process_post(self, form)
                 logger.debug('BCRegistrarAgent.process_post: <<< {}'.format(rv))
                 return rv
             except TokenType:
@@ -147,9 +145,9 @@ class OrgBookAgent(HolderProver):
 
         # Try dispatching to each ancestor from BaseListeningAgent first
         mro = OrgBookAgent._mro_dispatch()
-        for ResponderClass in mro:
+        for responder_class in mro:
             try:
-                rv = await ResponderClass.process_post(self, form)
+                rv = await responder_class.process_post(self, form)
                 logger.debug('OrgBookAgent.process_post: <<< {}'.format(rv))
                 return rv
             except TokenType:

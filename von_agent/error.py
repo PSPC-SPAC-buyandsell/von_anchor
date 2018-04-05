@@ -64,6 +64,7 @@ class VonAgentError(Exception):
         :param message: error message
         """
 
+        super().__init__()
         self.error_code = error_code
         self.message = message
 
@@ -276,4 +277,3 @@ class JSONValidation(VonAgentError):
         """
 
         super().__init__(ErrorCode.JSONValidation, message)
-

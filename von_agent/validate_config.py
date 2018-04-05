@@ -14,10 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+
+import jsonschema
+
 from von_agent.error import JSONValidation
 
-import json
-import jsonschema
 
 CONFIG_JSON_SCHEMA = {
     'pool': {

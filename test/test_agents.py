@@ -17,6 +17,7 @@ limitations under the License.
 from indy import IndyError
 from indy.error import ErrorCode
 from math import ceil
+from pathlib import Path
 from random import choice, shuffle
 from threading import current_thread, Thread
 from time import time as epoch
@@ -47,12 +48,11 @@ def claim_value_pair(plain):
 
 #noinspection PyUnusedLocal
 @pytest.mark.asyncio
-async def test_agents_direct(
+async def test_agents_low_level_api(
         pool_name,
         pool_genesis_txn_path,
-        seed_trustee1,
         pool_genesis_txn_file,
-        path_home):
+        seed_trustee1):
 
     # 1. Open pool, init agents
     p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
@@ -688,40 +688,44 @@ async def test_agents_direct(
 
 #noinspection PyUnusedLocal
 @pytest.mark.asyncio
-async def test_agents_process_forms_local(
+async def test_agents_high_level_api(
         pool_name,
         pool_genesis_txn_path,
-        seed_trustee1,
         pool_genesis_txn_file,
-        path_home):
+        seed_trustee1):
 
     # 1. Open pool, init agents, exercise bad configuration and ops inconsistent with configuration
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-            TrustAnchorAgent(
-                await Wallet(p, seed_trustee1, 'trust-anchor').create(),
-                {'endpoint': 'http://127.0.0.1:8000/api/v0', 'proxy-relay': True})) as tag, (
-            SRIAgent(
-                await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create(),
-                {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True})) as sag, (
-            OrgBookAgent(
-                await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create(),
-                {'endpoint': 'http://127.0.0.1:8002/api/v0', 'proxy-relay': True})) as pspcobag, (
-            OrgBookAgent(
-                await Wallet(p, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book').create(),
-                {'endpoint': 'http://127.0.0.1:8003/api/v0', 'proxy-relay': True})) as bcobag, (
-            BCRegistrarAgent(
-                await Wallet(p, 'BC-Registrar-Agent-0000000000000', 'bc-registrar').create(),
-                {'endpoint': 'http://127.0.0.1:8004/api/v0', 'proxy-relay': True})) as bcrag:
+        TrustAnchorAgent(
+            await Wallet(p, seed_trustee1, 'trust-anchor').create(),
+            {'endpoint': 'http://127.0.0.1:8000/api/v0', 'proxy-relay': True})) as tag, (
+        SRIAgent(
+            await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create(),
+            {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True})) as sag, (
+        OrgBookAgent(
+            await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create(),
+            {'endpoint': 'http://127.0.0.1:8002/api/v0', 'proxy-relay': True})) as pspcobag, (
+        OrgBookAgent(
+            await Wallet(p, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book').create(),
+            {'endpoint': 'http://127.0.0.1:8003/api/v0', 'proxy-relay': True})) as bcobag, (
+        BCRegistrarAgent(
+            await Wallet(p, 'BC-Registrar-Agent-0000000000000', 'bc-registrar').create(),
+            {'endpoint': 'http://127.0.0.1:8004/api/v0', 'proxy-relay': True})) as bcrag:
 
         assert p.handle is not None
 
+        w = await Wallet(p, 'X-Agent-XXXXXXXXXXXXXXXXXXXXXXXX', 'xxx', None, {'auto-remove': True}).create()
         try:  # additional property in config
             SRIAgent(
-                await Wallet(p, 'X-Agent-XXXXXXXXXXXXXXXXXXXXXXXX', 'xxx', None, {'auto-remove': True}).create(),
+                w,
                 {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True, 'additional-property': True})
             assert False
         except JSONValidation:
-            pass
+            try:
+                await w.open()  # wallet never opened, so auto-deletion can't trigger: remove here, best-effort
+                await w.close()
+            except Exception as x:
+                pass
 
         try:  # double-open
             SRIAgent(await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create())
@@ -1027,7 +1031,7 @@ async def test_agents_process_forms_local(
             except TokenType:
                 pass
 
-        # 4. BC Registrar and SRI agents (as Issuers) create, store,  and publish claim def to ledger
+        # 4. BC Registrar and SRI agents (as Issuers) create, store, and publish claim def to ledger
         i = 0
         for s_key in schema_data:
             claim_def_send_form = {
@@ -1671,7 +1675,10 @@ def get_schema_or_claim_def(agent, schema_key, seq_no, issuer_did):
 
 #noinspection PyUnusedLocal
 @pytest.mark.asyncio
-async def test_cache_locking(pool_name, pool_genesis_txn_path):
+async def test_cache_locking(
+        pool_name,
+        pool_genesis_txn_path,
+        pool_genesis_txn_file):
     THREADS = 64
     threads = []
 
@@ -1731,4 +1738,87 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path):
         elapsed = ceil(epoch() - epoch_start)
 
     print('\n\n== 2 == END: exercised schema and claim def cache locks, elapsed time: {} sec'.format(elapsed))
+
+
+#noinspection PyUnusedLocal
+@pytest.mark.asyncio
+async def test_agents_on_nodepool_restart(
+        pool_name,
+        pool_genesis_txn_path,
+        pool_genesis_txn_file,
+        path_home):
+
+    # 1. Open pool, close and auto-remove it
+    path = Path(path_home, 'pool', pool_name)
+    p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
+    await p.open()
+    assert p.handle is not None
+    await p.close()
+    assert not path.exists(), 'Pool path {} still present'.format(path)
+
+    # 2. Open pool, SRI + PSPC Org Book agents (the tests above should obviate its need for trust-anchor)
+    async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
+        SRIAgent(
+            await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create(),
+            {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True})) as sag, (
+        OrgBookAgent(
+            await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create(),
+            {'endpoint': 'http://127.0.0.1:8002/api/v0', 'proxy-relay': True})) as pspcobag:
+
+        assert p.handle is not None
+
+        # 3. Get schema (should be present in schema cache)
+        s_key = SchemaKey(sag.did, 'green', '1.0')
+        schema_lookup_form = {
+            'type': 'schema-lookup',
+            'data': {
+                'schema': {
+                    'origin-did': s_key.origin_did,
+                    'name': s_key.name,
+                    'version': s_key.version
+                }
+            }
+        }
+        schema_json = await sag.process_post(schema_lookup_form)  # should exist
+        schema = json.loads(schema_json)
+        assert schema
+
+        # 4. Create, store, and publish claim def to ledger (should re-use existing)
+        claim_def_send_form = {
+            'type': 'claim-def-send',
+            'data': {
+                'schema': {
+                    'origin-did': s_key.origin_did,
+                    'name': s_key.name,
+                    'version': s_key.version
+                }
+            }
+        }
+        await sag.process_post(claim_def_send_form)
+        claim_def_json = await pspcobag.get_claim_def(
+            schema['seqNo'],
+            s_key.origin_did)  # ought to exist now (short-circuit to low-level API)
+        claim_def = json.loads(claim_def_json)
+        print('\n\n== 3.0 == Claim def [{} v{}]: {}'.format(
+            s_key.name,
+            s_key.version,
+            ppjson(json.loads(claim_def_json))))
+        assert json.loads(claim_def_json)['ref'] == schema['seqNo']
+
+        claim_offer_create_form = {
+            'type': 'claim-offer-create',
+            'data': {
+                'schema': {
+                    'origin-did': s_key.origin_did,
+                    'name': s_key.name,
+                    'version': s_key.version
+                },
+                'holder-did': pspcobag.did
+            }
+        }
+        claim_offer_json = await sag.process_post(claim_offer_create_form)
+        print('\n\n== 3.1 == Claim offer [{} v{}]: {}'.format(
+            s_key.name,
+            s_key.version,
+            ppjson(claim_offer_json)))
 

@@ -14,12 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from von_agent.schemakey import SchemaKey
-from threading import RLock
-from typing import Union
-from von_agent.error import SchemaKeySpec, CacheIndex
 
 import logging
+
+from threading import RLock
+from typing import Union
+from von_agent.error import CacheIndex
+from von_agent.schemakey import SchemaKey
 
 
 class SchemaCache:
@@ -157,8 +158,8 @@ class SchemaCache:
         """
 
         return {'{}; {}'.format(seq_no, tuple(self._seq_no2schema_key[seq_no])):
-                self._schema_key2schema[self._seq_no2schema_key[seq_no]]
-                    for seq_no in self._seq_no2schema_key}
+            self._schema_key2schema[self._seq_no2schema_key[seq_no]]
+                for seq_no in self._seq_no2schema_key}
 
     def __str__(self) -> str:
         """
@@ -181,5 +182,5 @@ class ClaimDefCache(dict):
     lock = RLock()
 
 
-schema_cache = SchemaCache()
-claim_def_cache = ClaimDefCache()
+SCHEMA_CACHE = SchemaCache()
+CLAIM_DEF_CACHE = ClaimDefCache()

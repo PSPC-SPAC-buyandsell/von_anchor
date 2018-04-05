@@ -18,7 +18,7 @@ from math import ceil
 from random import shuffle
 from threading import Thread
 from time import time as epoch
-from von_agent.cache import claim_def_cache, schema_cache
+from von_agent.cache import CLAIM_DEF_CACHE, SCHEMA_CACHE
 from von_agent.error import CacheIndex
 from von_agent.schemakey import SchemaKey
 from von_agent.util import ppjson
@@ -46,20 +46,20 @@ async def test_schema_cache():
 
     for i in range(N):
         if i % 2:
-            schema_cache[s_key[i]] = schema[i]
+            SCHEMA_CACHE[s_key[i]] = schema[i]
         else:
-            schema_cache[schema[i]['seqNo']] = schema[i]
+            SCHEMA_CACHE[schema[i]['seqNo']] = schema[i]
 
     for i in range(N):
-        assert schema_cache.contains(s_key[i])
-        assert schema_cache.contains(schema[i]['seqNo'])
-        assert schema_cache[s_key[i]] == schema_cache[schema[i]['seqNo']]
+        assert SCHEMA_CACHE.contains(s_key[i])
+        assert SCHEMA_CACHE.contains(schema[i]['seqNo'])
+        assert SCHEMA_CACHE[s_key[i]] == SCHEMA_CACHE[schema[i]['seqNo']]
 
-    assert len(schema_cache.index()) == N
-    assert not schema_cache.contains(-1)
+    assert len(SCHEMA_CACHE.index()) == N
+    assert not SCHEMA_CACHE.contains(-1)
 
     try:
-        schema_cache[-1]
+        SCHEMA_CACHE[-1]
     except CacheIndex:
         pass
 
@@ -81,15 +81,15 @@ def do(coro):
 DELAY = 3
 async def simulate_get(ser_no, did):
     rv = None
-    with claim_def_cache.lock:
-        if (ser_no, did) in claim_def_cache:
-            rv = claim_def_cache[(ser_no, did)]
+    with CLAIM_DEF_CACHE.lock:
+        if (ser_no, did) in CLAIM_DEF_CACHE:
+            rv = CLAIM_DEF_CACHE[(ser_no, did)]
             # print('<< got from cache[{}] = {}'.format((ser_no, did), rv))
         else:
             rv = hash((ser_no, did))
             # print('>> added cache[{}] = {}'.format((ser_no, did), rv))
             await asyncio.sleep(DELAY)
-            claim_def_cache[(ser_no, did)] = rv
+            CLAIM_DEF_CACHE[(ser_no, did)] = rv
     return rv
 
 

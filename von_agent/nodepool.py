@@ -14,13 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from indy import pool
-from indy.error import IndyError, ErrorCode
-from von_agent.validate_config import validate_config
 
 import json
 import logging
-import sys
+
+from indy import pool
+from indy.error import IndyError, ErrorCode
+from von_agent.validate_config import validate_config
 
 
 class NodePool:
@@ -155,7 +155,7 @@ class NodePool:
         logger.debug('NodePool.open: <<<')
         return self
 
-    async def __aexit__(self, exc_type, exc, traceback) -> None: 
+    async def __aexit__(self, exc_type, exc, traceback) -> None:
         """
         Context manager exit. Closes pool and deletes its configuration to ensure clean next entry.
         For use in monolithic call opening, using, and closing the pool.
@@ -184,7 +184,7 @@ class NodePool:
         logger.debug('NodePool.close: >>>')
 
         if not self.handle:
-            logger.warn('Abstaining from closing pool {}: already closed'.format(self.name))
+            logger.warning('Abstaining from closing pool {}: already closed'.format(self.name))
         else:
             await pool.close_pool_ledger(self.handle)
             if self.auto_remove:
@@ -203,8 +203,8 @@ class NodePool:
 
         try:
             await pool.delete_pool_ledger_config(self.name)
-        except Exception:
-            logger.info('Abstaining from pool removal: {}'.format(sys.exc_info()[0]))
+        except IndyError as e:
+            logger.info('Abstaining from pool removal; indy-sdk error code {}'.format(e.error_code))
 
         logger.debug('NodePool.remove: <<<')
 

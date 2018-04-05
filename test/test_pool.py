@@ -40,26 +40,26 @@ async def test_pool_open(
 
 
     try:
-        p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True, 'extra-property': True})
-        await p.remove()
+        pool = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True, 'extra-property': True})
+        await pool.remove()
         assert not path.exists(), 'Pool path {} still present'.format(path)
     except JSONValidation:
         assert False
 
-    p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
-    await p.open()
-    assert p.handle is not None
-    await p.close()
+    pool = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
+    await pool.open()
+    assert pool.handle is not None
+    await pool.close()
     assert not path.exists(), 'Pool path {} still present'.format(path)
 
-    p = NodePool(pool_name, pool_genesis_txn_path)  # auto-remove default: False
-    await p.open()
-    assert p.handle is not None
-    await p.close()
+    pool = NodePool(pool_name, pool_genesis_txn_path)  # auto-remove default: False
+    await pool.open()
+    assert pool.handle is not None
+    await pool.close()
     assert path.exists(), 'Pool path {} not present'.format(path)
 
-    p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})  # check survival on re-opening existing pool
-    await p.open()
-    assert p.handle is not None
-    await p.close()
+    pool = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})  # check survival re-opening existing pool
+    await pool.open()
+    assert pool.handle is not None
+    await pool.close()
     assert not path.exists(), 'Pool path {} still present'.format(path)

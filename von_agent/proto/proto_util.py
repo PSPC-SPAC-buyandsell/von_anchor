@@ -14,7 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+
 from von_agent.schemakey import SchemaKey
+
 
 SCHEMA_KEY_KEYS = ['origin-did', 'name', 'version']
 PRED_MATCH_MATCH_KEYS = ['attr', 'pred-type', 'value']
@@ -31,7 +33,7 @@ def list_schemata(s_keys: list) -> list:
     return [{k: v for k, v in zip(SCHEMA_KEY_KEYS, list(s_key))} for s_key in s_keys]
 
 
-def attr_match(s_key: SchemaKey, matches: dict = {}) -> dict:
+def attr_match(s_key: SchemaKey, matches: dict = None) -> dict:
     """
     Return attr-match list entry for specification in protocol tokens.
 
@@ -40,6 +42,8 @@ def attr_match(s_key: SchemaKey, matches: dict = {}) -> dict:
     :return: one (dict) entry for "attr-match" list specification in protocol tokens
     """
 
+    if matches is None:
+        matches = {}
     return {
         'schema': {k: v for k, v in zip(SCHEMA_KEY_KEYS, list(s_key))},
         'match': matches or {}
@@ -75,7 +79,7 @@ def pred_match(s_key: SchemaKey, matches: list) -> dict:
     }
 
 
-def req_attrs(s_key: SchemaKey, attr_names: list = []) -> dict:
+def req_attrs(s_key: SchemaKey, attr_names: list = None) -> dict:
     """
     Return requested-attrs (dict) list entry for specification in protocol tokens.
 
@@ -83,6 +87,9 @@ def req_attrs(s_key: SchemaKey, attr_names: list = []) -> dict:
     :param attr_names: list of attribute names to match from schema
     :return: one (dict) entry for "requested-attrs" list of dicts within protocol tokens
     """
+
+    if attr_names is None:
+        attr_names = []
 
     return {
         'schema': {k: v for k, v in zip(SCHEMA_KEY_KEYS, list(s_key))},

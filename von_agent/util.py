@@ -14,12 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+
+import json
+
 from binascii import hexlify, unhexlify
 from copy import deepcopy
 from math import ceil, log
-from von_agent.schemakey import SchemaKey, schema_key_for
-
-import json
+from von_agent.schemakey import schema_key_for
 
 
 def ppjson(dumpit):
@@ -76,7 +77,7 @@ def decode(value: str):
     return ibytes.decode()
 
 
-def claims_for(claims: dict, filt: dict = {}) -> dict:
+def claims_for(claims: dict, filt: dict = None) -> dict:
     """
     Find indy-sdk claims matching input filter from within input claims structure,
     json-loaded as returned via agent get_claims().
@@ -196,9 +197,11 @@ def claims_for(claims: dict, filt: dict = {}) -> dict:
     """
 
     rv = {}
+    if filt is None:
+        filt = {}
     uuid2claims = claims['attrs']
-    for claims in uuid2claims.values():
-        for claim in claims:
+    for inner_claims in uuid2claims.values():
+        for claim in inner_claims:
             if claim['referent'] in rv:
                 continue
             if not filt:
@@ -225,8 +228,8 @@ def schema_keys_for(claims: dict, referents: list) -> dict:
 
     rv = {}
     uuid2claims = claims['attrs']
-    for claims in uuid2claims.values():
-        for claim in claims:
+    for inner_claims in uuid2claims.values():
+        for claim in inner_claims:
             referent = claim['referent']
             if (referent not in rv) and (referent in referents):
                 rv[referent] = schema_key_for(claim['schema_key'])

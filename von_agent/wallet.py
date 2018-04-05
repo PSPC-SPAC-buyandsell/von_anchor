@@ -14,14 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+
+import json
+import logging
+
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
 from von_agent.error import AbsentWallet, ClosedPool, CorruptWallet, JSONValidation
 from von_agent.nodepool import NodePool
-
-import json
-import logging
-import sys
 
 
 class Wallet:
@@ -237,7 +237,7 @@ class Wallet:
             if e.error_code == ErrorCode.WalletAlreadyExistsError:
                 logger.info('Wallet already exists: {}'.format(self.name))
             else:
-                logger.debug('Wallet.create: <!< indy error code {}'.format(self.e.error_code))
+                logger.debug('Wallet.create: <!< indy error code {}'.format(e.error_code))
                 raise
 
         logger.debug('Attempting to open wallet {}'.format(self.name))
@@ -327,7 +327,7 @@ class Wallet:
         logger.debug('Wallet.open: <<<')
         return self
 
-    async def __aexit__(self, exc_type, exc, traceback) -> None: 
+    async def __aexit__(self, exc_type, exc, traceback) -> None:
         """
         Context manager exit. Close wallet and delete if so configured.
         For use in monolithic call opening, using, and closing the wallet.
@@ -354,7 +354,7 @@ class Wallet:
         logger.debug('Wallet.close: >>>')
 
         if not self.handle:
-            logger.warn('Abstaining from closing wallet {}: already closed'.format(self.name))
+            logger.warning('Abstaining from closing wallet {}: already closed'.format(self.name))
         else:
             logger.debug('Closing wallet {}'.format(self.name))
             await wallet.close_wallet(self.handle)
@@ -376,8 +376,8 @@ class Wallet:
         try:
             logger.info('Removing wallet: {}'.format(self.name))
             await wallet.delete_wallet(self.name, self.creds)
-        except Exception:
-            logger.info('Abstaining from wallet removal: {}'.format(sys.exc_info()[0]))
+        except IndyError as e:
+            logger.info('Abstaining from wallet removal; indy-sdk error code {}'.format(e.error_code))
 
         logger.debug('Wallet.remove: <<<')
 
@@ -387,7 +387,7 @@ class Wallet:
 
         :return: representation for current object
         """
-        
+
         return '{}({}, [SEED], {}, {})'.format(
             self.__class__.__name__,
             self.pool,
