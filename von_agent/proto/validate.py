@@ -352,36 +352,7 @@ PROTO_MSG_JSON_SCHEMA = {
                         'type': 'string'
                     },
                     'claim-offer': {
-                        'type': 'object',
-                        'properties': {
-                            'issuer_did': {
-                                'type': 'string'
-                            },
-                            'nonce': {
-                                'type': 'string'
-                            },
-                            'schema_key': {
-                                'type': 'object',
-                                'properties': {
-                                    'did': {
-                                        'type': 'string'
-                                    },
-                                    'name': {
-                                        'type': 'string'
-                                    },
-                                    'version': {
-                                        'type': 'string'
-                                    }
-                                },
-                                'required': ['did', 'name', 'version'],
-                                'additionalProperties': False
-                            },
-                            'key_correctness_proof': {
-                                'type': 'object'
-                            }
-                        },
-                        'required': ['issuer_did', 'nonce', 'schema_key', 'key_correctness_proof'],
-                        'additionalProperties': False
+                        'type': 'object'
                     }
                 },
                 'required': ['claim-offer'],
