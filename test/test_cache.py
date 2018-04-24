@@ -18,10 +18,9 @@ from math import ceil
 from random import shuffle
 from threading import Thread
 from time import time as epoch
-from von_agent.cache import CLAIM_DEF_CACHE, SCHEMA_CACHE
+from von_agent.cache import CRED_DEF_CACHE, SCHEMA_CACHE
 from von_agent.error import CacheIndex
-from von_agent.schemakey import SchemaKey
-from von_agent.util import ppjson
+from von_agent.util import cred_def_id, ppjson, schema_id, SchemaKey
 
 import asyncio
 import pytest
@@ -36,12 +35,13 @@ async def test_schema_cache():
     for i in range(N):
         s_key.append(SchemaKey('did.{}'.format(i), 'schema-{}'.format(i//5), '{}'.format(i%5)))
         schema.append({
+            # 'id': schema_id(s_key[i].origin_did, s_key[i].name, s_key[i].version),
+            'id': schema_id(*s_key[i]),
+            'name': s_key[i].version,
+            'version': s_key[i].version,
             'seqNo': i,
-            'identifier': s_key[i].origin_did,
-            'data': {
-                'name': s_key[i].name,
-                'version': s_key[i].version
-            }
+            'attrNames': ['attr-{}-{}'.format(i, j) for j in range(N)],
+            'ver': '1.0'
         })
 
     for i in range(N):
@@ -81,15 +81,16 @@ def do(coro):
 DELAY = 3
 async def simulate_get(ser_no, did):
     rv = None
-    with CLAIM_DEF_CACHE.lock:
-        if (ser_no, did) in CLAIM_DEF_CACHE:
-            rv = CLAIM_DEF_CACHE[(ser_no, did)]
+    with CRED_DEF_CACHE.lock:
+        cd_id = cred_def_id(did, ser_no)
+        if cd_id in CRED_DEF_CACHE:
+            rv = CRED_DEF_CACHE[cd_id]
             # print('<< got from cache[{}] = {}'.format((ser_no, did), rv))
         else:
-            rv = hash((ser_no, did))
+            rv = hash(cd_id)
             # print('>> added cache[{}] = {}'.format((ser_no, did), rv))
             await asyncio.sleep(DELAY)
-            CLAIM_DEF_CACHE[(ser_no, did)] = rv
+            CRED_DEF_CACHE[cd_id] = rv
     return rv
 
 

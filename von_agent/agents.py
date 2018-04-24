@@ -24,21 +24,18 @@ from time import time
 from typing import Set, Union
 from indy import anoncreds, ledger
 from indy.error import IndyError, ErrorCode
-from requests import post, HTTPError
-from von_agent.cache import CLAIM_DEF_CACHE, SCHEMA_CACHE
+from von_agent.cache import CRED_DEF_CACHE, SCHEMA_CACHE
+from von_agent.codec import cred_attr_value
 from von_agent.error import (
     AbsentAttribute,
+    AbsentCredDef,
     AbsentMasterSecret,
     AbsentSchema,
-    ClaimsFocus,
-    CorruptWallet,
-    ProxyHop,
-    TokenType)
+    CredentialFocus,
+    CorruptWallet)
 from von_agent.nodepool import NodePool
-from von_agent.proto.validate import validate as validate_form
-from von_agent.schemakey import SchemaKey, schema_key_for
-from von_agent.util import encode, prune_claims_json
-from von_agent.validate_config import CONFIG_JSON_SCHEMA, validate_config
+from von_agent.util import cred_def_id, ppjson, prune_creds_json, schema_id, SchemaKey, schema_key
+from von_agent.validate_config import validate_config
 from von_agent.wallet import Wallet
 
 
@@ -224,97 +221,85 @@ class _AgentCore:
 
     async def get_schema(self, index: Union[SchemaKey, int]) -> str:
         """
-        Get schema from ledger by transaction number or schema key (origin DID, name, and version).
+        Get schema from ledger by sequence number or schema key (origin DID, name, version).
         Return empty production {} for no such schema.
 
         Retrieve the schema from the agent's schema cache if it has it; cache it
         en passant if it does not (and if there is a corresponding schema on the ledger).
 
-        :param index: schema key (origin DID, name, version) or sequence number
-        :return: schema json as retrieved from ledger
+        :param schema_id: schema key (origin DID, name, version) or sequence number
+        :return: schema json, parsed from ledger
         """
 
         logger = logging.getLogger(__name__)
         logger.debug('_AgentCore.get_schema: >>> index: {}'.format(index))
+        # print('\n\n.. get-schema 0 .. on ({}) {}'.format(type(index), index))
 
         rv = json.dumps({})
         with SCHEMA_CACHE.lock:
             if SCHEMA_CACHE.contains(index):
+                # print('\n\n.. get-schema 1 .. cache has {}'.format(index))
                 logger.info('_AgentCore.get_schema: got schema {} from schema cache'.format(index))
                 rv = SCHEMA_CACHE[index]
                 logger.debug('_AgentCore.get_schema: <<< {}'.format(rv))
                 return json.dumps(rv)
 
             if isinstance(index, SchemaKey):
-                req_json = await ledger.build_get_schema_request(
-                    self.did,
-                    index.origin_did,
-                    json.dumps({'name': index.name, 'version': index.version}))
+                req_json = await ledger.build_get_schema_request(self.did, schema_id(*index))
                 resp_json = await ledger.submit_request(self.pool.handle, req_json)
                 await asyncio.sleep(0)
 
                 resp = json.loads(resp_json)
                 if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
                     logger.error('_AgentCore.get_schema: {}'.format(resp['reason']))
+                    # print('\n\n.. get-schema X .. rejected: {}'.format(resp['reason']))
+                elif 'result' in resp and resp['result'].get('seqNo', None) is None:
+                    logger.info('_AgentCore.get_schema: no schema for {} on ledger'.format(index))
+                    # print('\n\n.. get-schema 3 .. no schema for {} on ledger'.format(index))
                 else:
-                    schema = resp['result']
-                    data_json = schema['data']  # response result data is double-encoded on the ledger
-                    if data_json and 'attr_names' in data_json:
-                        SCHEMA_CACHE[index] = schema  # schema cache indexes by both txn# and schema key en passant
-                        rv = json.dumps(schema)
-                    else:
-                        logger.info('_AgentCore.get_schema: ledger query returned response with no data')
+                    (s_id, rv) = await ledger.parse_get_schema_response(resp_json)
+                    SCHEMA_CACHE[index] = json.loads(rv)  # schema cache indexes by both txn# and schema key en passant
+                    logger.info('_AgentCore.get_schema: got schema {} from ledger'.format(index))
+                    # print('\n\n.. get-schema 4 .. got schema for {} from ledger'.format(index))
 
             elif isinstance(index, int):
-                req_json = await ledger.build_get_txn_request(self.did, index)
-                resp = json.loads(await ledger.submit_request(self.pool.handle, req_json))
-                await asyncio.sleep(0)
-
-                if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
-                    logger.error('_AgentCore.get_schema: {}'.format(resp['reason']))
-                elif resp['result']['data'] and (resp['result']['data']['type'] == '101'):  # type '101' == schema
-                    # getting it as a transaction misses the 'dest' field: look it up from schema key data
+                txn_json = await self.process_get_txn(index)
+                txn = json.loads(txn_json)
+                # print('\n\n.. get-schema 5 .. int {}, txn {}'.format(index, ppjson(txn)))
+                if txn.get('type', None) == '101':  # {} for no such txn; 101 marks indy-sdk schema txn type
+                    # print('\n\n.. get-schema 6 .. prepare for inception')
                     rv = await self.get_schema(SchemaKey(
-                        resp['result']['data']['identifier'],
-                        resp['result']['data']['data']['name'],
-                        resp['result']['data']['data']['version']))
+                        txn['identifier'],
+                        txn['data']['name'],
+                        txn['data']['version']))
+                else:
+                    logger.info('_AgentCore.get_schema: no schema at seq #{} on ledger'.format(index))
+
+            else:
+                logger.debug('_AgentCore.get_schema: <!< bad schema index type')
+                raise AbsentSchema('Attempt to get schema on ({}) {} , must use schema key or an int'.format(
+                    type(index),
+                    index))
 
         logger.debug('_AgentCore.get_schema: <<< {}'.format(rv))
         return rv
 
-    async def get_endpoint(self, did: str) -> str:
+    def role(self) -> str:
         """
-        Get json endpoint for agent having input DID.
+        Return the indy-sdk role for an agent in building its nym for the trust anchor to send to the ledger.
 
-        :param did: DID for agent whose endpoint to find
-        :return: json endpoint object (one 'endpoint' attribute and value) for agent having input DID;
-            empty production for none
+        :param: agent: agent instance
+        :return: role string
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.get_endpoint: >>> did: {}'.format(did))
+        logger.debug('_AgentCore.role: >>>')
 
-        rv = json.dumps({})
-        req_json = await ledger.build_get_attrib_request(
-            self.did,
-            did,
-            'endpoint',
-            None,
-            None)
-        resp_json = await ledger.submit_request(self.pool.handle, req_json)
-        await asyncio.sleep(0)
+        rv = None
+        if isinstance(self, (AgentRegistrar, Origin, Issuer)):
+            rv = 'TRUST_ANCHOR'
 
-        resp = json.loads(resp_json)
-        if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
-            logger.error('_AgentCore.get_endpoint: {}'.format(resp['reason']))
-        else:
-            data_json = (json.loads(resp_json))['result']['data']  # it's double-encoded on the ledger
-            if data_json:
-                rv = json.dumps(json.loads(data_json)['endpoint'])
-            else:
-                logger.info('_AgentCore.get_endpoint: ledger query returned response with no data')
-
-        logger.debug('_AgentCore.get_endpoint: <<< {}'.format(rv))
+        logger.debug('_AgentCore.role: <<< {}'.format(rv))
         return rv
 
     def __repr__(self) -> str:
@@ -325,7 +310,6 @@ class _AgentCore:
         """
 
         return '{}({})'.format(self.__class__.__name__, self.wallet)
-
 
 class _BaseAgent(_AgentCore):
     """
@@ -368,235 +352,62 @@ class _BaseAgent(_AgentCore):
         """
         return self._cfg
 
-    async def send_endpoint(self) -> str:
+    async def get_cred_def(self, cred_def_id: str) -> str:
         """
-        Send agent endpoint attribute to ledger. Return endpoint json as written to the ledger.
+        Get credential definition from ledger by its identifier. Return empty production {} for no
+        such credential definition, logging any IndyError condition on bad request.
 
-        Raise AbsentAttribute if no such endpoint.
+        Retrieve the credential definition from the agent's credential definition cache if it has it; cache it
+        en passant if it does not (and if there is a corresponding credential definition on the ledger).
 
-        :return: endpoint attibute entry json (at present, 'http://<host>:<port>/<base-api-path>' or none)
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent.send_endpoint: >>>')
-
-        if 'endpoint' in self.cfg:
-            raw_json = json.dumps({
-                'endpoint': {
-                    'endpoint': self.cfg['endpoint']
-                }  # indy-sdk needs value itself to be a dict; {'endpoint': '...'} is no good
-            })
-            req_json = await ledger.build_attrib_request(self.did, self.did, None, raw_json, None)
-            resp_json = await self._sign_submit(req_json)
-            resp = json.loads(resp_json)
-            if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
-                logger.error('_BaseAgent.send_endpoint: {}'.format(resp['reason']))
-        else:
-            logger.debug('_BaseAgent.send_endpoint: <!< no endpoint configured')
-            raise AbsentAttribute('Cannot send agent endpoint to ledger: no such endpoint in configuration')
-
-        rv = await self.get_endpoint(self.did)
-        logger.debug('_BaseAgent.send_endpoint: <<< {}'.format(rv))
-        return rv
-
-    async def get_claim_def(self, schema_seq_no: int, issuer_did: str) -> str:
-        """
-        Get claim definition from ledger by its parent schema transaction number and issuer DID.
-        Return empty production {} for no such claim definition, or IndyError with
-        error_code = ErrorCode.LedgerInvalidTransaction for bad request.
-
-        Retrieve the schema from the agent's claim definition cache if it has it; cache it
-        en passant if it does not (and if there is a corresponding claim definition on the ledger).
-
-        :param schema_seq_no: schema sequence number on the ledger
-        :param issuer_did: (claim def) issuer DID
-        :return: claim definition json as retrieved from ledger,
-            empty production {} for no such claim definition
+        :param cred_def_id: (credential definition) identifier string ('<issuer-did>:3:CL:<schema-seq-no>')
+        :return: credential definition json as retrieved from ledger,
+            empty production {} for no such credential definition
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent.get_claim_def: >>> schema_seq_no: {}, issuer_did: {}'.format(
-            schema_seq_no,
-            issuer_did))
+        logger.debug('_BaseAgent.get_cred_def: >>> cred_def_id: {}'.format(cred_def_id))
+        # print('\n\n// get-cred-def 0 // {}'.format(cred_def_id))
 
         rv = json.dumps({})
-        with CLAIM_DEF_CACHE.lock:
-            if (schema_seq_no, issuer_did) in CLAIM_DEF_CACHE:
-                logger.info('_BaseAgent.get_claim_def: got claim def for schema ({}, {}) from claim def cache'.format(
-                    schema_seq_no,
-                    issuer_did))
-                rv = CLAIM_DEF_CACHE[(schema_seq_no, issuer_did)]
-                logger.debug('_BaseAgent.get_claim_def: <<< {}'.format(rv))
-                return json.dumps(rv)
 
-            req_json = await ledger.build_get_claim_def_txn(
-                self.did,
-                schema_seq_no,
-                'CL',
-                issuer_did)
+        with CRED_DEF_CACHE.lock:
+            if cred_def_id in CRED_DEF_CACHE:
+                logger.info('_BaseAgent.get_cred_def: got cred def for {} from cache'.format(cred_def_id))
+                rv = json.dumps(CRED_DEF_CACHE[cred_def_id])
+                logger.debug('_BaseAgent.get_cred_def: <<< {}'.format(rv))
+                return rv
+
+            try:
+                req_json = await ledger.build_get_cred_def_request(self.did, cred_def_id)
+            except IndyError as e:
+                if e.error_code == ErrorCode.CommonInvalidStructure:
+                    logger.debug('_BaseAgent.get_cred_def: <!< bogus credential definition {}'.format(cred_def_id))
+                    return rv
+                else:
+                    logger.debug(
+                        '_BaseAgent.get_cred_def: <!< could not build cred def request; indy error code {}'.format(
+                            e.error_code))
+                    raise
 
             resp_json = await ledger.submit_request(self.pool.handle, req_json)
             await asyncio.sleep(0)
 
             resp = json.loads(resp_json)
+            # print('\n\n// get-cred-def 2 // {} -> {}'.format(cred_def_id, ppjson(resp)))
             if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
-                logger.error('_BaseAgent.get_claim_def: {}'.format(resp['reason']))
+                # print('\n\n// get-cred-def X //')
+                logger.error('_BaseAgent.get_cred_def: {}'.format(resp['reason']))
             elif 'result' in resp and 'data' in resp['result'] and resp['result']['data']:
-                data = resp['result']['data']
-                if 'revocation' in data and data['revocation'] is not None:
-                    resp['result']['data']['revocation'] = None  #TODO: support revocation
-                CLAIM_DEF_CACHE[(schema_seq_no, issuer_did)] = resp['result']  # update claim def cache
-                rv = json.dumps(resp['result'])
+                (cd_id, rv) = await ledger.parse_get_cred_def_response(resp_json)
+                CRED_DEF_CACHE[cred_def_id] = json.loads(rv)
+                # print('\n\n@@ GET-CRED-DEF @@ GOT CRED_DEF {} -> {}, {}'.format(cred_def_id, cd_id, ppjson(rv)))
+                logger.info('_BaseAgent.get_cred_def: got cred def {} from ledger'.format(cred_def_id))
             else:
-                logger.info('_BaseAgent.get_claim_def: ledger query returned response with no data')
+                logger.info('_BaseAgent.get_cred_def: ledger has no cred def for cred-def-id {}'.format(cred_def_id))
 
-        logger.debug('_BaseAgent.get_claim_def: <<< {}'.format(rv))
+        logger.debug('_BaseAgent.get_cred_def: <<< {}'.format(rv))
         return rv
-
-    async def _response_from_proxy(self, form: dict) -> 'Response':
-        """
-        Get the response from the proxy, if the request form content identifies to do so.
-
-        Raise ProxyHop if no agent found for specified DID, or endpoint specifies non-supported protocol (e.g., xmpp)
-
-        :param form: request form on which to operate
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent._response_from_proxy: >>> form: {}'.format(form))
-
-        rv = None
-        if (self.cfg.get('proxy-relay', False)) and ('proxy-did' in form['data']):
-            proxy_did = form['data'].pop('proxy-did')
-            if proxy_did != self.did:
-                endpoint = json.loads(await self.get_endpoint(proxy_did))
-                if (('endpoint' not in endpoint) or
-                    not re.match(
-                        CONFIG_JSON_SCHEMA['agent']['properties']['endpoint']['pattern'],
-                        endpoint['endpoint'],
-                        re.IGNORECASE)):
-                    logger.debug('_BaseAgent._response_from_proxy: <!< no agent found for DID {}'.format(proxy_did))
-                    raise ProxyHop('No agent on the ledger has DID {}'.format(proxy_did))
-                if re.match('^http[s]?://.*', endpoint['endpoint'], re.IGNORECASE):
-                    r = post(
-                        '{}/{}'.format(endpoint['endpoint'], form['type']),
-                        json=form)  # requests module json-encodes
-                    if not r.ok:
-                        logger.debug('_BaseAgent._response_from_proxy: <!< proxy got HTTP {}'.format(r.status_code))
-                        raise HTTPError(r.status_code, r.reason)
-                else:
-                    logger.debug('_BaseAgent._response_from_proxy: <!< cannot resolve proxy hop')
-                    raise ProxyHop(
-                        'No proxy strategy implemented for target agent endpoint {}'.format(endpoint['endpoint']))
-                rv = json.dumps(r.json())  # requests module json-decodes
-
-        logger.debug('_BaseAgent._response_from_proxy: <<< {}'.format(rv))
-        return rv
-
-    @classmethod
-    def _mro_dispatch(cls):
-        logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent._mro_dispatch: >>> cls.__name__: {}'.format(cls.__name__))
-
-        rv = [c for c in cls.__mro__
-            if issubclass(c, _BaseAgent) and issubclass(cls, c) and c != cls]
-        rv.reverse()
-
-        logger.debug('_BaseAgent._mro_dispatch: <<< {}'.format(rv))
-        return rv
-
-    async def process_post(self, form: dict) -> str:
-        """
-        Take a request from service wrapper POST, validate form via JSON schema, and dispatch
-        the applicable agent action.  Return (json) response arising from processing.
-
-        Raise:
-            * JSONValidation on token validation exception,
-            * TokenType on demurral for descendant class processing,
-            * ProxyRelayConfig for attempt to proxy via agent not so configured
-            * ProxyHop if unable to proxy otherwise OK message token.
-
-        :param form: request form on which to operate
-        :return: json response
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent.process_post: >>> form: {}'.format(form))
-
-        validate_form(form, self.cfg.get('proxy-relay', False))
-
-        if form['type'] == 'agent-nym-lookup':
-            resp_proxy_json = await self._response_from_proxy(form)
-            if resp_proxy_json != None:
-                rv = resp_proxy_json  # it's proxied
-                logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
-                return rv
-
-            rv = await self.get_nym(form['data']['agent-nym']['did'])
-            logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
-            return rv
-
-        elif form['type'] == 'agent-endpoint-lookup':
-            resp_proxy_json = await self._response_from_proxy(form)
-            if resp_proxy_json != None:
-                rv = resp_proxy_json  # it's proxied
-                logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
-                return rv
-
-            rv = await self.get_endpoint(form['data']['agent-endpoint']['did'])
-            logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
-            return rv
-
-        elif form['type'] == 'agent-endpoint-send':
-            resp_proxy_json = await self._response_from_proxy(form)
-            if resp_proxy_json != None:
-                rv = resp_proxy_json  # it's proxied
-                logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
-                return rv
-
-            await self.send_endpoint()
-            rv = json.dumps({})
-            logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
-            return rv
-
-        elif form['type'] == 'schema-lookup':
-            resp_proxy_json = await self._response_from_proxy(form)
-            if resp_proxy_json != None:
-                rv = resp_proxy_json  # it's proxied
-                logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
-                return rv
-
-            s_key = schema_key_for(form['data']['schema'])
-            schema_json = await self.get_schema(s_key)
-
-            rv = schema_json
-            logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
-            return rv
-
-        elif form['type'] in (
-                'agent-nym-send',
-                'schema-send',
-                'claim-def-send',
-                'claim-offer-create',
-                'claim-offer-store',
-                'claim-create',
-                'claim-store',
-                'claim-request',
-                'proof-request',
-                'proof-request-by-referent',
-                'verification-request'):  # do not proxy: master-secret-set, claims-reset
-            resp_proxy_json = await self._response_from_proxy(form)
-            if resp_proxy_json != None:
-                rv = resp_proxy_json  # it's proxied
-                logger.debug('_BaseAgent.process_post: <<< {}'.format(rv))
-                return rv
-
-            # base listening agent doesn't do this work
-            logger.debug('_BaseAgent.process_post: <!< not this form type: {}'.format(form['type']))
-            raise TokenType('{} does not respond to token type {}'.format(self.__class__.__name__, form['type']))
-
-        logger.debug('_BaseAgent.process_post: <!< not this form type: {}'.format(form['type']))
-        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
     async def process_get_txn(self, txn: int) -> str:
         """
@@ -660,69 +471,37 @@ class AgentRegistrar(_BaseAgent):
     Mixin for (trust anchor) agent to register agents onto the distributed ledger
     """
 
-    async def send_nym(self, did: str, verkey: str, alias: str = None) -> None:
+    async def send_nym(self, did: str, verkey: str, alias: str = None, role: str = None) -> None:
         """
         Method for trust anchor to send input agent's cryptonym (including DID and current verification key) to ledger.
 
         :param did: agent DID to send to ledger
         :param verkey: agent verification key
         :param alias: optional alias
+        :param role: agent role on the ledger; specify one of 'TRUSTEE', 'STEWARD', 'TRUST_ANCHOR' or '' to reset role
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('AgentRegistrar.send_nym: >>> did: {}, verkey: {}, alias: {}'.format(did, verkey, None))
+        logger.debug('AgentRegistrar.send_nym: >>> did: {}, verkey: {}, alias: {}, role: {}'.format(
+            did,
+            verkey,
+            alias,
+            role))
 
         req_json = await ledger.build_nym_request(
             self.did,
             did,
             verkey,
             alias,
-            None)
+            role)
         await self._sign_submit(req_json)
 
         logger.debug('AgentRegistrar.send_nym: <<<')
 
-    async def process_post(self, form: dict) -> str:
-        """
-        Take a request from service wrapper POST and dispatch the applicable agent action.
-        Return (json) response arising from processing.
-
-        Raise TokenType on demurral.
-
-        :param form: request form on which to operate
-        :return: json response
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('AgentRegistrar.process_post: >>> form: {}'.format(form))
-
-        # Try dispatching to each ancestor from _BaseAgent first
-        mro = AgentRegistrar._mro_dispatch()
-        for responder_class in mro:
-            try:
-                rv = await responder_class.process_post(self, form)
-                logger.debug('AgentRegistrar.process_post: <<< {}'.format(rv))
-                return rv
-            except TokenType:
-                pass
-
-        if form['type'] == 'agent-nym-send':
-            # base listening agent code handles all proxied requests: it's agent-local, carry on
-            await self.send_nym(
-                form['data']['agent-nym']['did'],
-                form['data']['agent-nym']['verkey'],
-                form['data']['agent-nym'].get('alias', None))
-            rv = json.dumps({})
-            logger.debug('AgentRegistrar.process_post: <<< {}'.format(rv))
-            return rv
-
-        logger.debug('AgentRegistrar.process_post: <!< not this form type: {}'.format(form['type']))
-        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
-
 
 class Origin(_BaseAgent):
     """
-    Mixin for agent to send schemata and claim definitions to the distributed ledger
+    Mixin for agent to send schemata and credential definitions to the distributed ledger
     """
 
     async def send_schema(self, schema_data_json: str) -> str:
@@ -742,131 +521,104 @@ class Origin(_BaseAgent):
         logger.debug('Origin.send_schema: >>> schema_data_json: {}'.format(schema_data_json))
 
         rv = json.dumps({})
-
         schema_data = json.loads(schema_data_json)
-        if json.loads(await self.get_schema(SchemaKey(self.did, schema_data['name'], schema_data['version']))):
+        s_key = schema_key(schema_id(self.did, schema_data['name'], schema_data['version']))
+        if json.loads(await self.get_schema(s_key)):
             logger.error('Schema {} version {} already exists on ledger for origin-did {}: not sending'.format(
                 schema_data['name'],
                 schema_data['version'],
                 self.did))
-
         else:
-            req_json = await ledger.build_schema_request(self.did, schema_data_json)
+            (_, schema_json) = await anoncreds.issuer_create_schema(
+                self.did,
+                schema_data['name'],
+                schema_data['version'],
+                json.dumps(schema_data['attr_names']))
+            req_json = await ledger.build_schema_request(self.did, schema_json)
             resp_json = await self._sign_submit(req_json)
             resp = json.loads(resp_json)
             if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
                 logger.error('_BaseAgent.send_schema: {}'.format(resp['reason']))
             else:
                 resp_result = (json.loads(resp_json))['result']
-                rv = await self.get_schema(SchemaKey(
+                rv = await self.get_schema(schema_key(schema_id(
                     resp_result['identifier'],
                     resp_result['data']['name'],
-                    resp_result['data']['version']))  # adds to cache en passant
+                    resp_result['data']['version'])))  # adds to cache en passant
 
         logger.debug('Origin.send_schema: <<< {}'.format(rv))
         return rv
 
-    async def process_post(self, form: dict) -> str:
-        """
-        Take a request from service wrapper POST and dispatch the applicable agent action.
-        Return (json) response arising from processing.
-
-        Raise TokenType on demurral.
-
-        :param form: request form on which to operate
-        :return: json response
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('Origin.process_post: >>> form: {}'.format(form))
-
-        # Try dispatching to each ancestor from _BaseAgent first
-        mro = Origin._mro_dispatch()
-        for responder_class in mro:
-            try:
-                rv = await responder_class.process_post(self, form)
-                logger.debug('Origin.process_post: <<< {}'.format(rv))
-                return rv
-            except TokenType:
-                pass
-
-        if form['type'] == 'schema-send':
-            rv = await self.send_schema(json.dumps({
-                'name': form['data']['schema']['name'],
-                'version': form['data']['schema']['version'],
-                'attr_names': form['data']['attr-names']
-            }))
-
-            logger.debug('Origin.process_post: <<< {}'.format(rv))
-            return rv
-
-        logger.debug('Origin.process_post: <!< not this form type: {}'.format(form['type']))
-        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
-
 class Issuer(Origin):
     """
-    Mixin for agent acting in role of Issuer. Any issuer may originate its own schema.
+    Mixin for agent acting in role of Issuer.
+
+    The current design calls for any issuer to be able to originate its own schema.
     """
 
-    async def send_claim_def(self, schema_json: str) -> str:
+    async def send_cred_def(self, schema_json: str) -> str:
         """
-        Create a claim definition as Issuer, store it in its wallet, and send it to the ledger.
+        Create a credential definition as Issuer, store it in its wallet, and send it to the ledger.
 
-        Raise any IndyError causing failure to store claim def.
+        Raise any IndyError causing failure to store credential definition.
 
         :param schema_json: schema as it appears on ledger via get_schema()
-        :return: json claim definition as it appears on ledger, empty production for None
+        :return: json credential definition as it appears on ledger, empty production for None
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('Issuer.send_claim_def: >>> schema_json: {}'.format(schema_json))
+        logger.debug('Issuer.send_cred_def: >>> schema_json: {}'.format(schema_json))
 
         schema = json.loads(schema_json)
+        # print('\n\n-- SEND-CRED-DEF.0 -- send cred def on schema json {}'.format(ppjson(schema_json)))
 
-        rv = await self.get_claim_def(schema['seqNo'], schema['dest'])
+        s_id = schema_id(self.did, schema['name'], schema['version'])
+        cd_id = cred_def_id(self.did, schema['seqNo'])
+        rv = await self.get_cred_def(cd_id)
+        # print('\n\n-- SEND-CRED-DEF.1 -- cd_id {}, cred-def-get() -> {}'.format(cd_id, ppjson(rv)))
         if json.loads(rv):
             # TODO: revocation support will definitely change this check
             logger.info(
-                'Claim def on schema {} version {} already exists on ledger; Issuer {} not sending another'.format(
-                    schema['data']['name'],
-                    schema['data']['version'],
+                'Cred def on schema {} version {} already exists on ledger; Issuer {} not sending another'.format(
+                    schema['name'],
+                    schema['version'],
                     self.wallet.name))
 
+        # print('\n\n-- SEND-CRED-DEF.2 -- schema_json: {}'.format(ppjson(schema_json)))
         try:
-            claim_def_json = await anoncreds.issuer_create_and_store_claim_def(
+            (_, cred_def_json) = await anoncreds.issuer_create_and_store_credential_def(
                 self.wallet.handle,
                 self.did,  # issuer DID
                 schema_json,
+                'tag-0',  # revocation will change this?
                 'CL',
-                False)
+                json.dumps({'support_revocation': False}))
+            # print('\n\n-- SEND-CRED-DEF.3 -- cred_def_json {}'.format(ppjson(cred_def_json)))
         except IndyError as e:
             # TODO: revocation support may change this check
-            if e.error_code == ErrorCode.AnoncredsClaimDefAlreadyExistsError:
+            if e.error_code == ErrorCode.AnoncredsCredDefAlreadyExistsError:
                 if json.loads(rv):
-                    logger.info('Issuer wallet {} reusing existing claim def on schema {} version {}'.format(
+                    logger.info('Issuer wallet {} reusing existing cred def on schema {} version {}'.format(
                         self.wallet.name,
-                        schema['data']['name'],
-                        schema['data']['version']))
+                        schema['name'],
+                        schema['version']))
                 else:
-                    logger.debug('Issuer.send_claim_def: <!< corrupt wallet {}'.format(self.wallet.name))
+                    logger.debug('Issuer.send_cred_def: <!< corrupt wallet {}'.format(self.wallet.name))
                     raise CorruptWallet(
-                        'Corrupt Issuer wallet {} has claim def on schema {} version {} not on ledger'.format(
+                        'Corrupt Issuer wallet {} has cred def on schema {} version {} not on ledger'.format(
                             self.wallet.name,
-                            schema['data']['name'],
-                            schema['data']['version']))
+                            schema['name'],
+                            schema['version']))
             else:
                 logger.debug(
-                    'Issuer.send_claim_def: <!< cannot store claim def in wallet {}: indy error code {}'.format(
+                    'Issuer.send_cred_def: <!< cannot store cred def in wallet {}: indy error code {}'.format(
                         self.wallet.name,
                         e.error_code))
                 raise
 
-        if not json.loads(rv):  # checking the ledger returned no claim def: send it
-            req_json = await ledger.build_claim_def_txn(
-                self.did,
-                schema['seqNo'],
-                'CL',
-                json.dumps(json.loads(claim_def_json)['data']))
+        if not json.loads(rv):  # checking the ledger returned no cred def: send it
+            req_json = await ledger.build_cred_def_request(self.did, cred_def_json)
+            # print('\n\n-- SEND-CRED-DEF.4 -- req_json {}'.format(ppjson(req_json)))
             resp_json = await ledger.sign_and_submit_request(
                 self.pool.handle,
                 self.wallet.handle,
@@ -875,156 +627,87 @@ class Issuer(Origin):
             await asyncio.sleep(0)
 
             resp = json.loads(resp_json)
+            # print('\n\n-- SEND-CRED-DEF.5 -- {} response {}'.format(s_id, ppjson(resp)))
             if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
-                logger.error('Issuer.send_claim_def: {}'.format(resp['reason']))
+                # print('  .. 5.0x')
+                logger.error('Issuer.send_cred_def: {}'.format(resp['reason']))
             else:
-                data = resp['result']['data']
-                if data:
-                    rv = json.dumps(data)
-                else:
-                    logger.info('Issuer.send_claim_def: ledger query returned response with no data')
+                rv = await self.get_cred_def(cd_id)  # pick up from ledger and parse
+                # print('  .. 5.1 get-cred-def picked up rv {}'.format(ppjson(rv)))
 
-        logger.debug('Issuer.send_claim_def: <<< {}'.format(rv))
+        # print('\n\n-- SEND-CRED-DEF.6 -- rv {}'.format(ppjson(rv)))
+        logger.debug('Issuer.send_cred_def: <<< {}'.format(rv))
         return rv
 
-    async def create_claim_offer(self, schema_json: str, holder_prover_did: str) -> str:
+    async def create_cred_offer(self, schema_seq_no: int) -> str:
         """
-        Create claim offer as Issuer for given schema and agent on specified DID.
+        Create credential offer as Issuer for given schema and agent on specified DID.
 
-        Raise CorruptWallet if the wallet has no private key for the corresponding claim definition.
+        Raise CorruptWallet if the wallet has no private key for the corresponding credential definition.
 
-        :param schema_json: schema as it appears on ledger via get_schema()
-        :return: json claim offer for use in storing claims at HolderProver.
+        :param schema_seq_no: schema sequence number
+        :return: json credential offer for use in storing credentials at HolderProver.
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('Issuer.create_claim_offer: >>> schema_json: {}, holder_prover_did: {}'.format(
-            schema_json,
-            holder_prover_did))
+        logger.debug('Issuer.create_cred_offer: >>> schema_seq_no: {}'.format(schema_seq_no))
 
         rv = None
-
+        cd_id = cred_def_id(self.did, schema_seq_no)
+        # print('  .. {} create-cred-offer cd_id {}'.format(self.wallet.name, cd_id))
         try:
-            rv = await anoncreds.issuer_create_claim_offer(
-                self.wallet.handle,
-                schema_json,
-                self.did,
-                holder_prover_did)
+            rv = await anoncreds.issuer_create_credential_offer(self.wallet.handle, cd_id)
         except IndyError as e:
+            # print('  .. X indy-sdk-create-offer raised {}'.format(e))
             if e.error_code == ErrorCode.WalletNotFoundError:
-                logger.debug(
-                    'Issuer.create_claim_offer: <!< did not issue claim definition from wallet {}'.format(
-                        self.wallet.name))
-                raise CorruptWallet('Cannot create claim offer: did not issue claim definition from wallet {}'.format(
+                logger.debug('Issuer.create_cred_offer: <!< did not issue cred definition from wallet {}'.format(
+                    self.wallet.name))
+                raise CorruptWallet('Cannot create cred offer: did not issue cred definition from wallet {}'.format(
                     self.wallet.name))
             else:
-                logger.debug(
-                    'Issuer.create_claim_offer: <!<  cannot create claim offer, indy error code {}'.format(
-                        e.error_code))
+                logger.debug('Issuer.create_cred_offer: <!<  cannot create cred offer, indy error code {}'.format(
+                    e.error_code))
                 raise
 
-        logger.debug('Issuer.create_claim_offer: <<< {}'.format(rv))
+        logger.debug('Issuer.create_cred_offer: <<< {}'.format(rv))
         return rv
 
-    async def create_claim(self, claim_req_json: str, claim: dict) -> (str, str):
+    async def create_cred(self, cred_offer_json, cred_req_json: str, cred_attrs: dict) -> (str, str, str):
         """
-        Create claim as Issuer out of claim request and dict of key:[value, encoding] entries
-        for revealed attributes.
+        Create credential as Issuer out of credential request and dict of key:value (raw, unencoded) entries
+        for attributes; return credential, credential revocation identifier, and revocation registry delta.
 
-        :param claim_req_json: claim request as created by HolderProver
-        :param claim: claim dict mapping each revealed attribute to its [value, encoding]; e.g.,
+        :param cred_offer_json: credential offer json as created by Issuer
+        :param cred_req_json: credential request json as created by HolderProver
+        :param cred_attrs: dict mapping each attribute to its raw value (the operation encodes it); e.g.,
             {
-                'favourite_drink': ['martini', '1103189706537168622028552856221241'],
-                'height': ['180', '180'],
-                'last_visit_date': ['2017-12-31', '292278025700124567977725373155106423905275032369']
+                'favourite_drink': 'martini',
+                'height': 180,
+                'last_visit_date': '2017-12-31',
+                'weaknesses': None
             }
-        :return: revocation registry update json, newly issued claim json
+        :return: newly issued credential json, credential revocation identifier, revocation registry delta json
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('Issuer.create_claim: >>> claim_req_json: {}, claim: {}'.format(claim_req_json, claim))
+        logger.debug('Issuer.create_cred: >>> cred_req_json: {}, cred_attrs: {}'.format(cred_req_json, cred_attrs))
 
-        rv = await anoncreds.issuer_create_claim(
+        (cred_json, cred_revoc_id, rev_reg_delta_json) = await anoncreds.issuer_create_credential(
             self.wallet.handle,
-            claim_req_json,
-            json.dumps(claim),
-            -1)
-        logger.debug('Issuer.create_claim: <<< {}'.format(rv))
+            cred_offer_json,
+            cred_req_json,
+            json.dumps({k: cred_attr_value(cred_attrs[k]) for k in cred_attrs}),
+            None,
+            None) # TODO revocation will change None values
+        rv = (cred_json, cred_revoc_id, rev_reg_delta_json)
+        logger.debug('Issuer.create_cred: <<< {}'.format(rv))
         return rv
-
-    async def process_post(self, form: dict) -> str:
-        """
-        Take a request from service wrapper POST and dispatch the applicable agent action.
-        Return (json) response arising from processing.
-
-        Raise TokenType on demurral, or any other exception on its occurrence.
-
-        :param form: request form on which to operate
-        :return: json response
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('Issuer.process_post: >>> form: {}'.format(form))
-
-        # Try dispatching to each ancestor from _BaseAgent first
-        mro = Issuer._mro_dispatch()
-        for responder_class in mro:
-            try:
-                rv = await responder_class.process_post(self, form)
-                logger.debug('Issuer.process_post: <<< {}'.format(rv))
-                return rv
-            except TokenType:
-                pass
-
-        if form['type'] == 'claim-def-send':
-            s_key = schema_key_for(form['data']['schema'])
-            schema_json = await self.get_schema(s_key)
-            schema = json.loads(schema_json)
-            if not schema:
-                logger.debug(
-                    'Issuer.process_post: <!< absent schema {}, claim def may pertain to another ledger'.format(
-                        s_key))
-                raise AbsentSchema(
-                    'Absent schema {}, claim def may pertain to another ledger'.format(s_key))
-            await self.send_claim_def(schema_json)
-            rv = json.dumps({})
-            logger.debug('Issuer.process_post: <<< {}'.format(rv))
-            return rv
-
-        elif form['type'] == 'claim-offer-create':
-            s_key = schema_key_for(form['data']['schema'])
-            schema_json = await self.get_schema(s_key)
-            schema = json.loads(schema_json)
-            if not schema:
-                logger.debug(
-                    'Issuer.process_post: <!< absent schema {}, claim offer may pertain to another ledger'.format(
-                        s_key))
-                raise AbsentSchema(
-                    'Absent schema {}, claim offer may pertain to another ledger'.format(s_key))
-            rv = await self.create_claim_offer(schema_json, form['data']['holder-did'])  # claim offer json
-            logger.debug('Issuer.process_post: <<< {}'.format(rv))
-            return rv
-
-        elif form['type'] == 'claim-create':
-            _, rv = await self.create_claim(
-                json.dumps(form['data']['claim-req']),
-                {k:
-                    [
-                        str(form['data']['claim-attrs'][k]),
-                        encode(form['data']['claim-attrs'][k])
-                    ] for k in form['data']['claim-attrs']
-                })
-            logger.debug('Issuer.process_post: <<< {}'.format(rv))
-            return rv  # TODO: support revocation -- this return value will change
-
-        logger.debug('Issuer.process_post: <!< not this form type: {}'.format(form['type']))
-        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
 
 
 class HolderProver(_BaseAgent):
     """
-    Mixin for agent acting in the role of w3c Holder and indy-sdk Prover. A Holder holds claims,
-    and a Prover produces proof for claims.
+    Mixin for agent acting in the role of w3c Holder and indy-sdk Prover.
+    A Holder holds credentials; a Prover produces proof for credentials.
     """
 
     def __init__(self, wallet: Wallet, cfg: dict = None) -> None:
@@ -1074,390 +757,401 @@ class HolderProver(_BaseAgent):
         self._master_secret = master_secret
         logger.debug('HolderProver.create_master_secret: <<<')
 
-    async def store_claim_req(self, claim_offer_json: str, claim_def_json: str) -> str:
+    async def create_cred_req(self, cred_offer_json: str, cred_def_json: str) -> (str, str):
         """
-        Store claim offer and create claim request as HolderProver and store in wallet.
+        Create credential request as HolderProver and store in wallet; return credential json and metadata json.
 
         Raise AbsentMasterSecret if master secret not set.
 
-        :param claim_offer_json: claim offer json
-        :param claim_def_json: claim definition json as retrieved from ledger via get_claim_def()
-        :return: claim request json as stored in wallet
+        :param cred_offer_json: credential offer json
+        :param cred_def_json: credential definition json as retrieved from ledger via get_cred_def()
+        :return: cred request json and corresponding metadata json as created and stored in wallet
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.store_claim_req: >>> claim_offer_json: {}, claim_def_json: {}'.format(
-            claim_offer_json,
-            claim_def_json))
+        logger.debug('HolderProver.create_cred_req: >>> cred_offer_json: {}, cred_def_json: {}'.format(
+            cred_offer_json,
+            cred_def_json))
 
         if self._master_secret is None:
-            logger.debug('HolderProver.store_claim_req: <!< master secret not set')
+            logger.debug('HolderProver.create_cred_req: <!< master secret not set')
             raise AbsentMasterSecret('Master secret is not set')
 
-        await anoncreds.prover_store_claim_offer(
-            self.wallet.handle,
-            claim_offer_json)
-
-        schema_seq_no = json.loads(claim_def_json)['ref']  # = schema seq no in claim def
+        # Check that ledger has schema on ledger where cred def expects - in case of pool reset with extant wallet
+        schema_seq_no = int(json.loads(cred_def_json)['schemaId'])
         schema_json = await self.get_schema(schema_seq_no)  # update schema cache en passant if need be
         schema = json.loads(schema_json)
         if not schema:
             logger.debug(
-                'HolderProver.store_claim_req: <!< absent schema@#{}, claim req may pertain to another ledger'.format(
+                'HolderProver.create_cred_req: <!< absent schema@#{}, cred req may pertain to another ledger'.format(
                     schema_seq_no))
-            raise AbsentSchema(
-                'Absent schema@#{}, claim req may pertain to another ledger'.format(schema_seq_no))
-        rv = await anoncreds.prover_create_and_store_claim_req(
+            raise AbsentSchema('Absent schema@#{}, cred req may pertain to another ledger'.format(schema_seq_no))
+        (cred_req_json, cred_req_metadata_json) = await anoncreds.prover_create_credential_req(
             self.wallet.handle,
             self.did,
-            claim_offer_json,
-            claim_def_json,
+            cred_offer_json,
+            cred_def_json,
             self._master_secret)
+        rv = (cred_req_json, cred_req_metadata_json)
 
-        logger.debug('HolderProver.store_claim_req: <<< {}'.format(rv))
+        logger.debug('HolderProver.create_cred_req: <<< {}'.format(rv))
         return rv
 
-    async def store_claim(self, claim_json: str) -> None:
+    async def store_cred(self, cred_def_json: str, cred_json: str, cred_req_metadata_json) -> str:
         """
-        Store claim in wallet as HolderProver.
+        Store cred in wallet as HolderProver, return its credential identifier as created in wallet.
 
-        :param claim_json: json claim as HolderProver created
+        :param cred_def_json: credential definition json
+        :param cred_json: credential json as HolderProver created
+        :param cred_req_metadata_json: credential request metadata as HolderProver created via create_cred_req()
+        :return: credential identifier within wallet
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.store_claim: >>> claim_json: {}'.format(claim_json))
+        logger.debug('HolderProver.store_cred: >>> cred_def_json: {}, cred_json: {}, cred_req_metadata_json: {}'.format(
+            cred_def_json,
+            cred_json,
+            cred_req_metadata_json))
 
-        await anoncreds.prover_store_claim(
+        rv = await anoncreds.prover_store_credential(
             self.wallet.handle,
-            claim_json,
+            None,  # cred_id
+            cred_req_metadata_json,
+            cred_json,
+            cred_def_json,
             None)  # rev_reg_json - TODO: revocation
-        logger.debug('HolderProver.store_claim: <<<')
+        logger.debug('HolderProver.store_cred: <<< {}'.format(rv))
+        return rv
 
-    async def create_proof(self, proof_req: dict, claims: dict, requested_claims: dict = None) -> str:
+    async def get_creds_display_coarse(self, filt: dict = None) -> str:
         """
-        Create proof as HolderProver.
+        Return human-readable credentials from wallet by input filter for
+        schema identifier and/or credential definition identifier components;
+        return all credentials for no filter.
 
-        Raise:
-            * AbsentMasterSecret if master secret not set
-            * ClaimsFocus on attempt to create proof on no claims or multiple claims for a claim definition.
+        :param filt: filter for credentials; i.e.,
+            {
+                "schema_id": string,  # optional
+                "schema_issuer_did": string,  # optional
+                "schema_name": string,  # optional
+                "schema_version": string,  # optional
+                "issuer_did": string,  # optional
+                "cred_def_id": string  # optional
+            }
 
-        :param proof_req: proof request as Verifier creates; has entries for proof request's
-            nonce, name, and version; plus claim's requested attributes, requested predicates. E.g.,
-            {
-                'nonce': '12345',  # for Verifier info, not HolderProver matching
-                'name': 'proof-request',  # for Verifier info, not HolderProver matching
-                'version': '1.0',  # for Verifier info, not HolderProver matching
-                'requested_attrs': {
-                    'attr1_uuid': {
-                        'name': 'favourite_drink',
-                        'restrictions' [
-                            {
-                                'schema_key': {
-                                    'did': 'Vx4E82R17q...',
-                                    'name': 'friendlies',
-                                    'version': '1.0'
-                                }
-                            }
-                        ]
-                    },
-                    'attr2_uuid': {
-                        'name': 'height',
-                        'restrictions' [
-                            {
-                                'schema_key': {
-                                    'did': 'R17v42T4pk...',
-                                    'name': 'patient-records',
-                                    'version': '2.1'
-                                }
-                            }
-                        ]
-                    },
-                    'attr3_uuid': {
-                        'name': 'last_visit_date',
-                        'restrictions' [
-                            {
-                                'schema_key': {
-                                    'did': 'R17v42T4pk...',
-                                    'name': 'patient-records',
-                                    'version': '2.1'
-                                }
-                            }
-                        ]
-                    },
-                },
-                'requested_predicates': {
-                    'predicate0_uuid': {
-                        'attr_name': 'age',
-                        'p_type': '>=',
-                        'value': 18,
-                        'restrictions': [
-                            'schema_key': {
-                                'did': 'R17v42T4pk...',
-                                'name': 'patient-records',
-                                'version': '2.1'
-                            }
-                        ]
-                    }
+        :return: credentials json list; i.e.,
+            [{
+                "referent": string,  # credential identifier in the wallet
+                "attrs": {
+                    "attr1" : {"raw": "value1", "encoded": "value1_as_int" },
+                    "attr2" : {"raw": "value2", "encoded": "value2_as_int" },
+                    ...
                 }
-            }
-        :param claims: claims to prove
-        :param requested_claims: data structure with self-attested attribute info, requested attribute info
-            and requested predicate info, assembled from get_claims() and filtered for
-            content of interest. E.g.,
-            {
-                'self_attested_attributes': {},
-                'requested_attrs': {
-                    'attr0_uuid': ['claim::31291362-9b75-4353-a948-a7d02d0e7a00', True],
-                    'attr1_uuid': ['claim::97977381-ca99-3817-8f22-a07cd3550287', True]
-                },
-                'requested_predicates': {
-                    'predicate0_uuid': 'claim::31219731-9783-a772-bc98-12369780831f'
-                }
-            }
-        :return: proof json
+                "schema_id": string,
+                "cred_def_id": string,
+                "rev_reg_id": Optional<string>,
+                "cred_rev_id": Optional<string>
+            }]
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.create_proof: >>> proof_req: {}, claims: {}, requested_claims: {}'.format(
-                proof_req,
-                claims,
-                requested_claims))
+        logger.debug('HolderProver.get_creds_precis: >>> filt: {}'.format(filt))
 
-        if self._master_secret is None:
-            logger.debug('HolderProver.create_proof: <!< master secret not set')
-            raise AbsentMasterSecret('Master secret is not set')
-
-        x_uuids = [attr_uuid for attr_uuid in claims['attrs'] if len(claims['attrs'][attr_uuid]) != 1]
-        if x_uuids:
-            logger.debug('HolderProver.create_proof: <!< claims specification out of focus (non-uniqueness)')
-            raise ClaimsFocus('Proof request requires unique claims per attribute; violators: {}'.format(x_uuids))
-
-        referent2schema = {}
-        referent2claim_def = {}
-        for attr_uuid in claims['attrs']:
-            s_key = schema_key_for(claims['attrs'][attr_uuid][0]['schema_key'])
-            schema = json.loads(await self.get_schema(s_key))  # make sure it's in the schema cache
-            if not schema:
-                logger.debug(
-                    'HolderProver.create_proof: <!< absent schema {}, proof req may pertain to another ledger'.format(
-                        s_key))
-                raise AbsentSchema(
-                    'Absent schema {}, proof req may pertain to another ledger'.format(s_key))
-            referent2schema[claims['attrs'][attr_uuid][0]['referent']] = schema
-            referent2claim_def[claims['attrs'][attr_uuid][0]['referent']] = (
-                json.loads(await self.get_claim_def(
-                    schema['seqNo'],
-                    claims['attrs'][attr_uuid][0]['issuer_did'])))
-            if not referent2claim_def[claims['attrs'][attr_uuid][0]['referent']]:
-                logger.debug(
-                    'HolderProver.create_proof: <!< absent claim def for schema@#{}, issuer-did {}'.format(
-                        schema['seqNo'],
-                        claims['attrs'][attr_uuid][0]['issuer_did']))
-                raise AbsentSchema(
-                    'Absent claim def for schema@#{}, issuer-did {}'.format(
-                        schema['seqNo'],
-                        claims['attrs'][attr_uuid][0]['issuer_did']))
-
-        rv = await anoncreds.prover_create_proof(
-            self.wallet.handle,
-            json.dumps(proof_req),
-            json.dumps(requested_claims),
-            json.dumps(referent2schema),
-            self._master_secret,
-            json.dumps(referent2claim_def),
-            json.dumps({}))  # revoc_regs_json
-        logger.debug('HolderProver.create_proof: <<< {}'.format(rv))
+        rv = await anoncreds.prover_get_credentials(self.wallet.handle, json.dumps(filt or {}))
+        logger.debug('HolderProver.get_creds_precis: <<< {}'.format(rv))
         return rv
 
-    async def get_claims(self, proof_req_json: str, filt: dict = None) -> (Set[str], str):
+    async def get_creds(self, proof_req_json: str, filt: dict = None) -> (Set[str], str):
         """
-        Get claims from HolderProver wallet corresponding to proof request and filter criteria; return referents
-        and proof json or empty set and empty production for no such claim.
+        Get credentials from HolderProver wallet corresponding to proof request and
+        filter criteria; return credential identifiers from wallet and credentials json.
+        Return empty set and empty production for no such credentials.
 
         :param proof_req_json: proof request json as Verifier creates; has entries for proof request's
-            nonce, name, and version; plus claim's requested attributes, requested predicates. E.g.,
+            nonce, name, and version; plus credential's requested attributes, requested predicates. I.e.,
             {
-                'nonce': '12345',  # for Verifier info, not HolderProver matching
-                'name': 'proof-request',  # for Verifier info, not HolderProver matching
-                'version': '1.0',  # for Verifier info, not HolderProver matching
-                'requested_attrs': {
-                    'attr1_uuid': {
-                        'name': 'favourite_drink',
-                        'restrictions' [
+                'nonce': string,  # indy-sdk makes no semantic specification on this value
+                'name': string,  # indy-sdk makes no semantic specification on this value
+                'version': numeric-string,  # indy-sdk makes no semantic specification on this value
+                'requested_attributes': {
+                    '<attr_uuid>': {  # aka attr_referent, a proof-request local identifier
+                        'name': string,  # attribute name (matches case- and space-insensitively)
+                        'restrictions' [  # optional
                             {
-                                'schema_key': {
-                                    'did': 'Vx4E82R17q...',
-                                    'name': 'friendlies',
-                                    'version': '1.0'
-                                }
-                            }
-                        ]
-                    },
-                    'attr2_uuid': {
-                        'name': 'height',
-                        'restrictions' [
+                                "schema_id": string,  # optional
+                                "schema_issuer_did": string,  # optional
+                                "schema_name": string,  # optional
+                                "schema_version": string,  # optional
+                                "issuer_did": string,  # optional
+                                "cred_def_id": string  # optional
+                            },
                             {
-                                'schema_key': {
-                                    'did': 'R17v42T4pk...',
-                                    'name': 'patient-records',
-                                    'version': '2.1'
-                                }
+                                ...  # if more than one restriction given, combined disjunctively (i.e., via OR)
                             }
-                        ]
+                        ],
+                        'non-revoked': {  # optional
+                            'from': int,  # optional, epoch seconds
+                            'to': int  # optional, epoch seconds
+                        }
                     },
-                    'attr3_uuid': {
-                        'name': 'last_visit_date',
-                        'restrictions' [
-                            {
-                                'schema_key': {
-                                    'did': 'R17v42T4pk...',
-                                    'name': 'patient-records',
-                                    'version': '2.1'
-                                }
-                            }
-                        ]
-                    },
+                    ...
                 },
                 'requested_predicates': {
-                    'predicate0_uuid': {
-                        'attr_name': 'age',
+                    '<pred_uuid>': {  # aka predicate_referent, a proof-request local predicate identifier
+                        'name': string,  # attribute name (matches case- and space-insensitively)
                         'p_type': '>=',
-                        'value': 18,
-                        'restrictions': [
-                            'schema_key': {
-                                'did': 'R17v42T4pk...',
-                                'name': 'patient-records',
-                                'version': '2.1'
+                        'p_value': int,  # predicate value
+                        'restrictions': [  # optional
+                            {
+                                "schema_id": string,  # optional
+                                "schema_issuer_did": string,  # optional
+                                "schema_name": string,  # optional
+                                "schema_version": string,  # optional
+                                "issuer_did": string,  # optional
+                                "cred_def_id": string  # optional
+                            },
+                            {
+                                ...  # if more than one restriction given, combined disjunctively (i.e., via OR)
                             }
-                        ]
-                    }
+                        ],
+                        'non-revoked': {  # optional
+                            'from': int,  # optional, epoch seconds
+                            'to': int  # optional, epoch seconds
+                        }
+                    },
+                    ...
+                },
+                'non-revoked': {  # optional; implies that prover must prove non-revocation for each attr
+                    'from': Optional<int>,
+                    'to': Optional<int>
                 }
             }
-        :param filt: filter for matching attribute-value pairs and predicates; dict mapping each SchemaKey to
-            dict mapping attributes to values to match or compare (specify empty dict for no filter). E.g.,
+        :param filt: filter for matching attribute-value pairs and predicates;
+            dict mapping each schema identifier to dict (specify empty dict for no filter)
+            mapping attributes to values to match or compare. E.g.,
             {
-                SchemaKey('Vx4E82R17q...', 'friendlies', '1.0'): {
+                'Vx4E82R17q...:3:friendlies:1.0': {
                     'attr-match': {
                         'name': 'Alex',
                         'sex': 'M',
                         'favouriteDrink': None
                     },
-                    'pred-match': [
+                    'pred-match': [  # if both attr-match and pred-match present, combined conjunctively (i.e., via AND)
                         {
                             'attr' : 'favouriteNumber',
                             'pred-type': '>=',
                             'value': 10
                         },
-                        {
+                        {  # if more than one predicate present, combined conjunctively (i.e., via AND)
                             'attr' : 'score',
                             'pred-type': '>=',
                             'value': 100
                         },
                     ]
                 },
-                SchemaKey('R17v42T4pk...', 'tombstone', '2.1'): {
+                'R17v42T4pk...:3:tombstone:2.1': {
                     'attr-match': {
                         'height': 175,
-                        'birthdate': '1975-11-15'
+                        'birthdate': '1975-11-15'  # combined conjunctively (i.e., via AND)
                     }
                 },
                 ...
             }
-        :return: tuple with (set of referents, claims json for input proof request); empty set and production
-            for no such claim
+        :return: tuple with (set of referents, creds json for input proof request);
+            empty set and empty production for no such credential
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.get_claims: >>> proof_req_json: {}, filt: {}'.format(proof_req_json, filt))
+        logger.debug('HolderProver.get_creds: >>> proof_req_json: {}, filt: {}'.format(proof_req_json, filt))
 
         if filt is None:
             filt = {}
         rv = None
-        claims_json = await anoncreds.prover_get_claims_for_proof_req(self.wallet.handle, proof_req_json)
-        claims = json.loads(claims_json)
-        referents = set()
+        creds_json = await anoncreds.prover_get_credentials_for_proof_req(self.wallet.handle, proof_req_json)
+        creds = json.loads(creds_json)
+        cred_ids = set()
 
-        # retain only claim(s) of interest: find corresponding referent(s)
+        # print('\n\n-- X.1 -- get-creds got creds {}'.format(ppjson(creds)))
+        # retain only creds of interest: find corresponding credential identifiers 
 
         if filt:
-            for s_key in filt:
-                schema = json.loads(await self.get_schema(s_key))
+            for s_id in filt:
+                schema = json.loads(await self.get_schema(schema_key(s_id)))
                 if not schema:
-                    logger.warning('HolderProver.get_claims: ignoring filter criterion, no schema on {}'.format(s_key))
-                    filt.pop(s_key)
+                    logger.warning('HolderProver.get_creds: ignoring filter criterion, no schema on {}'.format(s_id))
+                    filt.pop(s_id)
 
-        for attr_uuid in claims['attrs']:
-            for candidate in claims['attrs'][attr_uuid]:
+        for attr_uuid in creds['attrs']:
+            for candidate in creds['attrs'][attr_uuid]:  # candidate is a dict in a list of dicts
+                cred_info = candidate['cred_info']
                 if filt:
-                    claim_s_key = schema_key_for(candidate['schema_key'])
-                    if claim_s_key in filt and 'attr-match' in filt[claim_s_key]:
-                        if not {k: str(filt[claim_s_key]['attr-match'][k])
-                                for k in filt[claim_s_key]['attr-match']}.items() <= candidate['attrs'].items():
+                    cred_s_id = cred_info['schema_id']
+                    if cred_s_id in filt and 'attr-match' in filt[cred_s_id]:
+                        if not {k: str(filt[cred_s_id]['attr-match'][k])
+                                for k in filt[cred_s_id]['attr-match']}.items() <= cred_info['attrs'].items():
                             continue
-                    if claim_s_key in filt and 'pred-match' in filt[claim_s_key]:
+                    if cred_s_id in filt and 'pred-match' in filt[cred_s_id]:
                         try:
-                            if any((pred_match['attr'] not in candidate['attrs']) or
-                                (int(candidate['attrs'][pred_match['attr']]) < pred_match['value'])
-                                    for pred_match in filt[claim_s_key]['pred-match']):
+                            if any((pred_match['attr'] not in cred_info['attrs']) or
+                                (int(cred_info['attrs'][pred_match['attr']]) < pred_match['value'])
+                                    for pred_match in filt[cred_s_id]['pred-match']):
                                 continue
                         except ValueError:
                             # int conversion failed - reject candidate
                             continue
-                    referents.add(candidate['referent'])
+                    cred_ids.add(cred_info['referent'])
                 else:
-                    referents.add(candidate['referent'])
+                    cred_ids.add(cred_info['referent'])
 
         if filt:
-            claims = json.loads(prune_claims_json(claims, referents))
+            creds = json.loads(prune_creds_json(creds, cred_ids))
 
-        rv = (referents, json.dumps(claims))
-        logger.debug('HolderProver.get_claims: <<< {}'.format(rv))
+        rv = (cred_ids, json.dumps(creds))
+        logger.debug('HolderProver.get_creds: <<< {}'.format(rv))
         return rv
 
-    async def get_claim_by_referent(self, referents: set, requested_attrs: dict) -> str:
+    async def get_creds_by_id(self, cred_ids: set, requested_attributes: dict) -> str:
         """
-        Get claim structure from HolderProver wallet by referents.
+        Get creds structure from HolderProver wallet by credential identifiers.
 
-        :param referents: set of referents of interest
-        :param requested_attrs: requested attrs dict mapping uuid to schema sequence number and attribute name for
-            each requested attribute; e.g.,
+        :param cred_ids: set of credential identifiers of interest
+        :param requested_attributes: requested attrs dict mapping (cred-local) attr-uuids to
+            name, restrictions, non-revoked specs for each requested attribute as per get_creds(); e.g.,
             {
                 'attr1_uuid': {
-                    'schema_seq_no': 57,
-                    'name': 'favourite_drink'
+                    'name': 'favourite_drink',
+                    'restrictions' [  # optional
+                        {
+                            "schema_id": string,  # optional
+                            "schema_issuer_did": string,  # optional
+                            "schema_name": string,  # optional
+                            "schema_version": string,  # optional
+                            "issuer_did": string,  # optional
+                            "cred_def_id": string  # optional
+                        },
+                        {
+                            ...  # if more than one restriction given, combined disjunctively (i.e., via OR)
+                        },
+                        'non-revoked': {  # optional
+                            'from': int,  # optional, epoch seconds
+                            'to': int  # optional, epoch seconds
+                        }
+                    ],
                 },
-                'attr2_uuid': {
-                    'schema_seq_no': 54,
-                    'name': 'height'
-                },
+                ...
             }
-        :return: json with claim(s) for input referent(s)
+        :return: json with cred(s) for input credential identifier(s)
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.get_claim_by_referent: >>> referents: {}, requested_attrs: {}'.format(
-            referents,
-            requested_attrs))
+        logger.debug('HolderProver.get_creds_by_id: >>> cred_ids: {}, requested_attributes: {}'.format(
+            cred_ids,
+            requested_attributes))
 
-        claim_req_json = json.dumps({
+        cred_req_json = json.dumps({
                 'nonce': str(int(time() * 1000)),
-                'name': 'claim-request',  # for Verifier info, not HolderProver matching
-                'version': '1.0',  # for Verifier info, not HolderProver matching
-                'requested_attrs': requested_attrs,
+                'name': 'cred-request',
+                'version': '1.0',
+                'requested_attributes': requested_attributes,
                 'requested_predicates': {}
             })
 
-        claims_json = await anoncreds.prover_get_claims_for_proof_req(self.wallet.handle, claim_req_json)
+        creds_json = await anoncreds.prover_get_credentials_for_proof_req(self.wallet.handle, cred_req_json)
 
-        # retain only claims of interest: find corresponding referents
-        rv = prune_claims_json(json.loads(claims_json), referents)
-        logger.debug('HolderProver.get_claim_by_referent: <<< {}'.format(rv))
+        # retain only creds of interest: find corresponding referents
+        rv = prune_creds_json(json.loads(creds_json), cred_ids)
+        logger.debug('HolderProver.get_cred_by_referent: <<< {}'.format(rv))
+        return rv
+
+    async def create_proof(self, proof_req: dict, creds: dict, requested_creds: dict = None) -> str:
+        """
+        Create proof as HolderProver.
+
+        Raise:
+            * AbsentMasterSecret if master secret not set
+            * CredentialFocus on attempt to create proof on no creds or multiple creds for a credential definition.
+
+        :param proof_req: proof request as per get_creds() above
+        :param creds: credentials to prove
+        :param requested_creds: data structure with self-attested attribute info, requested attribute info
+            and requested predicate info, assembled from get_creds() and filtered for content of interest. E.g.,
+            {
+                'self_attested_attributes': {},
+                'requested_attributes': {
+                    'attr0_uuid': {
+                        '31291362-9b75-4353-a948-a7d02d0e7a00': {
+                            'cred_id': string,
+                            'timestamp': integer,  # optional
+                            'revealed': bool
+                        }
+                    },
+                    ...
+                },
+                'requested_predicates': {
+                    'predicate0_uuid': {
+                        '31219731-9783-a772-bc98-12369780831f': {
+                            'cred_id': string,
+                            'timestamp': integer  # optional
+                        }
+                }
+            }
+        :return: proof json
+        """
+
+        logger = logging.getLogger(__name__)
+        logger.debug('HolderProver.create_proof: >>> proof_req: {}, creds: {}, requested_creds: {}'.format(
+                proof_req,
+                creds,
+                requested_creds))
+
+        if self._master_secret is None:
+            logger.debug('HolderProver.create_proof: <!< master secret not set')
+            raise AbsentMasterSecret('Master secret is not set')
+
+        x_uuids = [attr_uuid for attr_uuid in creds['attrs'] if len(creds['attrs'][attr_uuid]) != 1]
+        if x_uuids:
+            logger.debug('HolderProver.create_proof: <!< creds specification out of focus (non-uniqueness)')
+            raise CredentialFocus('Proof request requires unique cred per attribute; violators: {}'.format(x_uuids))
+
+        s_id2schema = {}
+        cd_id2cred_def = {}
+        for attr_uuid in creds['attrs']:
+            cred_info = creds['attrs'][attr_uuid][0]['cred_info']
+            s_id = cred_info['schema_id']
+            if s_id not in s_id2schema:
+                s_key = schema_key(s_id)
+                schema = json.loads(await self.get_schema(s_key))  # add to cache en passant
+                if not schema:
+                    logger.debug(
+                        'HolderProver.create_proof: <!< absent schema {}, proof req may pertain to another ledger'
+                            .format(s_id))
+                    raise AbsentSchema(
+                        'Absent schema {}, proof req may pertain to another ledger'.format(s_id))
+                s_id2schema[s_id] = schema
+
+            cd_id = cred_info['cred_def_id']
+            if cd_id not in cd_id2cred_def:
+                cred_def = json.loads(await self.get_cred_def(cd_id))  # add to cache en passant
+                if not cred_def:
+                    logger.debug('HolderProver.create_proof: <!< absent cred def for id {}'.format(cd_id))
+                    raise AbsentCredDef('Absent cred def for id {}'.format(cd_id))
+                cd_id2cred_def[cd_id] = cred_def
+
+        rv = await anoncreds.prover_create_proof(
+            self.wallet.handle,
+            json.dumps(proof_req),
+            json.dumps(requested_creds),
+            self._master_secret,
+            json.dumps(s_id2schema),
+            json.dumps(cd_id2cred_def),
+            json.dumps({}))  # rev_states_json
+        logger.debug('HolderProver.create_proof: <<< {}'.format(rv))
         return rv
 
     async def reset_wallet(self) -> str:
         """
         Close and delete HolderProver wallet, then create and open a replacement.
-        Precursor to revocation, and issuer/filter-specifiable claim deletion.
+        Precursor to revocation, and issuer/filter-specifiable cred deletion.
 
         Raise AbsentMasterSecret if master secret not set.
 
@@ -1488,317 +1182,6 @@ class HolderProver(_BaseAgent):
         logger.debug('HolderProver.reset_wallet: <<< {}'.format(rv))
         return rv
 
-    async def process_post(self, form: dict) -> str:
-        """
-        Take a request from service wrapper POST and dispatch the applicable agent action.
-        Return (json) response arising from processing.
-
-        Raise:
-            * TokenType on demurral
-            * ClaimsFocus on attempt to create proof on no claims or multiple claims for a claim definition.
-
-        :param form: request form on which to operate
-        :return: json response
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.process_post: >>> form: {}'.format(form))
-
-        # Try dispatching to each ancestor from _BaseAgent first
-        mro = HolderProver._mro_dispatch()
-        for responder_class in mro:
-            try:
-                rv = await responder_class.process_post(self, form)
-                logger.debug('HolderProver.process_post: <<< {}'.format(rv))
-                return rv
-            except TokenType:
-                pass
-
-        if form['type'] == 'master-secret-set':
-            # it's agent-local, carry on (no use case for proxying)
-            await self.create_master_secret(form['data']['label'])
-
-            rv = json.dumps({})
-            logger.debug('HolderProver.process_post: <<< {}'.format(rv))
-            return rv
-
-        elif form['type'] == 'claim-offer-store':
-            # base listening agent code handles all proxied requests: it's agent-local, carry on
-            s_key = schema_key_for(form['data']['claim-offer']['schema_key'])
-            issuer_did = form['data']['claim-offer']['issuer_did']
-            schema_json = await self.get_schema(s_key)
-            schema = json.loads(schema_json)
-            if not schema:
-                logger.debug(
-                    'HolderProver.process_post: <!< absent schema {}, {} may pertain to another ledger'.format(
-                        s_key,
-                        form['type']))
-                raise AbsentSchema(
-                    'Absent schema {}, {} may pertain to another ledger'.format(s_key, form['type']))
-            claim_def_json = await self.get_claim_def(schema['seqNo'], issuer_did)
-            claim_def = json.loads(claim_def_json)
-            if not claim_def:
-                logger.debug(
-                    'HolderProver.process_post: <!< absent claim def for schema@#{}, issuer-did {}'.format(
-                        schema['seqNo'],
-                        issuer_did))
-                raise AbsentSchema(
-                    'Absent claim def for schema@#{}, issuer-did {}'.format(
-                        schema['seqNo'],
-                        issuer_did))
-            rv = await self.store_claim_req(json.dumps(form['data']['claim-offer']), claim_def_json)
-
-            logger.debug('HolderProver.process_post: <<< {}'.format(rv))
-            return rv
-
-        elif form['type'] in ('claim-request', 'proof-request'):
-            # base listening agent code handles all proxied requests: it's agent-local, carry on
-            form_schema_keys = []
-            for form_s_key_spec in (form['data']['schemata'] +
-                    [attr_matcher['schema'] for attr_matcher in form['data']['claim-filter']['attr-match']] +
-                    [pred_matcher['schema'] for pred_matcher in form['data']['claim-filter']['pred-match']] +
-                    [r_attr['schema'] for r_attr in form['data']['requested-attrs']]):
-                s_key = schema_key_for(form_s_key_spec)
-                schema_json = await self.get_schema(s_key)  # add to cache en passant
-                schema = json.loads(schema_json)
-                if not schema:
-                    logger.debug(
-                        'HolderProver.process_post: <!< absent schema {}, {} may pertain to another ledger'.format(
-                            s_key,
-                            form['type']))
-                    raise AbsentSchema(
-                        'Absent schema {}, {} may pertain to another ledger'.format(s_key, form['type']))
-                form_schema_keys.append(s_key)
-
-            req_preds = {}  # do preds first: there may be defaulting req-attrs to compute, avoid collision with preds
-            for pred_match in form['data']['claim-filter']['pred-match']:
-                s_key = schema_key_for(pred_match['schema'])
-                seq_no = SCHEMA_CACHE[s_key]['seqNo']
-                for pred_match_match in pred_match['match']:
-                    req_preds['{}_{}_uuid'.format(seq_no, pred_match_match['attr'])] = {
-                        'attr_name': pred_match_match['attr'],
-                        'p_type': pred_match_match['pred-type'],
-                        'value': pred_match_match['value'],
-                        'restrictions': [{
-                            'schema_key': {
-                                'did': s_key.origin_did,
-                                'name': s_key.name,
-                                'version': s_key.version
-                            }
-                        }]
-                    }
-
-            req_attrs = {}
-            if form['data']['requested-attrs']:
-                for req_attr in form['data']['requested-attrs']:
-                    s_key = schema_key_for(req_attr['schema'])
-                    schema = SCHEMA_CACHE[s_key]
-                    for name in req_attr['names'] or schema['data']['attr_names']:
-                        if all(name != req_pred['attr_name'] or
-                            s_key != schema_key_for(req_pred['restrictions'][0]['schema_key'])
-                                for req_pred in req_preds.values()):
-                            req_attrs['{}_{}_uuid'.format(schema['seqNo'], name)] = {
-                                'name': name,
-                                'restrictions': [{
-                                    'schema_key': {
-                                        'did': s_key.origin_did,
-                                        'name': s_key.name,
-                                        'version': s_key.version
-                                    }
-                                }]
-                            }
-            else:
-                for s_key in form_schema_keys:
-                    schema = SCHEMA_CACHE[s_key]
-                    for attr_name in schema['data']['attr_names']:
-                        if all(attr_name != req_pred['attr_name'] or
-                            s_key != schema_key_for(req_pred['restrictions'][0]['schema_key'])
-                                for req_pred in req_preds.values()):
-                            req_attrs['{}_{}_uuid'.format(schema['seqNo'], attr_name)] = {
-                                'name': attr_name,
-                                'restrictions': [{
-                                    'schema_key': {
-                                        'did': s_key.origin_did,
-                                        'name': s_key.name,
-                                        'version': s_key.version
-                                    }
-                                }]
-                            }
-
-            find_req = {
-                'nonce': str(int(time() * 1000)),
-                'name': 'find_req_0', # informational only
-                'version': '1.0',  # informational only
-                'requested_attrs': req_attrs,
-                'requested_predicates': req_preds
-            }
-
-            filt = {
-                schema_key_for(attr_match['schema']): {'attr-match': attr_match['match']}
-                    for attr_match in form['data']['claim-filter']['attr-match']
-            }
-            for pred_match in form['data']['claim-filter']['pred-match']:
-                s_key = schema_key_for(pred_match['schema'])
-                if s_key not in filt:
-                    filt[s_key] = {}
-                filt[s_key]['pred-match'] = pred_match['match']
-
-            (_, claims_found_json) = await self.get_claims(
-                json.dumps(find_req),
-                filt)
-            claims_found = json.loads(claims_found_json)
-            if form['type'] == 'claim-request':
-                rv = json.dumps({
-                    'proof-req': find_req,
-                    'claims': claims_found
-                })
-                logger.debug('HolderProver.process_post: <<< {}'.format(rv))
-                return rv
-
-            # forbid multiple matching claims for any claim-def in a proof
-            x_uuids = [attr_uuid for attr_uuid in claims_found['attrs'] if len(claims_found['attrs'][attr_uuid]) != 1]
-            if x_uuids:
-                logger.debug('HolderProver.process_post: <!< claims specification out of focus (non-uniqueness)')
-                raise ClaimsFocus('Proof request requires unique claims per attribute; violators: {}'.format(x_uuids))
-
-            requested_claims = {
-                'self_attested_attributes': {},
-                'requested_attrs': {
-                    attr_uuid: [claims_found['attrs'][attr_uuid][0]['referent'], True]
-                        for attr_uuid in claims_found['attrs']
-                },
-                'requested_predicates': {
-                    pred_uuid: claims_found['predicates'][pred_uuid][0]['referent']
-                        for pred_uuid in claims_found['predicates']
-                }
-            }
-
-            proof_json = await self.create_proof(
-                find_req,
-                claims_found,
-                requested_claims)
-
-            rv = json.dumps({
-                'proof-req': find_req,
-                'proof': json.loads(proof_json)
-            })
-            logger.debug('HolderProver.process_post: <<< {}'.format(rv))
-            return rv
-
-        elif form['type'] == 'proof-request-by-referent':
-            # base listening agent code handles all proxied requests: it's agent-local, carry on
-            form_schema_keys = []
-            for form_s_key_spec in (form['data']['schemata'] +
-                    [r_attr['schema'] for r_attr in form['data']['requested-attrs']]):
-                s_key = schema_key_for(form_s_key_spec)
-                schema_json = await self.get_schema(s_key)  # add to cache en passant
-                schema = json.loads(schema_json)
-                if not schema:
-                    logger.debug(
-                        'HolderProver.process_post: <!< absent schema {}, {} may pertain to another ledger'.format(
-                            s_key,
-                            form['type']))
-                    raise AbsentSchema(
-                        'Absent schema {}, {} may pertain to another ledger'.format(s_key, form['type']))
-                form_schema_keys.append(s_key)
-
-            req_attrs = {}
-            if form['data']['requested-attrs']:
-                for req_attr in form['data']['requested-attrs']:
-                    s_key = schema_key_for(req_attr['schema'])
-                    schema = SCHEMA_CACHE[s_key]
-                    for name in req_attr['names'] or schema['data']['attr_names']:
-                        req_attrs['{}_{}_uuid'.format(schema['seqNo'], name)] = {
-                            'name': name,
-                            'restrictions': [{
-                                'schema_key': {
-                                    'did': s_key.origin_did,
-                                    'name': s_key.name,
-                                    'version': s_key.version
-                                }
-                            }]
-                        }
-            else:
-                for s_key in form_schema_keys:
-                    schema = SCHEMA_CACHE[s_key]
-                    for attr_name in schema['data']['attr_names']:
-                        req_attrs['{}_{}_uuid'.format(schema['seqNo'], attr_name)] = {
-                            'name': attr_name,
-                            'restrictions': [{
-                                'schema_key': {
-                                    'did': s_key.origin_did,
-                                    'name': s_key.name,
-                                    'version': s_key.version
-                                }
-                            }]
-                        }
-
-            claims_found_json = await self.get_claim_by_referent(
-                {referent for referent in form['data']['referents']},
-                req_attrs)
-            claims_found = json.loads(claims_found_json)
-
-            # kick out early if no matching claims
-            if (not claims_found['attrs']) and (not claims_found['predicates']):
-                logger.debug('HolderProver.process_post: <!< claims specification out of focus (no matching claims)')
-                raise ClaimsFocus('No such referent claim: {}'.format(form['data']['referents']))
-
-            # forbid multiple matching claims for any claim-def in a proof
-            x_referents = [attr_uuid for attr_uuid in claims_found['attrs']
-                if len(claims_found['attrs'][attr_uuid]) != 1]
-            if x_referents:
-                logger.debug('HolderProver.process_post: <!< claims specification out of focus (too many claims)')
-                raise ClaimsFocus(
-                    'Proof request requires unique claims per attribute; violators: {}'.format(x_referents))
-
-            proof_req = {
-                'nonce': str(int(time() * 1000)),
-                'name': 'proof_req_0', # informational only
-                'version': '1.0',  # informational only
-                'requested_attrs': req_attrs,
-                'requested_predicates': {}
-            }
-
-            requested_claims = {
-                'self_attested_attributes': {},
-                'requested_attrs': {
-                    attr_uuid: [claims_found['attrs'][attr_uuid][0]['referent'], True]
-                        for attr_uuid in claims_found['attrs']
-                },
-                'requested_predicates': {}
-            }
-
-            proof_json = await self.create_proof(
-                proof_req,
-                claims_found,
-                requested_claims)
-
-            rv = json.dumps({
-                'proof-req': proof_req,
-                'proof': json.loads(proof_json)
-            })
-            logger.debug('HolderProver.process_post: <<< {}'.format(rv))
-            return rv
-
-        elif form['type'] == 'claim-store':
-            # base listening agent code handles all proxied requests: it's agent-local, carry on
-            await self.store_claim(json.dumps(form['data']['claim']))
-
-            rv = json.dumps({})
-            logger.debug('HolderProver.process_post: <<< {}'.format(rv))
-            return rv
-
-        elif form['type'] == 'claims-reset':
-            # it's agent-local, carry on (no use case for proxying)
-            await self.reset_wallet()
-
-            rv = json.dumps({})
-            logger.debug('HolderProver.process_post: <<< {}'.format(rv))
-            return rv
-
-        logger.debug('HolderProver.process_post: <!< not this form type: {}'.format(form['type']))
-        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))
-
 
 class Verifier(_BaseAgent):
     """
@@ -1810,61 +1193,43 @@ class Verifier(_BaseAgent):
         Verify proof as Verifier.
 
         :param proof_req: proof request as Verifier creates - has entries for proof request's
-            nonce, name, and version; plus claim's requested attributes, requested predicates; e.g.,
+            nonce, name, and version; plus cred's requested attributes and requested predicates; e.g.,
             {
                 'nonce': '12345',  # for Verifier info, not HolderProver matching
                 'name': 'proof-request',  # for Verifier info, not HolderProver matching
                 'version': '1.0',  # for Verifier info, not HolderProver matching
-                'requested_attrs': {
+                'requested_attributes': {
                     'attr1_uuid': {
                         'name': 'favourite_drink',
-                        'restrictions' [
-                                {
-                                'schema_key': {
-                                    'did': 'Vx4E82R17q...',
-                                    'name': 'friendlies',
-                                    'version': '1.0'
-                                }
-                            }
-                        ]
+                        'restrictions' [{
+                            'schema_id': 'Vx4E82R17q...:friendlies:1.0'
+                        }]
                     },
                     'attr2_uuid': {
                         'name': 'height',
-                        'restrictions' [
-                            {
-                                'schema_key': {
-                                    'did': 'R17v42T4pk...',
-                                    'name': 'patient-records',
-                                    'version': '2.1'
-                                }
-                            }
-                        ]
+                        'restrictions' [{
+                            'schema_id': 'R17v42T4pk...:patient-records:2.1'
+                        }]
                     },
                     'attr3_uuid': {
                         'name': 'last_visit_date',
-                        'restrictions' [
-                            {
-                                'schema_key': {
-                                    'did': 'R17v42T4pk...',
-                                    'name': 'patient-records',
-                                    'version': '2.1'
-                                }
-                            }
-                        ]
-                    },
+                        'restrictions' [{
+                            'schema_id': 'R17v42T4pk...:patient-records:2.1'
+                        }]
+                    }
                 },
                 'requested_predicates': {
                     'predicate0_uuid': {
-                        'attr_name': 'age',
+                        'name': 'age',
                         'p_type': '>=',
-                        'value': 18,
-                        'restrictions': [
-                            'schema_key': {
-                                'did': 'R17v42T4pk...',
-                                'name': 'patient-records',
-                                'version': '2.1'
-                            }
-                        ]
+                        'p_value': 18,
+                        'restrictions': [{
+                            'schema_id': 'R17v42T4pk...:patient-records:2.1'
+                        }],
+                        'non-revoked': {  # optional
+                            'from': 1500000000,  # optional
+                            'to': 1600000000  # optional
+                        }
                     }
                 }
             }
@@ -1873,77 +1238,44 @@ class Verifier(_BaseAgent):
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('Verifier.verify_proof: >>> proof_req: {}, proof: {}'.format(
-            proof_req,
-            proof))
+        logger.debug('Verifier.verify_proof: >>> proof_req: {}, proof: {}'.format(proof_req, proof))
 
-        claims = proof['identifiers']
-        uuid2schema = {}
-        uuid2claim_def = {}
-        for claim_uuid in claims:
-            claim_s_key = schema_key_for(claims[claim_uuid]['schema_key'])
-            schema = json.loads(await self.get_schema(claim_s_key))
-            if not schema:
-                logger.debug(
-                    'Verifier.verify_proof: <!< absent schema {}, proof may pertain to another ledger'.format(
-                        claim_s_key))
-                raise AbsentSchema(
-                    'Absent schema {}, proof may pertain to another ledger'.format(claim_s_key))
-            uuid2schema[claim_uuid] = schema
-            uuid2claim_def[claim_uuid] = json.loads(await self.get_claim_def(
-                schema['seqNo'],
-                claims[claim_uuid]['issuer_did']))
-            if not uuid2claim_def[claim_uuid]:
-                logger.debug(
-                    'Verifier.verify_proof: <!< absent claim def for schema@#{}, issuer-did {}'.format(
-                        schema['seqNo'],
-                        claims[claim_uuid]['issuer_did']))
-                raise AbsentSchema(
-                    'Absent claim def for schema@#{}, issuer-did {}'.format(
-                        schema['seqNo'],
-                        claims[claim_uuid]['issuer_did']))
+        s_id2schema = {}
+        cd_id2cred_def = {}
+        proof_ids = proof['identifiers']
+        for proof_id in proof_ids:
+            s_id = proof_id['schema_id']
+            if s_id not in s_id2schema:
+                s_key = schema_key(s_id)
+                schema = json.loads(await self.get_schema(s_key))  # add to cache en passant
+                if not schema:
+                    logger.debug(
+                        'Verifier.verify_proof: <!< absent schema {}, proof req may pertain to another ledger'.format(
+                            s_id))
+                    raise AbsentSchema(
+                        'Absent schema {}, proof req may pertain to another ledger'.format(s_id))
+                s_id2schema[s_id] = schema
 
+            cd_id = proof_id['cred_def_id']
+            if cd_id not in cd_id2cred_def:
+                cred_def = json.loads(await self.get_cred_def(cd_id))  # add to cache en passant
+                if not cred_def:
+                    logger.debug('Verifier.verify_proof: <!< absent cred def for id {}'.format(cd_id))
+                    raise AbsentCredDef('Absent cred def for id {}'.format(cd_id))
+                cd_id2cred_def[cd_id] = cred_def
+
+            # rev_reg_id ...
+            # timestamp ...
+
+        # print('\n\n.. s_id2schema {}'.format(ppjson(s_id2schema)))
+        # print('\n.. cd_id2cred_def {}'.format(ppjson(cd_id2cred_def)))
         rv = json.dumps(await anoncreds.verifier_verify_proof(
             json.dumps(proof_req),
             json.dumps(proof),
-            json.dumps(uuid2schema),
-            json.dumps(uuid2claim_def),
-            json.dumps({})))  # revoc_regs_json
+            json.dumps(s_id2schema),
+            json.dumps(cd_id2cred_def),
+            json.dumps({}),  # rev_reg_defs_json
+            json.dumps({})))  # rev_regs_json
 
         logger.debug('Verifier.verify_proof: <<< {}'.format(rv))
         return rv
-
-    async def process_post(self, form: dict) -> str:
-        """
-        Take a request from service wrapper POST and dispatch the applicable agent action.
-        Return (json) response arising from processing.
-
-        Raise TokenType on demurral.
-
-        :param form: request form on which to operate
-        :return: json response
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.process_post: >>> form: {}'.format(form))
-
-        # Try dispatching to each ancestor from _BaseAgent first
-        mro = Verifier._mro_dispatch()
-        for responder_class in mro:
-            try:
-                rv = await responder_class.process_post(self, form)
-                logger.debug('Verifier.process_post: <<< {}'.format(rv))
-                return rv
-            except TokenType:
-                pass
-
-        if form['type'] == 'verification-request':
-            # base listening agent code handles all proxied requests: it's agent-local, carry on
-            rv = await self.verify_proof(
-                form['data']['proof-req'],
-                form['data']['proof'])
-            logger.debug('Verifier.process_post: <<< {}'.format(rv))
-            return rv
-
-        logger.debug('Verifier.process_post: <!< not this form type: {}'.format(form['type']))
-        raise TokenType('{} does not support token type {}'.format(self.__class__.__name__, form['type']))

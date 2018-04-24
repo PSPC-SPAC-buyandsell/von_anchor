@@ -19,7 +19,7 @@ from setuptools import setup
 
 
 pkg_name = 'von_agent'
-version = '0.6.5'
+version = '1.0.0'
 
 
 setup(

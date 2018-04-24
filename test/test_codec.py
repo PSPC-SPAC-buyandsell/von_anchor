@@ -14,11 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from random import choice
-from string import printable
-from von_agent.util import encode, decode
 
 import pytest
+
+from random import choice
+from string import printable
+from von_agent.codec import cred_attr_value, encode, decode
 
 
 #noinspection PyUnusedLocal
@@ -28,9 +29,11 @@ async def test_codec():
         plain = ''.join(choice(printable) for _ in range(plen))
         enc = encode(plain)
         dec = decode(enc)
+        assert cred_attr_value(plain) == {'raw': str(plain), 'encoded': enc}
         assert plain == dec
 
     for plain in (None, -5, 0, 1024, 2**32 - 1, 2**32, 2**32 + 1):
         enc = encode(plain)
         dec = decode(enc)
+        assert cred_attr_value(plain) == {'raw': str(plain), 'encoded': enc}
         assert str(plain) == dec if plain is not None else plain == dec

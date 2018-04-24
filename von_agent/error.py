@@ -25,18 +25,18 @@ class ErrorCode(IntEnum):
     Success = 0,
 
     # Errors to do with von_agent operation
-    TokenType = 1000,
-    ProxyRelayConfig = 1001,
-    ProxyHop = 1002,
-    ClaimsFocus = 1003,
+    # TokenType = 1000,
+    # ProxyRelayConfig = 1001,
+    # ProxyHop = 1002,
+    CredentialFocus = 1003,
     AbsentAttribute = 1004,
     AbsentMasterSecret = 1005,
     CorruptWallet = 1006,
     AbsentSchema = 1007,
-    AbsentClaimDef = 1008,
+    AbsentCredDef = 1008,
 
-    # Errors to do with schema keys
-    SchemaKeySpec = 2000,
+    # Errors to do with schema identifiers
+    SchemaIdSpec = 2000,
 
     # Errors to do with wallet operation
     AbsentWallet = 3000,
@@ -69,6 +69,7 @@ class VonAgentError(Exception):
         self.message = message
 
 
+'''
 class TokenType(VonAgentError):
     """
     Agent does not process a given message token type.
@@ -112,11 +113,13 @@ class ProxyHop(VonAgentError):
         """
 
         super().__init__(ErrorCode.ProxyHop, message)
+'''
 
 
-class ClaimsFocus(VonAgentError):
+class CredentialFocus(VonAgentError):
     """
-    Attempt to prove claims in specification that resolve to no claims, or to multiple claims for a claim definition.
+    Attempt to prove credential in specification that resolve to no claims,
+    or to multiple claims for any single claim definition.
     """
 
     def __init__(self, message: str):
@@ -126,7 +129,7 @@ class ClaimsFocus(VonAgentError):
         :param message: error message
         """
 
-        super().__init__(ErrorCode.ClaimsFocus, message)
+        super().__init__(ErrorCode.CredentialFocus, message)
 
 
 class AbsentAttribute(VonAgentError):
@@ -174,7 +177,7 @@ class AbsentSchema(VonAgentError):
         super().__init__(ErrorCode.AbsentSchema, message)
 
 
-class AbsentClaimDef(VonAgentError):
+class AbsentCredDef(VonAgentError):
     """
     (HolderProver) Agent attempting operation requiring unavailable claim definition.
     """
@@ -186,7 +189,7 @@ class AbsentClaimDef(VonAgentError):
         :param message: error message
         """
 
-        super().__init__(ErrorCode.AbsentClaimDef, message)
+        super().__init__(ErrorCode.AbsentCredDef, message)
 
 
 class AbsentMasterSecret(VonAgentError):
@@ -204,7 +207,7 @@ class AbsentMasterSecret(VonAgentError):
         super().__init__(ErrorCode.AbsentMasterSecret, message)
 
 
-class SchemaKeySpec(VonAgentError):
+class SchemaIdSpec(VonAgentError):
     """
     Cannot derive a schema key from a given specification.
     """
@@ -216,7 +219,7 @@ class SchemaKeySpec(VonAgentError):
         :param message: error message
         """
 
-        super().__init__(ErrorCode.SchemaKeySpec, message)
+        super().__init__(ErrorCode.SchemaIdSpec, message)
 
 
 class AbsentWallet(VonAgentError):

@@ -18,9 +18,12 @@ limitations under the License.
 import json
 
 from binascii import hexlify, unhexlify
+from collections import namedtuple
 from copy import deepcopy
 from math import ceil, log
-from von_agent.schemakey import schema_key_for
+from von_agent.codec import decode
+
+SchemaKey = namedtuple('SchemaKey', 'origin_did name version')
 
 
 def ppjson(dumpit):
@@ -31,226 +34,79 @@ def ppjson(dumpit):
     return json.dumps(json.loads(dumpit) if isinstance(dumpit, str) else dumpit, indent=4)
 
 
-def encode(value):
+def schema_id(origin_did: str, name: str, version: str) -> str:
     """
-    Encode claim value.
-    Operation leaves any (stringified) int32 alone: indy-sdk predicate claims operate on int32
-    values properly only when their encoded values match their raw values.
+    Return schema identifier for input origin DID, schema name, and schema version.
 
-    To disambiguate for decoding, the function adds 2**32 to any non-trivial transform.
-    """
+    :param origin_did: DID of schema originator
+    :param name: schema name
+    :param version: schema version
 
-    if value is None:
-        return '4294967297'  # sentinel 2**32 + 1
-
-    s = str(value)
-    try:
-        i = int(value)
-        if 0 <= i < 2**32:  # it's an i32, leave it (as numeric string)
-            return s
-    except (ValueError, TypeError):
-        pass
-
-    return str(int.from_bytes(hexlify(s.encode()), 'big') + 2**32)
-
-
-def decode(value: str):
-    """
-    Decode encoded claim value.
-
-    :param value: numeric string to decode
+    :return: schema identifier
     """
 
-    assert value.isdigit()
-
-    if 0 <= int(value) < 2**32:  # it's an i32, leave it (as numeric string)
-        return value
-
-    i = int(value) - 2**32
-    if i == 0:
-        return ''  # special case: empty string encodes as 4294967296
-    elif i == 1:
-        return None  # sentinel 2**32 + 1
-
-    blen = ceil(log(i, 16)/2)
-    ibytes = unhexlify(i.to_bytes(blen, 'big'))
-    return ibytes.decode()
+    return '{}:2:{}:{}'.format(origin_did, name, version)  # 2 marks indy-sdk schema id
 
 
-def claims_for(claims: dict, filt: dict = None) -> dict:
+def schema_key(schema_id: str) -> SchemaKey:
     """
-    Find indy-sdk claims matching input filter from within input claims structure,
-    json-loaded as returned via agent get_claims().
+    Return schema key (namedtuple) convenience for schema identifier components.
+    """
 
-    :param claims: claims structure returned by (HolderProver agent) get_claims(), or (equivalently)
-        response json structure at ['claims'] to response to POST 'claims-request' message type;
-        e.g., {
-            "attrs": {
-                "attr0_uuid": [
-                    {
-                        "referent": "claim::00000000-0000-0000-0000-000000000000",
-                        "attrs": {
-                            "attr0": "2",
-                            "attr1": "Hello",
-                            "attr2": "World"
-                        },
-                        "issuer_did": "Q4zqM7aXqm7gDQkUVLng9h",
-                        "schema_key": {
-                            "did": "Q4zqM7aXqm7gDQkUVLng9h",
-                            "name": "bc-reg",
-                            "version": "1.0"
-                        },
-                        "revoc_reg_seq_no": null
-                    },
-                    {
-                        "referent": "claim::00000000-0000-0000-0000-111111111111",
-                        "attrs": {
-                            "attr0": "1",
-                            "attr1": "Nice",
-                            "attr2": "Tractor"
-                        },
-                        "issuer_did": "Q4zqM7aXqm7gDQkUVLng9h",
-                        "schema_key": {
-                            "did": "Q4zqM7aXqm7gDQkUVLng9h",
-                            "name": "bc-reg",
-                            "version": "1.0"
-                        },
-                        "revoc_reg_seq_no": null
-                    }
-                ],
-                "attr1_uuid": [
-                    {
-                        "referent": "claim::00000000-0000-0000-0000-000000000000",
-                        "attrs": {
-                            "attr0": "2",
-                            "attr1": "Hello",
-                            "attr2": "World"
-                        },
-                        "issuer_did": "Q4zqM7aXqm7gDQkUVLng9h",
-                        "schema_key": {
-                            "did": "Q4zqM7aXqm7gDQkUVLng9h",
-                            "name": "bc-reg",
-                            "version": "1.0"
-                        },
-                        "revoc_reg_seq_no": null
-                    },
-                    {
-                        "referent": "claim::00000000-0000-0000-0000-111111111111",
-                        "attrs": {
-                            "attr0": "1",
-                            "attr1": "Nice",
-                            "attr2": "Tractor"
-                        },
-                        "issuer_did": "Q4zqM7aXqm7gDQkUVLng9h",
-                        "schema_key": {
-                            "did": "Q4zqM7aXqm7gDQkUVLng9h",
-                            "name": "bc-reg",
-                            "version": "1.0"
-                        },
-                        "revoc_reg_seq_no": null
-                    }
-                ],
-                "attr2_uuid": [
-                    {
-                        "referent": "claim::00000000-0000-0000-0000-000000000000",
-                        "attrs": {
-                            "attr0": "2",
-                            "attr1": "Hello",
-                            "attr2": "World"
-                        },
-                        "issuer_did": "Q4zqM7aXqm7gDQkUVLng9h",
-                        "schema_key": {
-                            "did": "Q4zqM7aXqm7gDQkUVLng9h",
-                            "name": "bc-reg",
-                            "version": "1.0"
-                        },
-                        "revoc_reg_seq_no": null
-                    },
-                    {
-                        "referent": "claim::00000000-0000-0000-0000-111111111111",
-                        "attrs": {
-                            "attr0": "1",
-                            "attr1": "Nice",
-                            "attr2": "Tractor"
-                        },
-                        "issuer_did": "Q4zqM7aXqm7gDQkUVLng9h",
-                        "schema_key": {
-                            "did": "Q4zqM7aXqm7gDQkUVLng9h",
-                            "name": "bc-reg",
-                            "version": "1.0"
-                        },
-                        "revoc_reg_seq_no": null
-                    }
-                ]
-            }
-        }
-    :param filt: filter for matching attributes and values; dict mapping each SchemaKey to
-        dict mapping attributes to values to match (specify empty dict for no filter). E.g.,
-        {
-            SchemaKey('Q4zqM7aXqm7gDQkUVLng9h', 'bc-reg', '1.0'): {
-                'attr0': '1',
-                'attr1': 'Nice'
-            },
-            ...
-        ]
-    :return: human-legible dict mapping referent to claim attributes for claims matching input filter
+    s_key = schema_id.split(':')
+    s_key.pop(1)  # take out indy-sdk schema marker
+
+    return SchemaKey(*s_key)
+
+
+def cred_def_id(issuer_did: str, schema_seq_no: int) -> str:
+    """
+    Return credential definition identifier for input issuer DID and schema sequence number.
+
+    :param issuer_did: DID of credential definition issuer
+    :param schema_seq_no: schema sequence number
+
+    :return: credential definition identifier
+    """
+
+    return '{}:3:CL:{}'.format(issuer_did, schema_seq_no)  # 3 marks indy-sdk cred def id, CL denotes sig type
+
+
+def schema_ids_for(creds: dict, cred_ids: list) -> dict:
+    """
+    Given a credentials structure and a list of credential identifiers (aka wallet cred-ids, referents),
+    return dict mapping each credential identifier to its corresponding schema identifier (string).
+
+    :param creds: creds structure returned by (HolderProver agent) get_creds()
+    :param cred_ids: list of credential identifiers for which to find corresponding schema identifiers
+    :return: dict mapping each credential identifier to its corresponding schema identifier
+        (empty dict if no such credential identifiers present)
     """
 
     rv = {}
-    if filt is None:
-        filt = {}
-    uuid2claims = claims['attrs']
-    for inner_claims in uuid2claims.values():
-        for claim in inner_claims:
-            if claim['referent'] in rv:
-                continue
-            if not filt:
-                rv[claim['referent']] = claim['attrs']
-                continue
-            claim_s_key = schema_key_for(claim['schema_key'])
-            if claim_s_key in filt:
-                if {k: str(filt[claim_s_key][k]) for k in filt[claim_s_key]}.items() <= claim['attrs'].items():
-                    rv[claim['referent']] = claim['attrs']
+    uuid2creds = creds['attrs']
+    for inner_creds in uuid2creds.values():
+        for cred in inner_creds:  # it's a list of dicts, each dict a cred
+            cred_id = cred['cred_info']['referent']
+            if (cred_id not in rv) and (cred_id in cred_ids):
+                rv[cred_id] = cred['cred_info']['schema_id']
 
+    # TODO: get schema ids in predicates
     return rv
 
 
-def schema_keys_for(claims: dict, referents: list) -> dict:
+def prune_creds_json(creds: dict, cred_ids: set) -> str:
     """
-    Given a claims structure and a list of referents (wallet claim-uuids),
-    return dict mapping each referent to its corresponding schema key instance.
+    Strip all claims out of the input json structure that do not match any of the input credential identifiers.
 
-    :param claims: claims structure returned by (HolderProver agent) get_claims(), or (equivalently)
-        response json structure at ['claims'] to response to POST 'claims-request' message type
-    :param referents: list of referents for which to find corresponding schema key
-    :return: schema key per referent (empty dict if no such referents present)
+    :param creds: creds structure returned by (HolderProver agent) get_creds()
+    :param cred_ids: the set of credential identifiers of interest
+    :return: the reduced creds json
     """
 
-    rv = {}
-    uuid2claims = claims['attrs']
-    for inner_claims in uuid2claims.values():
-        for claim in inner_claims:
-            referent = claim['referent']
-            if (referent not in rv) and (referent in referents):
-                rv[referent] = schema_key_for(claim['schema_key'])
-
-    return rv
-
-
-def prune_claims_json(claims: dict, referents: set) -> str:
-    """
-    Strip all claims out of the input json structure that do not match any of the input referents.
-
-    :param claims: claims structure returned by (HolderProver agent) get_claims(), or (equivalently)
-        response json structure at ['claims'] to response to POST 'claims-request' message type
-    :param referents: the set of referents, as specified in claims json structure returned from get_claims(),
-        showing up as dict keys that claims_for() returns
-    :return: the reduced claims json
-    """
-
-    rv = deepcopy(claims)
-    for attr_uuid, claims_by_uuid in rv['attrs'].items():
-        rv['attrs'][attr_uuid] = [claim for claim in claims_by_uuid if claim['referent'] in referents]
+    rv = deepcopy(creds)
+    for attr_uuid, creds_by_uuid in rv['attrs'].items():
+        rv['attrs'][attr_uuid] = [cred for cred in creds_by_uuid if cred['cred_info']['referent'] in cred_ids]
 
     empties = [attr_uuid for attr_uuid in rv['attrs'] if not rv['attrs'][attr_uuid]]
     for attr_uuid in empties:
@@ -259,18 +115,131 @@ def prune_claims_json(claims: dict, referents: set) -> str:
     return json.dumps(rv)
 
 
-def revealed_attrs(proof: dict) -> dict:
+def creds_for(creds: dict, filt: dict = None) -> dict:
     """
-    Fetch revealed attributes from input proof and return dict
-    mapping referents to dicts mapping attribute names to (decoded) values,
-    for processing as further claims downstream.
+    Find indy-sdk creds matching input filter from within input creds structure,
+    json-loaded as returned via HolderProver.get_creds().
 
-    :param: indy-sdk proof as dict
-    :return: dict mapping referents to dicts mapping revealed attribute names to decoded values
+    :param creds: creds structure returned by HolderProver.get_creds(); e.g.,
+        {
+            "attrs": {
+                "attr0_uuid": [
+                    {
+                        "interval": null,
+                        "cred_info": {
+                            "attrs": {
+                                "attr0": "2",
+                                "attr1": "Hello",
+                                "attr2": "World"
+                            },
+                            "referent": "00000000-0000-0000-0000-000000000000",
+                            "schema_id": "Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0",
+                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18",
+                            "cred_rev_id": null,
+                            "rev_reg_id": null
+                        }
+                    },
+                    {
+                        "interval": null,
+                        "cred_info": {
+                            "attrs": {
+                                "attr0": "1",
+                                "attr1": "Nice",
+                                "attr2": "Tractor"
+                            },
+                            "referent": "00000000-0000-0000-0000-111111111111",
+                            "schema_id": "Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0",
+                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18",
+                            "cred_rev_id": null,
+                            "rev_reg_id": null
+                        }
+                    }
+                ],
+                "attr1_uuid": [
+                    {
+                        "interval": null,
+                        "cred_info": {
+                            "attrs": {
+                                "attr0": "2",
+                                "attr1": "Hello",
+                                "attr2": "World"
+                            },
+                            "referent": "00000000-0000-0000-0000-000000000000",
+                            "schema_id": "Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0",
+                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18",
+                            "cred_rev_id": null,
+                            "rev_reg_id": null
+                        }
+                    },
+                    {
+                        "interval": null,
+                        "cred_info": {
+                            "attrs": {
+                                "attr0": "1",
+                                "attr1": "Nice",
+                                "attr2": "Tractor"
+                            },
+                            "referent": "00000000-0000-0000-0000-111111111111",
+                            "schema_id": "Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0",
+                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18",
+                            "cred_rev_id": null,
+                            "rev_reg_id": null
+                        }
+                    }
+                ],
+                "attr2_uuid": [
+                    ...
+                ]
+            }
+        }
+    :param filt: filter for matching attributes and values; dict (None or empty for no filter)
+        mapping each schema identifier to dict mapping attributes to values to match; e.g.,
+        {
+            'Q4zqM7aXqm7gDQkUVLng9h:3:bc-reg:1.0': {
+                'attr0': '1',
+                'attr1': 'Nice'
+            },
+            ...
+        ]
+    :return: human-legible dict mapping credential identifiers to human-readable creds structures
+        (each as per HolderProver.get_creds_coarse()) for creds matching input filter
     """
 
     rv = {}
-    for referent in proof['proof']['proofs']:
-        revealed = proof['proof']['proofs'][referent]['primary_proof']['eq_proof']['revealed_attrs']
-        rv[referent] = {attr: decode(revealed[attr]) for attr in revealed}
+    if filt is None:
+        filt = {}
+    uuid2creds = creds['attrs']
+    for inner_creds in uuid2creds.values():
+        for cred in inner_creds:
+            cred_info = cred['cred_info']
+            if cred_info['referent'] in rv:
+                continue
+            if not filt:
+                rv[cred_info['referent']] = cred_info
+                continue
+            cred_s_id = cred_info['schema_id']
+            if cred_s_id in filt:
+                if ({k: str(filt[cred_s_id][k]) for k in filt[cred_s_id]}.items() <= cred_info['attrs'].items()):
+                    rv[cred_info['referent']] = cred_info
+
+    return rv
+
+
+def revealed_attrs(proof: dict) -> dict:
+    """
+    Fetch revealed attributes from input proof and return dict mapping credential definition identifiers
+    to dicts, each dict mapping attribute names to (decoded) values, for processing in further creds downstream.
+
+    :param: indy-sdk proof as dict
+    :return: dict mapping cred-ids to dicts mapping revealed attribute names to (decoded) values
+    """
+
+    rv = {}
+    for sub_index in range(len(proof['identifiers'])):
+        cd_id = proof['identifiers'][sub_index]['cred_def_id']
+        rv[cd_id] = {
+            attr: decode(proof['proof']['proofs'][sub_index]['primary_proof']['eq_proof']['revealed_attrs'][attr])
+                for attr in proof['proof']['proofs'][sub_index]['primary_proof']['eq_proof']['revealed_attrs']
+        }
+
     return rv

@@ -20,12 +20,15 @@ import logging
 from threading import RLock
 from typing import Union
 from von_agent.error import CacheIndex
-from von_agent.schemakey import SchemaKey
+from von_agent.util import SchemaKey, schema_key
 
 
 class SchemaCache:
     """
-    Retain schemata and fetch by key (origin_did, name, version) or by sequence number.
+    Retain schemata and fetch by schema key (origin_did, name, version) or by sequence number.
+    Note that schema key is isomorphic to schema_id, but since schema_id is a str and indy-sdk
+    stores sequence number as a str in some cases, it is more defensive to index by schema key
+    than schema_id.
 
     A lock shares access to critical sections as relying code specifies them (e.g., check and get/set).
     Note that this one lock applies across all instances - the design of this class intends it to be a singleton.
@@ -62,9 +65,13 @@ class SchemaCache:
             self._schema_key2schema[index] = schema
             self._seq_no2schema_key[schema['seqNo']] = index
         elif isinstance(index, int):
-            s_key = SchemaKey(schema['identifier'], schema['data']['name'], schema['data']['version'])
+            s_key = schema_key(schema['id'])
             self._schema_key2schema[s_key] = schema
             self._seq_no2schema_key[index] = s_key
+        else:
+            logger.debug(
+                'SchemaCache.__setitem__: <!< Bad index {} must be a schema key or a sequence number'.format(index))
+            raise CacheIndex('Bad index {} must be a schema key or a sequence number'.format(index))
 
         logger.debug('SchemaCache.__setitem__: <<< {}'.format(schema))
         return schema
@@ -171,16 +178,5 @@ class SchemaCache:
         return 'SchemaCache({})'.format(self.dict())
 
 
-class ClaimDefCache(dict):
-    """
-    Retain claim definitions and fetch by (schema sequence number, issuer DID) tuple.
-
-    A lock shares access to critical sections as relying code specifies them (e.g., check and get/set).
-    Note that this one lock applies across all instances - the design of this class intends it to be a singleton.
-    """
-
-    lock = RLock()
-
-
 SCHEMA_CACHE = SchemaCache()
-CLAIM_DEF_CACHE = ClaimDefCache()
+CRED_DEF_CACHE = type('CredDefCache', (dict,), {'lock': RLock()})()
