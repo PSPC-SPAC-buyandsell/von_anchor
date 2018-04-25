@@ -29,8 +29,9 @@ from von_agent.error import (
     AbsentWallet,
     CredentialFocus,
     JSONValidation,
-    ProxyRelayConfig,
-    TokenType)
+    # ProxyRelayConfig,
+    # TokenType)
+    )
 from von_agent.nodepool import NodePool
 from von_agent.util import (
     cred_def_id,
