@@ -58,6 +58,8 @@ async def test_agents_low_level_api(
         pool_genesis_txn_file,
         seed_trustee1):
 
+    print('Testing low-level API')
+
     # 1. Open pool, init agents
     p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
     await p.open()
@@ -735,6 +737,8 @@ async def test_agents_on_nodepool_restart(
         pool_genesis_txn_path,
         pool_genesis_txn_file,
         path_home):
+
+    print('Testing agent survival on node pool restart')
 
     # 1. Open pool, close and auto-remove it
     path = Path(path_home, 'pool', pool_name)
