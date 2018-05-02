@@ -1032,11 +1032,11 @@ class HolderProver(_BaseAgent):
                         {
                             ...  # if more than one restriction given, combined disjunctively (i.e., via OR)
                         },
-                        'non-revoked': {  # optional
-                            'from': int,  # optional, epoch seconds
-                            'to': int  # optional, epoch seconds
-                        }
                     ],
+                    'non-revoked': {  # optional
+                        'from': int,  # optional, epoch seconds
+                        'to': int  # optional, epoch seconds
+                    }
                 },
                 ...
             }
@@ -1074,25 +1074,22 @@ class HolderProver(_BaseAgent):
         :param proof_req: proof request as per get_creds() above
         :param creds: credentials to prove
         :param requested_creds: data structure with self-attested attribute info, requested attribute info
-            and requested predicate info, assembled from get_creds() and filtered for content of interest. E.g.,
+            and requested predicate info, assembled from get_creds() and filtered for content of interest. I.e.,
             {
                 'self_attested_attributes': {},
                 'requested_attributes': {
                     'attr0_uuid': {
-                        '31291362-9b75-4353-a948-a7d02d0e7a00': {
-                            'cred_id': string,
-                            'timestamp': integer,  # optional
-                            'revealed': bool
-                        }
+                        'cred_id': string,
+                        'timestamp': integer,  # optional
+                        'revealed': bool
                     },
                     ...
                 },
                 'requested_predicates': {
                     'predicate0_uuid': {
-                        '31219731-9783-a772-bc98-12369780831f': {
-                            'cred_id': string,
-                            'timestamp': integer  # optional
-                        }
+                        'cred_id': string,
+                        'timestamp': integer  # optional
+                    }
                 }
             }
         :return: proof json

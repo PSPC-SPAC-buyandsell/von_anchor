@@ -22,7 +22,7 @@ from math import ceil, log
 from typing import Any, Union
 
 
-def encode(raw) -> Union[str, None]:
+def encode(raw: Any) -> str:
     """
     Encode credential attribute value, leaving any (stringified) int32 alone: indy-sdk predicates
     operate on int32 values properly only when their encoded values match their raw values.
@@ -47,7 +47,7 @@ def encode(raw) -> Union[str, None]:
     return str(int.from_bytes(hexlify(s.encode()), 'big') + 2**32)
 
 
-def decode(value: Union[str, None]) -> Union[str, None]:
+def decode(value: str) -> Union[str, None]:
     """
     Decode encoded credential attribute value.
 
