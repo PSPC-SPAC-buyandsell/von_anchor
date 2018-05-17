@@ -1260,7 +1260,7 @@ async def test_agents_low_level_api(
     x_sri_proof_json = await pspcobag.create_proof(x_proof_req_sri, x_sri_creds_found, x_sri_requested_creds)
     print('\n\n== 43 == Org Book proof pre-revoc on cred-ids {}, just before Silver cred creation {}'.format(
         sri_cred_ids_filt,
-        ppjson(x_sri_proof_json)))
+        ppjson(x_sri_proof_json, 1000)))
     x_sri_proof = json.loads(x_sri_proof_json)
 
     # SRI agent (as Verifier) verifies proof
