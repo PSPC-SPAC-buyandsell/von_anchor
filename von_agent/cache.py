@@ -20,6 +20,7 @@ import logging
 from threading import RLock
 from typing import Union
 from von_agent.error import CacheIndex
+from von_agent.tails import Tails
 from von_agent.util import SchemaKey, schema_key
 
 
@@ -178,5 +179,40 @@ class SchemaCache:
         return 'SchemaCache({})'.format(self.dict())
 
 
+class RevoCacheEntry:
+    """
+    Class for revocation cache entry, housing a revocation registry definition and a Tails structure
+    """
+
+    def __init__(self, rev_reg_def: dict, tails: Tails = None):
+        """
+        Initialize with revocation registry definition and optional tails file.
+
+        :param rev_reg_def: revocation registry definition
+        :param tails: current tails file object
+        """
+
+        self._rev_reg_def = rev_reg_def or None
+        self._tails = tails or None
+
+    @property
+    def rev_reg_def(self) -> dict:
+        """
+        Return rev reg def from cache entry.
+        """
+
+        return self._rev_reg_def
+
+    @property
+    def tails(self) -> Tails:
+        """
+        Return current tails file from cache entry.
+        """
+
+        return self._tails
+
+
 SCHEMA_CACHE = SchemaCache()
 CRED_DEF_CACHE = type('CredDefCache', (dict,), {'lock': RLock()})()
+REVO_CACHE = type('RevoCache', (dict,), {'lock': RLock()})()
+# REVO_STATE_CACHE = type('RevoStateCache', (dict,), {'lock': RLock()})()  # only HolderProver needs

@@ -30,10 +30,17 @@ class ErrorCode(IntEnum):
     # ProxyHop = 1002,
     CredentialFocus = 1003,
     AbsentAttribute = 1004,
-    AbsentMasterSecret = 1005,
+    AbsentLinkSecret = 1005,
     CorruptWallet = 1006,
     AbsentSchema = 1007,
     AbsentCredDef = 1008,
+    AbsentTailsFile = 1009,
+    CorruptTails = 1010,
+    BadRevocation = 1011,
+    BadLedgerTxn = 1012,
+    BadRevStateTime = 1013,
+    AbsentInterval = 1014,
+    AbsentRevRegDef = 1015,
 
     # Errors to do with schema identifiers
     SchemaIdSpec = 2000,
@@ -164,7 +171,7 @@ class CorruptWallet(VonAgentError):
 
 class AbsentSchema(VonAgentError):
     """
-    (HolderProver) Agent attempting operation requiring unavailable schema.
+    (HolderProver) agent attempting operation requiring unavailable schema.
     """
 
     def __init__(self, message: str):
@@ -179,7 +186,7 @@ class AbsentSchema(VonAgentError):
 
 class AbsentCredDef(VonAgentError):
     """
-    (HolderProver) Agent attempting operation requiring unavailable claim definition.
+    (Issuer or HolderProver) agent attempting operation requiring unavailable claim definition.
     """
 
     def __init__(self, message: str):
@@ -192,9 +199,9 @@ class AbsentCredDef(VonAgentError):
         super().__init__(ErrorCode.AbsentCredDef, message)
 
 
-class AbsentMasterSecret(VonAgentError):
+class AbsentTailsFile(VonAgentError):
     """
-    (HolderProver) Agent attempting operation requiring absent master secret.
+    (Issuer or HolderProver) agent attempting to open nonexistent tails file.
     """
 
     def __init__(self, message: str):
@@ -204,7 +211,117 @@ class AbsentMasterSecret(VonAgentError):
         :param message: error message
         """
 
-        super().__init__(ErrorCode.AbsentMasterSecret, message)
+        super().__init__(ErrorCode.AbsentTailsFile, message)
+
+
+class CorruptTails(VonAgentError):
+    """
+    (Issuer or HolderProver) agent attempting to sync tails dir from distributed ledger not having
+    corresponding revocation registry.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.CorruptTails, message)
+
+
+class BadRevocation(VonAgentError):
+    """
+    Issuer agent attempting to perform illegitimate revocation
+    (another issuer issued credential, credential revoked already, etc.).
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.BadRevocation, message)
+
+
+class BadLedgerTxn(VonAgentError):
+    """
+    Ledger rejected transaction.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.BadLedgerTxn, message)
+
+
+class BadRevStateTime(VonAgentError):
+    """
+    Proof request includes revocation state timestamp for credential before its revocation registry creation,
+    or in the future.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.BadRevStateTime, message)
+
+
+class AbsentLinkSecret(VonAgentError):
+    """
+    (HolderProver) agent attempting operation requiring absent link secret.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.AbsentLinkSecret, message)
+
+
+class AbsentInterval(VonAgentError):
+    """
+    (HolderProver) agent attempting to create proof on credentials missing
+    a non-revocation interval for credential definition that supports revocation.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.AbsentInterval, message)
+
+
+class AbsentRevRegDef(VonAgentError):
+    """
+    (HolderProver) agent attempting to create revocation registry state but
+    revocation registry definition is not defined on the ledger.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.AbsentRevRegDef, message)
 
 
 class SchemaIdSpec(VonAgentError):
@@ -254,7 +371,7 @@ class ClosedPool(VonAgentError):
 
 class CacheIndex(VonAgentError):
     """
-    Indexation error on cache for schemata or claim definitions.
+    Indexation error on a cache.
     """
 
     def __init__(self, message: str):
