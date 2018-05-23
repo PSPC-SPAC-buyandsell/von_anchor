@@ -836,8 +836,12 @@ class Issuer(Origin):
                 resp_json = await self._sign_submit(req_json)
                 rv_json = await self.get_cred_def(cd_id)  # pick up from ledger and parse; add to cache
 
+                if revocation:
+                    await self._sync_revoc(rev_reg_id(cd_id, 0), rr_size)  # create new rev reg, tails file for tag 0
+
         if revocation:
-            await self._sync_revoc(rev_reg_id(cd_id, 0), rr_size)
+            for tag in [str(t) for t in range(int(Tails.next_tag(self._dir_tails, cd_id)[0]))]:  # '0' to str(next-1)
+                await self._sync_revoc(rev_reg_id(cd_id, tag), rr_size if tag == 0 else None)
 
         logger.debug('Issuer.send_cred_def: <<< {}'.format(rv_json))
         return rv_json
@@ -881,6 +885,7 @@ class Issuer(Origin):
         :param cred_offer_json: credential offer json as created by Issuer
         :param cred_req_json: credential request json as created by HolderProver
         :param cred_attrs: dict mapping each attribute to its raw value (the operation encodes it); e.g.,
+            ::
             {
                 'favourite_drink': 'martini',
                 'height': 180,
@@ -1011,8 +1016,9 @@ class HolderProver(_BaseAgent):
         Initializer for HolderProver agent. Retain input parameters; do not open wallet.
 
         :param wallet: wallet for agent use
-        :param cfg: configuration, None for default with no endpoint and proxy-relay=False;
-            e.g., {
+        :param cfg: configuration, None for default with no endpoint and proxy-relay=False; e.g.,
+            ::
+            {
                 'endpoint': 'http://127.0.0.1:8808/api/v0',
                 'proxy-relay': True
             }
@@ -1028,6 +1034,48 @@ class HolderProver(_BaseAgent):
         makedirs(self._dir_tails, exist_ok=True)
 
         logger.debug('HolderProver.__init__: <<<')
+
+    async def _sync_revoc(self, rr_id: str) -> None:
+        """
+        Pick up tails file reader handle for input revocation registry identifier.
+        Raise AbsentTailsFile for missing corresponding tails file.
+
+        :param rr_id: revocation registry identifier
+        """
+
+        logger = logging.getLogger(__name__)
+        logger.debug('HolderProver._sync_revoc: >>> rr_id: {}'.format(rr_id))
+
+        (cd_id, tag) = rev_reg_id2cred_def_id__tag(rr_id)
+
+        if not json.loads(await self.get_cred_def(cd_id)):
+            logger.debug(
+                'HolderProver._sync_revoc: <!< corrupt tails directory {} may pertain to another ledger'.format(
+                    self._dir_tails))
+            raise AbsentCredDef('Corrupt tails directory {} may pertain to another ledger'.format(self._dir_tails))
+
+        with REVO_CACHE.lock:
+            revo_cache_entry = REVO_CACHE.get(rr_id, None)
+            t = revo_cache_entry.tails if revo_cache_entry else None
+            if t is None:  #  it's not yet set in cache
+                try:
+                    t = await Tails(self._dir_tails, cd_id, tag).open()
+                except AbsentTailsFile as x:  # get hash from ledger and check for tails file
+                    rrdef = json.loads(await self._get_rev_reg_def(rr_id))
+                    tails_hash = rrdef['value']['tailsHash']
+                    path_tails = join(Tails.dir(self._dir_tails, rr_id), tails_hash)
+                    if not isfile(path_tails):
+                        logger.debug('HolderProver._sync_revoc: <!< No tails file present at {}'.format(path_tails))
+                        raise AbsentTailsFile('No tails file present at {}'.format(path_tails))
+                    Tails.associate(self._dir_tails, rr_id, tails_hash)
+                    t = await Tails(self._dir_tails, cd_id, tag).open()  # OK now since tails file present
+
+                if revo_cache_entry is None:
+                    REVO_CACHE[rr_id] = RevoCacheEntry(None, t)
+                else:
+                    REVO_CACHE[rr_id]._tails = t
+
+        logger.debug('HolderProver._sync_revoc: <<<')
 
     def path_tails(self, rr_id: str) -> str:
         """
@@ -1151,49 +1199,6 @@ class HolderProver(_BaseAgent):
         return rv_json
     '''
 
-    async def _sync_revoc(self, rr_id: str) -> None:
-        """
-        Pick up tails file reader handle for input revocation registry identifier.
-        Raise AbsentTailsFile for missing corresponding tails file.
-
-        :param rr_id: revocation registry identifier
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('HolderProver._sync_revoc: >>> rr_id: {}'.format(rr_id))
-
-        (cd_id, tag) = rev_reg_id2cred_def_id__tag(rr_id)
-
-        if not json.loads(await self.get_cred_def(cd_id)):
-            logger.debug(
-                'HolderProver._sync_revoc: <!< corrupt tails directory {} may pertain to another ledger'.format(
-                    self._dir_tails))
-            raise AbsentCredDef('Corrupt tails directory {} may pertain to another ledger'.format(self._dir_tails))
-
-
-        with REVO_CACHE.lock:
-            revo_cache_entry = REVO_CACHE.get(rr_id, None)
-            t = revo_cache_entry.tails if revo_cache_entry else None
-            if t is None:  #  it's not yet set in cache
-                try:
-                    t = await Tails(self._dir_tails, cd_id, tag).open()
-                except AbsentTailsFile as x:  # get hash from ledger and check for tails file
-                    rrdef = json.loads(await self._get_rev_reg_def(rr_id))
-                    tails_hash = rrdef['value']['tailsHash']
-                    path_tails = join(Tails.dir(self._dir_tails, rr_id), tails_hash)
-                    if not isfile(path_tails):
-                        logger.debug('HolderProver._sync_revoc: <!< No tails file present at {}'.format(path_tails))
-                        raise AbsentTailsFile('No tails file present at {}'.format(path_tails))
-                    Tails.associate(self._dir_tails, rr_id, tails_hash)
-                    t = await Tails(self._dir_tails, cd_id, tag).open()  # OK now since tails file present
-
-                if revo_cache_entry is None:
-                    REVO_CACHE[rr_id] = RevoCacheEntry(None, t)
-                else:
-                    REVO_CACHE[rr_id]._tails = t
-
-        logger.debug('HolderProver._sync_revoc: <<<')
-
     def rev_regs(self) -> list:
         """
         Return list of revocation registry identifiers for which HolderProver has tails files.
@@ -1312,6 +1317,7 @@ class HolderProver(_BaseAgent):
         return all credentials for no filter.
 
         :param filt: filter for credentials; i.e.,
+            ::
             {
                 "schema_id": string,  # optional
                 "schema_issuer_did": string,  # optional
@@ -1320,8 +1326,8 @@ class HolderProver(_BaseAgent):
                 "issuer_did": string,  # optional
                 "cred_def_id": string  # optional
             }
-
         :return: credentials json list; i.e.,
+            ::
             [{
                 "referent": string,  # credential identifier in the wallet
                 "attrs": {
@@ -1339,27 +1345,7 @@ class HolderProver(_BaseAgent):
         logger = logging.getLogger(__name__)
         logger.debug('HolderProver.get_creds_display_coarse: >>> filt: {}'.format(filt))
 
-        rv_json = {}
-
-        ''' NB - indy-sdk filtration is broken
         rv_json = await anoncreds.prover_get_credentials(self.wallet.handle, json.dumps(filt or {}))
-        '''
-        creds = json.loads(await anoncreds.prover_get_credentials(self.wallet.handle, json.dumps({})))
-        if filt:
-            if 'schema_id' in filt:
-                creds = [c for c in creds if c['schema_id'] == filt['schema_id']]
-            if 'schema_issuer_did' in filt:
-                creds = [c for c in creds if schema_key(c['schema_id']).origin_did == filt['schema_issuer_did']]
-            if 'schema_name' in filt:
-                creds = [c for c in creds if schema_key(c['schema_id']).name == filt['schema_name']]
-            if 'schema_version' in filt:
-                creds = [c for c in creds if schema_key(c['schema_id']).version == filt['schema_version']]
-            if 'issuer_did' in filt:
-                creds = [c for c in creds if c['cred_def_id'].split(':', 1)[0] == filt['issuer_did']]
-            if 'cred_def_id' in filt:
-                creds = [c for c in creds if c['cred_def_id'] == filt['cred_def_id']]
-
-        rv_json = json.dumps(creds)
         logger.debug('HolderProver.get_creds_display_coarse: <<< {}'.format(rv_json))
         return rv_json
 
@@ -1371,6 +1357,7 @@ class HolderProver(_BaseAgent):
 
         :param proof_req_json: proof request json as Verifier creates; has entries for proof request's
             nonce, name, and version; plus credential's requested attributes, requested predicates. I.e.,
+            ::
             {
                 'nonce': string,  # indy-sdk makes no semantic specification on this value
                 'name': string,  # indy-sdk makes no semantic specification on this value
@@ -1431,6 +1418,7 @@ class HolderProver(_BaseAgent):
         :param filt: filter for matching attribute-value pairs and predicates;
             dict mapping each schema identifier to dict (specify empty dict for no filter)
             mapping attributes to values to match or compare. E.g.,
+            ::
             {
                 'Vx4E82R17q...:2:friendlies:1.0': {
                     'attr-match': {
@@ -1514,58 +1502,26 @@ class HolderProver(_BaseAgent):
         logger.debug('HolderProver.get_creds: <<< {}'.format(rv))
         return rv
 
-    async def get_creds_by_id(self, cred_ids: set, requested_attributes: dict) -> str:
+    async def get_creds_by_id(self, proof_req_json: str, cred_ids: set) -> str:
         """
         Get creds structure from HolderProver wallet by credential identifiers.
 
+        :param proof_req_json: proof request as per get_creds() above
         :param cred_ids: set of credential identifiers of interest
-        :param requested_attributes: requested attrs dict mapping (cred-local) attr-uuids to
-            name, restrictions, non-revoked specs for each requested attribute as per get_creds(); e.g.,
-            {
-                'attr1_uuid': {
-                    'name': 'favourite_drink',
-                    'restrictions' [  # optional
-                        {
-                            "schema_id": string,  # optional
-                            "schema_issuer_did": string,  # optional
-                            "schema_name": string,  # optional
-                            "schema_version": string,  # optional
-                            "issuer_did": string,  # optional
-                            "cred_def_id": string  # optional
-                        },
-                        {
-                            ...  # if more than one restriction given, combined disjunctively (i.e., via OR)
-                        },
-                    ],
-                    'non_revoked': {
-                        'from': int,  # optional, epoch seconds
-                        'to': int  # epoch seconds
-                    }
-                },
-                ...
-            }
         :return: json with cred(s) for input credential identifier(s)
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.get_creds_by_id: >>> cred_ids: {}, requested_attributes: {}'.format(
-            cred_ids,
-            requested_attributes))
+        logger.debug('HolderProver.get_creds_by_id: >>> proof_req_json: {}, cred_ids: {}'.format(
+            proof_req_json,
+            cred_ids))
 
-        cred_req_json = json.dumps({
-                'nonce': str(int(time() * 1000)),
-                'name': 'cred-request',
-                'version': '1.0',
-                'requested_attributes': requested_attributes,
-                'requested_predicates': {}
-            })
-
-        creds_json = await anoncreds.prover_get_credentials_for_proof_req(self.wallet.handle, cred_req_json)
+        creds_json = await anoncreds.prover_get_credentials_for_proof_req(self.wallet.handle, proof_req_json)
 
         # retain only creds of interest: find corresponding referents
-        rv = prune_creds_json(json.loads(creds_json), cred_ids)
-        logger.debug('HolderProver.get_cred_by_referent: <<< {}'.format(rv))
-        return rv
+        rv_json = prune_creds_json(json.loads(creds_json), cred_ids)
+        logger.debug('HolderProver.get_cred_by_referent: <<< {}'.format(rv_json))
+        return rv_json
 
     async def create_proof(self, proof_req: dict, creds: dict, requested_creds: dict) -> str:
         """
@@ -1583,6 +1539,7 @@ class HolderProver(_BaseAgent):
         :param creds: credentials to prove
         :param requested_creds: data structure with self-attested attribute info, requested attribute info
             and requested predicate info, assembled from get_creds() and filtered for content of interest. I.e.,
+            ::
             {
                 'self_attested_attributes': {},
                 'requested_attributes': {

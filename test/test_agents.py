@@ -806,7 +806,7 @@ async def test_agents_low_level_api(
                 'restrictions': [{
                     'schema_id': S_ID['BC']
                 }]
-            } for attr in cred_data[S_ID['BC']][2]  # Tart City
+            } for attr in cred_data[S_ID['BC']][2]  # all cred data has same keys, Tart City will do
         },
         'requested_predicates': {},
         'non_revoked': {
@@ -894,18 +894,24 @@ async def test_agents_low_level_api(
 
     # BC Org Book agent (as HolderProver) finds cred by cred-id, no cred by non-cred-id
     s_id = set(schema_ids_for(bc_creds_found_filt, {bc_cred_id}).values()).pop()  # it's unique
-    req_attrs = {
-       '{}_{}_uuid'.format(schema[s_id]['seqNo'], attr_name): {
-            'name': attr_name,
-            'restrictions': [{
-                'schema_id': S_ID['BC']
-            }],
-            'non_revoked': {
-                'to': EPOCH_POST_BC_REVOC
-            }
-       } for attr_name in schema_data[S_ID['BC']]['attr_names']
+    proof_req_by_id = {
+        'nonce': str(EPOCH_POST_BC_REVOC),
+        'name': 'ok_proof_req',
+        'version': '0',
+        'requested_attributes': {
+            '{}_{}_uuid'.format(schema[S_ID['BC']]['seqNo'], attr): {
+                'name': attr,
+                'restrictions': [{
+                    'schema_id': S_ID['BC']
+                }]
+            } for attr in cred_data[S_ID['BC']][2]  # all cred data has same keys, Tart City will do
+        },
+        'requested_predicates': {},
+        'non_revoked': {
+            'to': EPOCH_POST_BC_REVOC
+        }
     }
-    bc_cred_found_by_cred_id = json.loads(await bcobag.get_creds_by_id(bc_cred_id, req_attrs))
+    bc_cred_found_by_cred_id = json.loads(await bcobag.get_creds_by_id(json.dumps(proof_req_by_id), bc_cred_id))
     print('\n\n== 25 == BC cred by cred_id={}: {}'.format(
         bc_cred_id,
         ppjson(bc_cred_found_by_cred_id)))
@@ -913,7 +919,7 @@ async def test_agents_low_level_api(
     assert bc_cred_found_by_cred_id['attrs']
 
     bc_non_cred_by_non_cred_id = json.loads(    
-        await bcobag.get_creds_by_id('ffffffff-ffff-ffff-ffff-ffffffffffff', req_attrs))
+        await bcobag.get_creds_by_id(json.dumps(proof_req_by_id), 'ffffffff-ffff-ffff-ffff-ffffffffffff'))
     print('\n\n== 26 == BC non-cred: {}'.format(ppjson(bc_non_cred_by_non_cred_id)))
     assert bc_non_cred_by_non_cred_id
     assert all(not bc_non_cred_by_non_cred_id['attrs'][attr] for attr in bc_non_cred_by_non_cred_id['attrs'])

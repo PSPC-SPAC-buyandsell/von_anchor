@@ -45,8 +45,9 @@ class Wallet:
         :param seed: seed for wallet user
         :param name: name of the wallet
         :param wallet_type: wallet type str, None for default
-        :param cfg: configuration dict, None for default
-            i.e., {
+        :param cfg: configuration dict, None for default; i.e.,
+            ::
+            {
                 'auto-remove': bool (default False) - whether to remove serialized indy configuration data on close,
                 ... (more keys) : ... (more types) - any other configuration data to pass through to indy-sdk
             }
