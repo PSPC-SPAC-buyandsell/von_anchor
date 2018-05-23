@@ -30,7 +30,9 @@ def proof_req_all_attrs_json(s_id2schema: dict, non_revoked_to: int = None) -> s
 
     :param s_id2schema: dict mapping schema ids to their respective schemata as they
         appear on the ledger; e.g.,
-        ::
+
+    ::
+
         {
             '4QxzWk3ajdnEA37NdNU5Kt:2:gvt:1.0': {
                 "seqNo": 13,
@@ -57,6 +59,7 @@ def proof_req_all_attrs_json(s_id2schema: dict, non_revoked_to: int = None) -> s
                 ]
             }
         }
+
     :param non_revoked_to: (epoch seconds) end of non-revocation interval;
         specify None for cred defs not supporting revocation.
     :return: proof req json on all attributes of all input schema, no predicates.

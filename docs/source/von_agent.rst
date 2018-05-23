@@ -4,72 +4,88 @@ von\_agent package
 Submodules
 ----------
 
-von\_agent\.agents module
--------------------------
+von\_agent.agents module
+------------------------
 
 .. automodule:: von_agent.agents
     :members:
     :undoc-members:
     :show-inheritance:
 
-von\_agent\.cache module
-------------------------
+von\_agent.cache module
+-----------------------
 
 .. automodule:: von_agent.cache
     :members:
     :undoc-members:
     :show-inheritance:
 
-von\_agent\.codec module
-------------------------
+von\_agent.codec module
+-----------------------
 
 .. automodule:: von_agent.codec
     :members:
     :undoc-members:
     :show-inheritance:
 
-von\_agent\.demo\_agents module
--------------------------------
+von\_agent.demo\_agents module
+------------------------------
 
 .. automodule:: von_agent.demo_agents
     :members:
     :undoc-members:
     :show-inheritance:
 
-von\_agent\.error module
-------------------------
+von\_agent.error module
+-----------------------
 
 .. automodule:: von_agent.error
     :members:
     :undoc-members:
     :show-inheritance:
 
-von\_agent\.nodepool module
----------------------------
+von\_agent.indy\_proto module
+-----------------------------
+
+.. automodule:: von_agent.indy_proto
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+von\_agent.nodepool module
+--------------------------
 
 .. automodule:: von_agent.nodepool
     :members:
     :undoc-members:
     :show-inheritance:
 
-von\_agent\.util module
+von\_agent.tails module
 -----------------------
+
+.. automodule:: von_agent.tails
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+von\_agent.util module
+----------------------
 
 .. automodule:: von_agent.util
     :members:
     :undoc-members:
     :show-inheritance:
 
-von\_agent\.validate\_config module
------------------------------------
+von\_agent.validate\_config module
+----------------------------------
 
 .. automodule:: von_agent.validate_config
     :members:
     :undoc-members:
     :show-inheritance:
 
-von\_agent\.wallet module
--------------------------
+von\_agent.wallet module
+------------------------
 
 .. automodule:: von_agent.wallet
     :members:
