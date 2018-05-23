@@ -72,14 +72,14 @@ def proof_req_all_attrs_json(s_id2schema: dict, non_revoked_to: int = None) -> s
                 'restrictions': [{
                     'schema_id': s_id
                 }]
-            } for s_id in s_id2schema for attr in s_id2schema[s_id]
+            } for s_id in s_id2schema for attr in s_id2schema[s_id]['attrNames']
         },
         'requested_predicates': {},
     }
 
     if non_revoked_to is not None:
         proof_req['non_revoked'] = {
-            'to': to
+            'to': non_revoked_to
         }
 
     return json.dumps(proof_req)
@@ -105,13 +105,13 @@ def req_creds_all_json(creds: dict) -> str:
     for attr_uuid in creds['attrs']:
         if 'interval' in creds['attrs'][attr_uuid][0]:
             req_creds['requested_attributes'] = {
-                'cred_id': creds['attrs'][attr_uuid][0]['cred_info']['referent']
+                'cred_id': creds['attrs'][attr_uuid][0]['cred_info']['referent'],
                 'revealed': True,
                 'timestamp': creds['attrs'][attr_uuid][0]['interval']['to']
             }
         else:
             req_creds['requested_attributes'] = {
-                'cred_id': creds['attrs'][attr_uuid][0]['cred_info']['referent']
+                'cred_id': creds['attrs'][attr_uuid][0]['cred_info']['referent'],
                 'revealed': True
             }
 
