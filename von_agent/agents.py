@@ -576,12 +576,16 @@ class Origin(_BaseAgent):
         Send schema to ledger, then retrieve it as written to the ledger and return it.
         If schema already exists on ledger, log error and return schema.
 
-        :param schema_data_json: schema data json with name, version, attribute names; e.g.,:
+        :param schema_data_json: schema data json with name, version, attribute names; e.g.,
+
+        ::
+
             {
                 'name': 'my-schema',
                 'version': '1.234',
                 'attr_names': ['favourite_drink', 'height', 'last_visit_date']
             }
+        
         :return: schema json as written to ledger (or existed a priori)
         """
 
@@ -885,13 +889,16 @@ class Issuer(Origin):
         :param cred_offer_json: credential offer json as created by Issuer
         :param cred_req_json: credential request json as created by HolderProver
         :param cred_attrs: dict mapping each attribute to its raw value (the operation encodes it); e.g.,
-            ::
+
+        ::
+
             {
                 'favourite_drink': 'martini',
                 'height': 180,
                 'last_visit_date': '2017-12-31',
                 'weaknesses': None
             }
+
         :return: newly issued credential json, credential revocation identifier (None for cred on
             cred def without revocation support)
         """
@@ -1317,7 +1324,9 @@ class HolderProver(_BaseAgent):
         return all credentials for no filter.
 
         :param filt: filter for credentials; i.e.,
-            ::
+
+        ::
+
             {
                 "schema_id": string,  # optional
                 "schema_issuer_did": string,  # optional
@@ -1326,8 +1335,11 @@ class HolderProver(_BaseAgent):
                 "issuer_did": string,  # optional
                 "cred_def_id": string  # optional
             }
+
         :return: credentials json list; i.e.,
-            ::
+
+        ::
+
             [{
                 "referent": string,  # credential identifier in the wallet
                 "attrs": {
@@ -1340,6 +1352,7 @@ class HolderProver(_BaseAgent):
                 "rev_reg_id": Optional<string>,
                 "cred_rev_id": Optional<string>
             }]
+
         """
 
         logger = logging.getLogger(__name__)
@@ -1357,7 +1370,9 @@ class HolderProver(_BaseAgent):
 
         :param proof_req_json: proof request json as Verifier creates; has entries for proof request's
             nonce, name, and version; plus credential's requested attributes, requested predicates. I.e.,
-            ::
+        
+        ::
+        
             {
                 'nonce': string,  # indy-sdk makes no semantic specification on this value
                 'name': string,  # indy-sdk makes no semantic specification on this value
@@ -1415,10 +1430,13 @@ class HolderProver(_BaseAgent):
                     'to': Optional<int>
                 }
             }
+
         :param filt: filter for matching attribute-value pairs and predicates;
             dict mapping each schema identifier to dict (specify empty dict for no filter)
             mapping attributes to values to match or compare. E.g.,
-            ::
+
+        ::
+
             {
                 'Vx4E82R17q...:2:friendlies:1.0': {
                     'attr-match': {
@@ -1447,6 +1465,7 @@ class HolderProver(_BaseAgent):
                 },
                 ...
             }
+
         :param: filt_dflt_incl: whether to include (True) all attributes for schema that filter does not identify
             or to exclude (False) all such attributes
         :return: tuple with (set of referents, creds json for input proof request);
@@ -1539,7 +1558,9 @@ class HolderProver(_BaseAgent):
         :param creds: credentials to prove
         :param requested_creds: data structure with self-attested attribute info, requested attribute info
             and requested predicate info, assembled from get_creds() and filtered for content of interest. I.e.,
-            ::
+
+        ::
+
             {
                 'self_attested_attributes': {},
                 'requested_attributes': {
@@ -1557,6 +1578,7 @@ class HolderProver(_BaseAgent):
                     }
                 }
             }
+    
         :return: proof json
         """
 
