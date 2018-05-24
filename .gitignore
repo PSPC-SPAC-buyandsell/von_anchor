@@ -94,14 +94,16 @@ ENV/
 # Rope project settings
 .ropeproject
 
-# mkdocs documentation
+# mkdocs, jekyll generated documentation
 /site
+_site/
 
 # mypy
 .mypy_cache/
 
-# vi
+# vi and vscode
 .*.swp
+.vscode/
 
 # pytest
 .pytest_cache/

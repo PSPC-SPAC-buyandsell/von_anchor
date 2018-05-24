@@ -177,7 +177,9 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
     json-loaded as returned via HolderProver.get_creds(), and return human-legible summary.
 
     :param creds: creds structure returned by HolderProver.get_creds(); e.g.,
-        ::
+
+    ::
+
         {
             "attrs": {
                 "attr0_uuid": [
@@ -249,9 +251,12 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
                 ]
             }
         }
+
     :param filt: filter for matching attributes and values; dict (None or empty for no filter)
         mapping each schema identifier to dict mapping attributes to values to match; e.g.,
-        ::
+
+    ::
+
         {
             'Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0': {
                 'attr0': '1',
@@ -259,6 +264,7 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
             },
             ...
         }
+
     :param: filt_dflt_incl: whether to include (True) all attributes for schema that filter does not identify
         or to exclude (False) all such attributes
     :return: human-legible dict mapping credential identifiers to human-readable creds structures
@@ -295,12 +301,15 @@ def revoc_info(creds: dict, filt: dict = None) -> dict:
 
     :param creds: creds structure returned by HolderProver.get_creds() as above
     :param filt: dict mapping attributes to values of interest; e.g.,
-        ::
+
+    ::
+
         {
             'legalName': 'Flan Nebula',
             'effectiveDate': '2018-01-01',
             'endDate': None
         }
+
     :return: dict mapping (rev_reg_id, cred_rev_id) pairs to decoded attributes
     """
 
