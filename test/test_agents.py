@@ -42,6 +42,7 @@ from von_agent.error import (
     BadRevStateTime,
     CredentialFocus,
     JSONValidation)
+from von_agent.indy_proto import proof_req_all_attrs_json, req_creds_all_json
 from von_agent.nodepool import NodePool
 from von_agent.tails import Tails
 from von_agent.util import (
@@ -545,21 +546,7 @@ async def test_agents_low_level_api(
 
     EPOCH_PRE_BC_REVOC = int(time())
     # BC Org Book agent (as HolderProver) finds creds; actuator filters post hoc
-    proof_req[S_ID['BC']] = {
-        'nonce': str(EPOCH_PRE_BC_REVOC),
-        'name': 'bc_proof_req',
-        'version': '0',
-        'requested_attributes': {
-            '{}_{}_uuid'.format(schema[S_ID['BC']]['seqNo'], attr): {
-                'name': attr,
-                'restrictions': [{
-                    'schema_id': S_ID['BC']
-                }]
-            } for attr in cred_data[S_ID['BC']][0]
-        },
-        'requested_predicates': {},
-        'non_revoked': {'to': EPOCH_PRE_BC_REVOC}
-    }
+    proof_req[S_ID['BC']] = json.loads(proof_req_all_attrs_json({S_ID['BC']: schema[S_ID['BC']]}, EPOCH_PRE_BC_REVOC)) 
     (bc_cred_ids_all, bc_creds_found_all_json) = await bcobag.get_creds(json.dumps(proof_req[S_ID['BC']]))
 
     print('\n\n== 7 == All BC creds, no filter {}: {}'.format(bc_cred_ids_all, ppjson(bc_creds_found_all_json)))
@@ -602,17 +589,7 @@ async def test_agents_low_level_api(
     bc_cred_id = bc_cred_ids_filt.pop()  # Tart City
 
     # BC Org Book agent (as HolderProver) creates proof for cred specified by filter
-    bc_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': bc_cred_id,
-                'revealed': True,
-                'timestamp': EPOCH_PRE_BC_REVOC
-            } for attr_uuid in proof_req[S_ID['BC']]['requested_attributes']
-                if attr_uuid in bc_creds_found_filt['attrs']},
-        'requested_predicates': proof_req[S_ID['BC']]['requested_predicates']
-    }
+    bc_requested_creds = json.loads(req_creds_all_json(bc_creds_found_filt))
 
     _set_tails_state(False)  # simulate not having tails file first
     try:
@@ -1485,8 +1462,8 @@ async def test_agents_low_level_api(
 
 
 #noinspection PyUnusedLocal
-@pytest.mark.asyncio
-async def test_agents_on_nodepool_restart(
+# @pytest.mark.asyncio
+async def _test_agents_on_nodepool_restart(
         pool_name,
         pool_genesis_txn_path,
         pool_genesis_txn_file,
@@ -1574,8 +1551,8 @@ def get_schema_or_cred_def(agent, schema_key, seq_no, issuer_did):
 
 
 #noinspection PyUnusedLocal
-@pytest.mark.asyncio
-async def test_cache_locking(
+# @pytest.mark.asyncio
+async def _test_cache_locking(
         pool_name,
         pool_genesis_txn_path,
         pool_genesis_txn_file):

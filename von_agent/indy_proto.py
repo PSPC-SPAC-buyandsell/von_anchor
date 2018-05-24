@@ -35,27 +35,27 @@ def proof_req_all_attrs_json(s_id2schema: dict, non_revoked_to: int = None) -> s
 
         {
             '4QxzWk3ajdnEA37NdNU5Kt:2:gvt:1.0': {
-                "seqNo": 13,
-                "name": "gvt",
-                "id": "4QxzWk3ajdnEA37NdNU5Kt:2:gvt:1.0",
-                "version": "1.0",
-                "ver": "1.0",
-                "attrNames": [
-                    "height",
-                    "sex",
-                    "age",
-                    "name"
+                'seqNo': 13,
+                'name': 'gvt',
+                'id': '4QxzWk3ajdnEA37NdNU5Kt:2:gvt:1.0',
+                'version': '1.0',
+                'ver': '1.0',
+                'attrNames': [
+                    'height',
+                    'sex',
+                    'age',
+                    'name'
                 ]
             }
             '4QxzWk3ajdnEA37NdNU5Kt:2:drinks:1.1': {
-                "seqNo": 15,
-                "name": "drinks",
-                "id": "4QxzWk3ajdnEA37NdNU5Kt:2:drinks:1.1",
-                "version": "1.1",
-                "ver": "1.0",
-                "attrNames": [
-                    "favouriteDrink",
-                    "secondFavouriteDrink"
+                'seqNo': 15,
+                'name': 'drinks',
+                'id': '4QxzWk3ajdnEA37NdNU5Kt:2:drinks:1.1',
+                'version': '1.1',
+                'ver': '1.0',
+                'attrNames': [
+                    'favouriteHot',
+                    'favouriteCold'
                 ]
             }
         }
@@ -107,13 +107,13 @@ def req_creds_all_json(creds: dict) -> str:
     }
     for attr_uuid in creds['attrs']:
         if 'interval' in creds['attrs'][attr_uuid][0]:
-            req_creds['requested_attributes'] = {
+            req_creds['requested_attributes'][attr_uuid] = {
                 'cred_id': creds['attrs'][attr_uuid][0]['cred_info']['referent'],
                 'revealed': True,
                 'timestamp': creds['attrs'][attr_uuid][0]['interval']['to']
             }
         else:
-            req_creds['requested_attributes'] = {
+            req_creds['requested_attributes'][attr_uuid] = {
                 'cred_id': creds['attrs'][attr_uuid][0]['cred_info']['referent'],
                 'revealed': True
             }

@@ -19,7 +19,7 @@ from setuptools import setup
 
 
 pkg_name = 'von_agent'
-version = '1.1.1'
+version = '1.1.2'
 
 
 setup(
@@ -47,7 +47,6 @@ setup(
     install_requires=[
         'base58',
         'python3-indy',
-        'requests',
         'chardet',
         'certifi',
         'jsonschema'

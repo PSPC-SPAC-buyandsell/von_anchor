@@ -305,6 +305,9 @@ class _AgentCore:
                 req_json = await ledger.build_get_schema_request(self.did, schema_id(*index))
                 resp_json = await self._submit(req_json)
                 resp = json.loads(resp_json)
+                if not ('result' in resp and resp['result'].get('data', {}).get('attr_names', None)):
+                    logger.debug('_AgentCore.get_schema: <!< no schema exists on {}'.format(index))
+                    raise AbsentSchema('No schema exists on {}'.format(index))
                 try:
                     (s_id, rv_json) = await ledger.parse_get_schema_response(resp_json)
                 except IndyError as e:  # ledger replied, but there is no such schema
@@ -468,6 +471,9 @@ class _BaseAgent(_AgentCore):
             req_json = await ledger.build_get_cred_def_request(self.did, cd_id)
             resp_json = await self._submit(req_json)
             resp = json.loads(resp_json)
+            if not ('result' in resp and resp['result'].get('data', None)):
+                logger.debug('_BaseAgent.get_cred_def: <!< no cred def exists on {}'.format(cd_id))
+                raise AbsentCredDef('No cred def exists on {}'.format(cd_id))
             try:
                 (_, rv_json) = await ledger.parse_get_cred_def_response(resp_json)
             except IndyError:  # ledger replied, but there is no such cred def
@@ -1717,7 +1723,7 @@ class HolderProver(_BaseAgent):
             rr_id2rev_state[rr_id] = {
                 rr_id2interval[rr_id]['to']: json.loads(rr_state_json)
             }
-        print('\n\n!! HP.CP !! create_proof: rr_id2revstate {}'.format(ppjson(rr_id2rev_state)))
+        # print('\n\n!! HP.CP !! create_proof: rr_id2revstate {}'.format(ppjson(rr_id2rev_state)))
         rv = await anoncreds.prover_create_proof(
             self.wallet.handle,
             json.dumps(proof_req),
