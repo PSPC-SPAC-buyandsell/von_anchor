@@ -34,7 +34,7 @@ from von_agent.error import (
     AbsentCredDef,
     AbsentInterval,
     AbsentLinkSecret,
-    AbsentRevRegDef,
+    AbsentRevReg,
     AbsentSchema,
     AbsentTailsFile,
     BadLedgerTxn,
@@ -56,13 +56,14 @@ from von_agent.util import (
     schema_id,
     SchemaKey,
     schema_key)
-from von_agent.validate_config import validate_config
 from von_agent.wallet import Wallet
 
 
-class _AgentCore:
+class _BaseAgent:
     """
-    Base class for agent implementing low-level functionality.
+    Base class for common agent functionality. A VON agent has a wallet and a
+    node pool.  It has a role and a cryptonym, and can interact via indy-sdk
+    with the distributed ledger that its node pool operates.
     """
 
     def __init__(self, wallet: Wallet) -> None:
@@ -75,11 +76,11 @@ class _AgentCore:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.__init__: >>> wallet: {}'.format(wallet))
+        logger.debug('_BaseAgent.__init__: >>> wallet: {}'.format(wallet))
 
         self._wallet = wallet
 
-        logger.debug('_AgentCore.__init__: <<<')
+        logger.debug('_BaseAgent.__init__: <<<')
 
     @property
     def pool(self) -> NodePool:
@@ -121,36 +122,36 @@ class _AgentCore:
 
         return self.wallet.verkey
 
-    async def __aenter__(self) -> '_AgentCore':
+    async def __aenter__(self) -> '_BaseAgent':
         """
-        Context manager entry. Open wallet and store agent DID in it.
+        Context manager entry; open wallet.
         For use in monolithic call opening, using, and closing the agent.
 
         :return: current object
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.__aenter__: >>>')
+        logger.debug('_BaseAgent.__aenter__: >>>')
 
         rv = await self.open()
 
-        logger.debug('_AgentCore.__aenter__: <<<')
+        logger.debug('_BaseAgent.__aenter__: <<<')
         return rv
 
-    async def open(self) -> '_AgentCore':
+    async def open(self) -> '_BaseAgent':
         """
-        Explicit entry. Open wallet and store agent DID in it.
+        Context manager entry; open wallet.
         For use when keeping agent open across multiple calls.
 
         :return: current object
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.open: >>>')
+        logger.debug('_BaseAgent.open: >>>')
 
         await self.wallet.open()
 
-        logger.debug('_AgentCore.open: <<<')
+        logger.debug('_BaseAgent.open: <<<')
         return self
 
     async def __aexit__(self, exc_type, exc, traceback) -> None:
@@ -164,10 +165,10 @@ class _AgentCore:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.__aexit__: >>> exc_type: {}, exc: {}, traceback: {}'.format(exc_type, exc, traceback))
+        logger.debug('_BaseAgent.__aexit__: >>> exc_type: {}, exc: {}, traceback: {}'.format(exc_type, exc, traceback))
 
         await self.close()
-        logger.debug('_AgentCore.__exit__: <<<')
+        logger.debug('_BaseAgent.__exit__: <<<')
 
     async def close(self) -> None:
         """
@@ -176,11 +177,53 @@ class _AgentCore:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.close: >>>')
+        logger.debug('_BaseAgent.close: >>>')
 
         await self.wallet.close()
 
-        logger.debug('_AgentCore.close: <<<')
+        logger.debug('_BaseAgent.close: <<<')
+
+    async def get_nym(self, did: str) -> str:
+        """
+        Get json cryptonym (including current verification key) for input (agent) DID from ledger.
+
+        Raise BadLedgerTxn on failure.
+
+        :param did: DID of cryptonym to fetch
+        :return: cryptonym json
+        """
+
+        logger = logging.getLogger(__name__)
+        logger.debug('_BaseAgent.get_nym: >>> did: {}'.format(did))
+
+        rv = json.dumps({})
+        get_nym_req = await ledger.build_get_nym_request(self.did, did)
+        resp_json = await self._submit(get_nym_req)
+
+        data_json = (json.loads(resp_json))['result']['data']  # it's double-encoded on the ledger
+        if data_json:
+            rv = data_json
+
+        logger.debug('_BaseAgent.get_nym: <<< {}'.format(rv))
+        return rv
+
+    def role(self) -> str:
+        """
+        Return the indy-sdk role for an agent in building its nym for the trust anchor to send to the ledger.
+
+        :param: agent: agent instance
+        :return: role string
+        """
+
+        logger = logging.getLogger(__name__)
+        logger.debug('_BaseAgent.role: >>>')
+
+        rv = None
+        if isinstance(self, (AgentRegistrar, Origin, Issuer)):
+            rv = 'TRUST_ANCHOR'
+
+        logger.debug('_BaseAgent.role: <<< {}'.format(rv))
+        return rv
 
     async def _submit(self, req_json: str) -> str:
         """
@@ -193,7 +236,7 @@ class _AgentCore:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore._submit: >>> json: {}'.format(req_json))
+        logger.debug('_BaseAgent._submit: >>> json: {}'.format(req_json))
 
         rv_json = await ledger.submit_request(self.pool.handle, req_json)
         await asyncio.sleep(0)
@@ -201,14 +244,14 @@ class _AgentCore:
         resp = json.loads(rv_json)
         if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
             logger.debug(
-                '_AgentCore._submit: <!< ledger rejected request: {}'.format(resp['reason']))
+                '_BaseAgent._submit: <!< ledger rejected request: {}'.format(resp['reason']))
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
 
         if 'reason' in resp and 'result' in resp and resp['result'].get('seqNo', None) is None:
-            logger.debug('_AgentCore._submit: <!< response indicates no transaction: {}'.format(resp['reason']))
+            logger.debug('_BaseAgent._submit: <!< response indicates no transaction: {}'.format(resp['reason']))
             raise BadLedgerTxn('Response indicates no transaction'.format(resp['reason']))
 
-        logger.debug('_AgentCore._submit: <<< {}'.format(rv_json))
+        logger.debug('_BaseAgent._submit: <<< {}'.format(rv_json))
         return rv_json
 
     async def _sign_submit(self, req_json: str) -> str:
@@ -223,199 +266,49 @@ class _AgentCore:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore._sign_submit: >>> json: {}'.format(req_json))
+        logger.debug('_BaseAgent._sign_submit: >>> json: {}'.format(req_json))
 
         try:
             rv_json = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
             await asyncio.sleep(0)
         except IndyError as e:
             if e.error_code == ErrorCode.WalletIncompatiblePoolError:
-                logger.debug('_AgentCore._sign_submit: <!< Corrupt wallet {} is not compatible with pool {}'.format(
+                logger.debug('_BaseAgent._sign_submit: <!< Corrupt wallet {} is not compatible with pool {}'.format(
                     self.wallet.name,
                     self.pool.name))
                 raise CorruptWallet(
                     'Corrupt wallet {} is not compatible with pool {}'.format(self.wallet.name, self.pool.name))
             else:
                 logger.debug(
-                    '_AgentCore._sign_submit: <!<  cannot sign/submit request for ledger: indy error code {}'.format(
+                    '_BaseAgent._sign_submit: <!<  cannot sign/submit request for ledger: indy error code {}'.format(
                         self.wallet.name))
                 raise BadLedgerTxn('Cannot sign/submit request for ledger: indy error code {}'.format(e.error_code))
 
         resp = json.loads(rv_json)
         if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
-            logger.debug('_AgentCore._sign_submit: ledger rejected request: {}'.format(resp['reason']))
+            logger.debug('_BaseAgent._sign_submit: ledger rejected request: {}'.format(resp['reason']))
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
 
         if 'reason' in resp and 'result' in resp and resp['result'].get('seqNo', None) is None:
-            logger.debug('_AgentCore._sign_submit: <!< response indicates no transaction: {}'.format(
+            logger.debug('_BaseAgent._sign_submit: <!< response indicates no transaction: {}'.format(
                 resp['reason']))
             raise BadLedgerTxn('Response indicates no transaction'.format(resp['reason']))
 
-        logger.debug('_AgentCore._sign_submit: <<< {}'.format(rv_json))
+        logger.debug('_BaseAgent._sign_submit: <<< {}'.format(rv_json))
         return rv_json
-
-    async def get_nym(self, did: str) -> str:
-        """
-        Get json cryptonym (including current verification key) for input (agent) DID from ledger.
-
-        Raise BadLedgerTxn on failure.
-
-        :param did: DID of cryptonym to fetch
-        :return: cryptonym json
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.get_nym: >>> did: {}'.format(did))
-
-        rv = json.dumps({})
-        get_nym_req = await ledger.build_get_nym_request(self.did, did)
-        resp_json = await self._submit(get_nym_req)
-
-        data_json = (json.loads(resp_json))['result']['data']  # it's double-encoded on the ledger
-        if data_json:
-            rv = data_json
-
-        logger.debug('_AgentCore.get_nym: <<< {}'.format(rv))
-        return rv
-
-    async def get_schema(self, index: Union[SchemaKey, int]) -> str:
-        """
-        Get schema from ledger by sequence number or schema key (origin DID, name, version).
-        Raise BadLedgerTxn on failure.
-
-        Retrieve the schema from the agent's schema cache if it has it; cache it
-        en passant if it does not (and if there is a corresponding schema on the ledger).
-
-        :param schema_id: schema key (origin DID, name, version) or sequence number
-        :return: schema json, parsed from ledger
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.get_schema: >>> index: {}'.format(index))
-
-        rv_json = json.dumps({})
-        with SCHEMA_CACHE.lock:
-            if SCHEMA_CACHE.contains(index):
-                logger.info('_AgentCore.get_schema: got schema {} from schema cache'.format(index))
-                rv_json = SCHEMA_CACHE[index]
-                logger.debug('_AgentCore.get_schema: <<< {}'.format(rv_json))
-                return json.dumps(rv_json)
-
-            if isinstance(index, SchemaKey):
-                req_json = await ledger.build_get_schema_request(self.did, schema_id(*index))
-                resp_json = await self._submit(req_json)
-                resp = json.loads(resp_json)
-                if not ('result' in resp and resp['result'].get('data', {}).get('attr_names', None)):
-                    logger.debug('_AgentCore.get_schema: <!< no schema exists on {}'.format(index))
-                    raise AbsentSchema('No schema exists on {}'.format(index))
-                try:
-                    (s_id, rv_json) = await ledger.parse_get_schema_response(resp_json)
-                except IndyError as e:  # ledger replied, but there is no such schema
-                    logger.debug('_AgentCore.get_schema: <!< no schema exists on {}'.format(index))
-                    raise AbsentSchema('No schema exists on {}'.format(index))
-                SCHEMA_CACHE[index] = json.loads(rv_json)  # cache indexes by both txn# and schema key en passant
-                logger.info('_AgentCore.get_schema: got schema {} from ledger'.format(index))
-
-            elif isinstance(index, int):
-                txn_json = await self.process_get_txn(index)
-                txn = json.loads(txn_json)
-                if txn.get('type', None) == '101':  # {} for no such txn; 101 marks indy-sdk schema txn type
-                    rv_json = await self.get_schema(SchemaKey(
-                        txn['identifier'],
-                        txn['data']['name'],
-                        txn['data']['version']))
-                else:
-                    logger.info('_AgentCore.get_schema: no schema at seq #{} on ledger'.format(index))
-
-            else:
-                logger.debug('_AgentCore.get_schema: <!< bad schema index type')
-                raise AbsentSchema('Attempt to get schema on ({}) {} , must use schema key or an int'.format(
-                    type(index),
-                    index))
-
-        logger.debug('_AgentCore.get_schema: <<< {}'.format(rv_json))
-        return rv_json
-
-    def role(self) -> str:
-        """
-        Return the indy-sdk role for an agent in building its nym for the trust anchor to send to the ledger.
-
-        :param: agent: agent instance
-        :return: role string
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('_AgentCore.role: >>>')
-
-        rv = None
-        if isinstance(self, (AgentRegistrar, Origin, Issuer)):
-            rv = 'TRUST_ANCHOR'
-
-        logger.debug('_AgentCore.role: <<< {}'.format(rv))
-        return rv
-
-    def __repr__(self) -> str:
-        """
-        Return representation for current object.
-
-        :return: representation for current object
-        """
-
-        return '{}({})'.format(self.__class__.__name__, self.wallet)
-
-class _BaseAgent(_AgentCore):
-    """
-    Class for agent that listens and responds to other agents. Note that a service wrapper will
-    listen for requests, parse requests, dispatch to agents, and return content to callers;
-    the current design calls not to use indy-sdk for direct agent-to-agent communication.
-
-    The _BaseAgent builds on the _AgentCore in that it stores configuration information (e.g., endpoint data),
-    and it receives and responds to (json) VON protocol messages (via a VON connector).
-    """
-
-    def __init__(self, wallet: Wallet, cfg: dict = None) -> None:
-        """
-        Initializer for agent. Retain input parameters; do not open wallet.
-
-        :param wallet: wallet for agent use
-        :param cfg: configuration, None for default with no endpoint and proxy-relay=False;
-            e.g., {
-                'endpoint': 'http://127.0.0.1:8808/api/v0',
-                'proxy-relay': True
-            }
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent.__init__: >>> wallet: {}, cfg: {}'.format(wallet, cfg))
-
-        super().__init__(wallet)
-
-        self._cfg = cfg or {}
-        validate_config('agent', self._cfg)
-
-        logger.debug('_BaseAgent.__init__: <<<')
-
-    @property
-    def cfg(self):
-        """
-        Accessor for configuration attribute.
-
-        :return: configuration (dict)
-        """
-        return self._cfg
 
     async def _get_rev_reg_def(self, rr_id: str) -> str:
         """
-        Get revocation registry definition from ledger by its identifier. Return empty production '{}'
-        for no such revocation registry definition, logging any error condition on bad request.
+        Get revocation registry definition from ledger by its identifier. Raise AbsentRevReg
+        for no such revocation registry, logging any error condition and raising BadLedgerTxn
+        on bad request.
 
         Retrieve the revocation registry definition from the agent's revocation cache if it has it;
-        cache it en passant if it does not (and if there is a revocation registry definition on the ledger).
+        cache it en passant if it does not (and such a revocation registry definition exists on the ledger).
 
-        :param rr_id: (revocation registry) identifier string
-            ('<issuer-did>:4:<issuer-did>:3:CL:<schema-seq-no>:CL_ACCUM:<tag>')
-        :return: revocation registry definition json as retrieved from ledger,
-            empty production '{}' for no such revocation registry definition
+        :param rr_id: (revocation registry) identifier string, of the format
+            '<issuer-did>:4:<issuer-did>:3:CL:<schema-seq-no>:CL_ACCUM:<tag>'
+        :return: revocation registry definition json as retrieved from ledger
         """
 
         logger = logging.getLogger(__name__)
@@ -425,20 +318,24 @@ class _BaseAgent(_AgentCore):
 
         with REVO_CACHE.lock:
             revo_cache_entry = REVO_CACHE.get(rr_id, None)
-            rrdef = revo_cache_entry.rev_reg_def if revo_cache_entry else None
-            if rrdef:
+            rr_def = revo_cache_entry.rev_reg_def if revo_cache_entry else None
+            if rr_def:
                 logger.info('_BaseAgent._get_rev_reg_def: rev reg def for {} from cache'.format(rr_id))
-                rv_json = json.dumps(rrdef)
+                rv_json = json.dumps(rr_def)
             else:
                 get_rrd_req_json = await ledger.build_get_revoc_reg_def_request(self.did, rr_id)
                 resp_json = await self._submit(get_rrd_req_json)
-                (_, rv_json) = await ledger.parse_get_revoc_reg_def_response(resp_json)
-                rrdef = json.loads(rv_json)
+                try:
+                    (_, rv_json) = await ledger.parse_get_revoc_reg_def_response(resp_json)
+                    rr_def = json.loads(rv_json)
+                except IndyError:  # ledger replied, but there is no such rev reg
+                    logger.debug('_BaseAgent._get_rev_reg_def: <!< no rev reg exists on {}'.format(rr_id))
+                    raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
 
                 if revo_cache_entry is None:
-                    REVO_CACHE[rr_id] = RevoCacheEntry(rrdef, None)
+                    REVO_CACHE[rr_id] = RevoCacheEntry(rr_def, None)
                 else:
-                    REVO_CACHE[rr_id]._rev_reg_def = rrdef
+                    REVO_CACHE[rr_id]._rev_reg_def = rr_def
 
         logger.debug('_BaseAgent._get_rev_reg_def: <<< {}'.format(rv_json))
         return rv_json
@@ -446,14 +343,14 @@ class _BaseAgent(_AgentCore):
     async def get_cred_def(self, cd_id: str) -> str:
         """
         Get credential definition from ledger by its identifier. Raise AbsentCredDef
-        for no such credential definition, logging any error condition on bad request.
+        for no such credential definition, logging any error condition and raising
+        BadLedgerTxn on bad request.
 
         Retrieve the credential definition from the agent's credential definition cache if it has it; cache it
         en passant if it does not (and if there is a corresponding credential definition on the ledger).
 
         :param cd_id: (credential definition) identifier string ('<issuer-did>:3:CL:<schema-seq-no>')
-        :return: credential definition json as retrieved from ledger,
-            empty production {} for no such credential definition
+        :return: credential definition json as retrieved from ledger
         """
 
         logger = logging.getLogger(__name__)
@@ -485,9 +382,68 @@ class _BaseAgent(_AgentCore):
         logger.debug('_BaseAgent.get_cred_def: <<< {}'.format(rv_json))
         return rv_json
 
+    async def get_schema(self, index: Union[SchemaKey, int]) -> str:
+        """
+        Get schema from ledger by sequence number or SchemaKey namedtuple (origin DID, name, version).
+        Raise AbsentSchema for no such credential definition, logging any error condition and raising
+        BadLedgerTxn on bad request.
+
+        Retrieve the schema from the agent's schema cache if it has it; cache it
+        en passant if it does not (and if there is a corresponding schema on the ledger).
+
+        :param schema_id: schema key (origin DID, name, version) or sequence number
+        :return: schema json, parsed from ledger
+        """
+
+        logger = logging.getLogger(__name__)
+        logger.debug('_BaseAgent.get_schema: >>> index: {}'.format(index))
+
+        rv_json = json.dumps({})
+        with SCHEMA_CACHE.lock:
+            if SCHEMA_CACHE.contains(index):
+                logger.info('_BaseAgent.get_schema: got schema {} from schema cache'.format(index))
+                rv_json = SCHEMA_CACHE[index]
+                logger.debug('_BaseAgent.get_schema: <<< {}'.format(rv_json))
+                return json.dumps(rv_json)
+
+            if isinstance(index, SchemaKey):
+                req_json = await ledger.build_get_schema_request(self.did, schema_id(*index))
+                resp_json = await self._submit(req_json)
+                resp = json.loads(resp_json)
+                if not ('result' in resp and resp['result'].get('data', {}).get('attr_names', None)):
+                    logger.debug('_BaseAgent.get_schema: <!< no schema exists on {}'.format(index))
+                    raise AbsentSchema('No schema exists on {}'.format(index))
+                try:
+                    (s_id, rv_json) = await ledger.parse_get_schema_response(resp_json)
+                except IndyError as e:  # ledger replied, but there is no such schema
+                    logger.debug('_BaseAgent.get_schema: <!< no schema exists on {}'.format(index))
+                    raise AbsentSchema('No schema exists on {}'.format(index))
+                SCHEMA_CACHE[index] = json.loads(rv_json)  # cache indexes by both txn# and schema key en passant
+                logger.info('_BaseAgent.get_schema: got schema {} from ledger'.format(index))
+
+            elif isinstance(index, int):
+                txn_json = await self.process_get_txn(index)
+                txn = json.loads(txn_json)
+                if txn.get('type', None) == '101':  # {} for no such txn; 101 marks indy-sdk schema txn type
+                    rv_json = await self.get_schema(SchemaKey(
+                        txn['identifier'],
+                        txn['data']['name'],
+                        txn['data']['version']))
+                else:
+                    logger.info('_BaseAgent.get_schema: no schema at seq #{} on ledger'.format(index))
+
+            else:
+                logger.debug('_BaseAgent.get_schema: <!< bad schema index type')
+                raise AbsentSchema('Attempt to get schema on ({}) {} , must use schema key or an int'.format(
+                    type(index),
+                    index))
+
+        logger.debug('_BaseAgent.get_schema: <<< {}'.format(rv_json))
+        return rv_json
+
     async def process_get_txn(self, txn: int) -> str:
         """
-        Take a request to find a transaction on the distributed ledger by its sequence number.
+        Find a transaction on the distributed ledger by its sequence number.
 
         :param txn: transaction number
         :return: json sequence number of transaction, null for no match
@@ -506,7 +462,7 @@ class _BaseAgent(_AgentCore):
 
     async def process_get_did(self) -> str:
         """
-        Take a request to get current agent's DID, return json accordingly.
+        Get current agent's DID, return json accordingly.
 
         :return: json DID
         """
@@ -525,16 +481,7 @@ class _BaseAgent(_AgentCore):
         :return: representation for current object
         """
 
-        return '{}({}, {}, {})'.format(self.__class__.__name__, repr(self.pool), self.wallet, self.cfg)
-
-    def __str__(self) -> str:
-        """
-        Return informal string identifying current object.
-
-        :return: string identifying current object
-        """
-
-        return '{}({}, {})'.format(self.__class__.__name__, self.wallet, self.cfg)
+        return '{}({})'.format(self.__class__.__name__, self.wallet)
 
 
 class AgentRegistrar(_BaseAgent):
@@ -544,14 +491,16 @@ class AgentRegistrar(_BaseAgent):
 
     async def send_nym(self, did: str, verkey: str, alias: str = None, role: str = None) -> None:
         """
-        Send input agent's cryptonym (including DID and current verification key) to ledger.
+        Send input agent's cryptonym (including DID, verification key, plus optional alias and role)
+        to the distributed ledger.
 
         Raise BadLedgerTxn on failure.
 
         :param did: agent DID to send to ledger
         :param verkey: agent verification key
         :param alias: optional alias
-        :param role: agent role on the ledger; specify one of 'TRUSTEE', 'STEWARD', 'TRUST_ANCHOR' or '' to reset role
+        :param role: agent role on the ledger; specify one of 'TRUSTEE', 'STEWARD', 'TRUST_ANCHOR',
+            or else '' to reset role
         """
 
         logger = logging.getLogger(__name__)
@@ -559,14 +508,14 @@ class AgentRegistrar(_BaseAgent):
             did,
             verkey,
             alias,
-            role))
+            role or ''))
 
         req_json = await ledger.build_nym_request(
             self.did,
             did,
             verkey,
             alias,
-            role)
+            role or '')
         await self._sign_submit(req_json)
 
         logger.debug('AgentRegistrar.send_nym: <<<')
@@ -574,7 +523,7 @@ class AgentRegistrar(_BaseAgent):
 
 class Origin(_BaseAgent):
     """
-    Mixin for agent to send schemata and credential definitions to the distributed ledger
+    Mixin for agent to send schemata to the distributed ledger
     """
 
     async def send_schema(self, schema_data_json: str) -> str:
@@ -628,27 +577,24 @@ class Origin(_BaseAgent):
 
 class Issuer(Origin):
     """
-    Mixin for agent acting in role of Issuer.
+    Mixin for agent acting in role of Issuer. An Issuer creates credential definitions and
+    sends them to the ledger, issues credentials, and revokes credentials. Revocation support
+    involves the management of tails files and revocation registries.
 
-    The current design calls for any issuer to be able to originate its own schema.
+    For simplicity, the current design calls to make any issuer agent an origin agent.
     """
 
-    def __init__(self, wallet: Wallet, cfg: dict = None) -> None:
+    def __init__(self, wallet: Wallet) -> None:
         """
         Initializer for Issuer agent. Retain input parameters; do not open wallet nor tails writer.
 
         :param wallet: wallet for agent use
-        :param cfg: configuration, None for default with no endpoint and proxy-relay=False;
-            e.g., {
-                'endpoint': 'http://127.0.0.1:8808/api/v0',
-                'proxy-relay': True
-            }
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('Issuer.__init__: >>> wallet: {}, cfg: {}'.format(wallet, cfg))
+        logger.debug('Issuer.__init__: >>> wallet: {}'.format(wallet))
 
-        super().__init__(wallet, cfg)
+        super().__init__(wallet)
         self._dir_tails = join(expanduser('~'), '.indy_client', 'tails')
         makedirs(self._dir_tails, exist_ok=True)
 
@@ -657,7 +603,7 @@ class Issuer(Origin):
     async def open(self) -> 'Issuer':
         """
         Explicit entry. Perform ancestor opening operations,
-        then synchronize revocation registry to tails directory content.
+        then synchronize revocation registry to tails tree content.
 
         :return: current object
         """
@@ -741,11 +687,16 @@ class Issuer(Origin):
 
         (cd_id, tag) = rev_reg_id2cred_def_id__tag(rr_id)
 
-        if not json.loads(await self.get_cred_def(cd_id)):
+        try:
+            await self.get_cred_def(cd_id)
+        except AbsentCredDef:
             logger.debug(
-                'Issuer._sync_revoc: <!< corrupt tails directory {} may pertain to another ledger'.format(
-                    self._dir_tails))
-            raise AbsentCredDef('Corrupt tails directory {} may pertain to another ledger'.format(self._dir_tails))
+                'Issuer._sync_revoc: <!< tails tree {} may pertain to another ledger; no cred def found on {}'.format(
+                    self._dir_tails,
+                    cd_id))
+            raise AbsentCredDef('Tails tree {} may pertain to another ledger; no cred def found on {}'.format(
+                self._dir_tails,
+                cd_id))
 
         with REVO_CACHE.lock:
             revo_cache_entry = REVO_CACHE.get(rr_id, None)
@@ -800,7 +751,7 @@ class Issuer(Origin):
 
         s_id = schema_id(self.did, schema['name'], schema['version'])
         cd_id = cred_def_id(self.did, schema['seqNo'])
-
+        private_key_ok = True
         with CRED_DEF_CACHE.lock:
             try:
                 rv_json = await self.get_cred_def(cd_id)
@@ -820,6 +771,11 @@ class Issuer(Origin):
                     'moot-tag',  # indy-sdk ignores under current indy-sdk revocation model: tags rev regs instead
                     'CL',
                     json.dumps({'support_revocation': revocation}))
+                if json.loads(rv_json):
+                    private_key_ok = False
+                    logger.warning(
+                        'New cred def on {} in wallet shadows existing one on ledger: private key not usable'.format(
+                            cd_id))  # carry on though, this agent may have other roles so public key is good enough
             except IndyError as e:
                 if e.error_code == ErrorCode.AnoncredsCredDefAlreadyExistsError:
                     if json.loads(rv_json):
@@ -849,7 +805,7 @@ class Issuer(Origin):
                 if revocation:
                     await self._sync_revoc(rev_reg_id(cd_id, 0), rr_size)  # create new rev reg, tails file for tag 0
 
-        if revocation:
+        if revocation and private_key_ok:
             for tag in [str(t) for t in range(int(Tails.next_tag(self._dir_tails, cd_id)[0]))]:  # '0' to str(next-1)
                 await self._sync_revoc(rev_reg_id(cd_id, tag), rr_size if tag == 0 else None)
 
@@ -858,12 +814,12 @@ class Issuer(Origin):
 
     async def create_cred_offer(self, schema_seq_no: int) -> str:
         """
-        Create credential offer as Issuer for given schema and agent on specified DID.
+        Create credential offer as Issuer for given schema.
 
         Raise CorruptWallet if the wallet has no private key for the corresponding credential definition.
 
         :param schema_seq_no: schema sequence number
-        :return: json credential offer for use in storing credentials at HolderProver.
+        :return: credential offer json for use in storing credentials at HolderProver.
         """
 
         logger = logging.getLogger(__name__)
@@ -891,6 +847,11 @@ class Issuer(Origin):
         """
         Create credential as Issuer out of credential request and dict of key:value (raw, unencoded) entries
         for attributes; return credential json and credential revocation identifier.
+
+        If the credential definition supports revocation, and the current revocation registry is full,
+        the processing creates a new revocation registry en passant. Depending on the revocation
+        registry size (by default starting at 256 and doubling iteratively through 4096), this
+        operation may delay credential creation by several seconds.
 
         :param cred_offer_json: credential offer json as created by Issuer
         :param cred_req_json: credential request json as created by HolderProver
@@ -1020,27 +981,22 @@ class Issuer(Origin):
 
 class HolderProver(_BaseAgent):
     """
-    Mixin for agent acting in the role of w3c Holder and indy-sdk Prover.
-    A Holder holds credentials; a Prover produces proof for credentials.
+    Mixin for agent acting in the role of w3c Holder and indy-sdk Prover.  A Holder holds
+    credentials; a Prover produces proof of credentials. Revocation support requires
+    the holder-prover agent to manage tails files.
     """
 
-    def __init__(self, wallet: Wallet, cfg: dict = None) -> None:
+    def __init__(self, wallet: Wallet) -> None:
         """
-        Initializer for HolderProver agent. Retain input parameters; do not open wallet.
+        Initializer for HolderProver agent. Retain input parameters; do not open wallet nor tails writer.
 
         :param wallet: wallet for agent use
-        :param cfg: configuration, None for default with no endpoint and proxy-relay=False; e.g.,
-            ::
-            {
-                'endpoint': 'http://127.0.0.1:8808/api/v0',
-                'proxy-relay': True
-            }
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.__init__: >>> wallet: {}, cfg: {}'.format(wallet, cfg))
+        logger.debug('HolderProver.__init__: >>> wallet: {}'.format(wallet))
 
-        super().__init__(wallet, cfg)
+        super().__init__(wallet)
         self._link_secret = None
 
         self._dir_tails = join(expanduser('~'), '.indy_client', 'tails')
@@ -1050,8 +1006,9 @@ class HolderProver(_BaseAgent):
 
     async def _sync_revoc(self, rr_id: str) -> None:
         """
-        Pick up tails file reader handle for input revocation registry identifier.
-        Raise AbsentTailsFile for missing corresponding tails file.
+        Pick up tails file reader handle for input revocation registry identifier.  If no symbolic
+        link is present, get the revocation registry definition to retrieve its tails file hash,
+        then find the tails file and link it. Raise AbsentTailsFile for missing corresponding tails file.
 
         :param rr_id: revocation registry identifier
         """
@@ -1063,9 +1020,9 @@ class HolderProver(_BaseAgent):
 
         if not json.loads(await self.get_cred_def(cd_id)):
             logger.debug(
-                'HolderProver._sync_revoc: <!< corrupt tails directory {} may pertain to another ledger'.format(
+                'HolderProver._sync_revoc: <!< corrupt tails tree {} may pertain to another ledger'.format(
                     self._dir_tails))
-            raise AbsentCredDef('Corrupt tails directory {} may pertain to another ledger'.format(self._dir_tails))
+            raise AbsentCredDef('Corrupt tails tree {} may pertain to another ledger'.format(self._dir_tails))
 
         with REVO_CACHE.lock:
             revo_cache_entry = REVO_CACHE.get(rr_id, None)
@@ -1090,20 +1047,20 @@ class HolderProver(_BaseAgent):
 
         logger.debug('HolderProver._sync_revoc: <<<')
 
-    def path_tails(self, rr_id: str) -> str:
+    def dir_tails(self, rr_id: str) -> str:
         """
-        Return path to tails file for input revocation registry identifier.
+        Return path to the correct directory for the tails file on input revocation registry identifier.
 
         :param rr_id: revocation registry identifier of interest
-        :return: path to tails file for input revocation registry identifier
+        :return: path to tails dir for input revocation registry identifier
         """
 
-        return Tails.linked(self._dir_tails, rr_id)
+        return Tails.dir(self._dir_tails, rr_id)
 
     async def open(self) -> 'HolderProver':
         """
         Explicit entry. Perform ancestor opening operations,
-        then synchronize revocation registry to tails directory content.
+        then synchronize revocation registry to tails tree content.
 
         :return: current object
         """
@@ -1147,7 +1104,7 @@ class HolderProver(_BaseAgent):
         if not json.loads(rr_def_json):
             logger.debug('HolderProver._update_rev_reg_state: <!< Rev reg def for {} is not on ledger'.format( 
                 rr_id))
-            raise AbsentRevRegDef('Rev reg def for {} is not on ledger')
+            raise AbsentRevReg('Rev reg def for {} is not on ledger')
 
         with REVO_STATE_CACHE.lock:
             if rr_id in REVO_STATE_CACHE:
@@ -1223,7 +1180,7 @@ class HolderProver(_BaseAgent):
 
     async def create_link_secret(self, link_secret: str) -> None:
         """
-        Create link secret used in proofs by HolderProver.
+        Create link secret (a.k.a. master secret) used in proofs by HolderProver.
 
         Raise any IndyError causing failure to set link secret in wallet.
 
@@ -1472,8 +1429,8 @@ class HolderProver(_BaseAgent):
                 ...
             }
 
-        :param: filt_dflt_incl: whether to include (True) all attributes for schema that filter does not identify
-            or to exclude (False) all such attributes
+        :param: filt_dflt_incl: whether to include (True) all credentials in results for schemata on which wallet has
+            credentials but filter does not identify, or to exclude (False) all such credentials
         :return: tuple with (set of referents, creds json for input proof request);
             empty set and empty production for no such credential
         """
@@ -1737,8 +1694,9 @@ class HolderProver(_BaseAgent):
 
     async def reset_wallet(self) -> str:
         """
-        Close and delete HolderProver wallet, then create and open a replacement.
-        Precursor to revocation, and issuer/filter-specifiable cred deletion.
+        Close and delete HolderProver wallet, then create and open a replacement on prior link secret.
+        Note that this operation effectively destroys private keys for credential definitions. Its
+        intended use is primarily for testing and demonstration.
 
         Raise AbsentLinkSecret if link secret not set.
 
@@ -1772,12 +1730,13 @@ class HolderProver(_BaseAgent):
 
 class Verifier(_BaseAgent):
     """
-    Mixin for agent acting in the role of Verifier.
+    Mixin for agent acting in the role of Verifier. Verifier agents verify proofs.
     """
 
     async def verify_proof(self, proof_req: dict, proof: dict) -> str:
         """
-        Verify proof as Verifier.
+        Verify proof as Verifier. Raise AbsentRevReg if a proof cites a revocation registry
+        that does not exist on the distributed ledger.
 
         :param proof_req: proof request as Verifier creates, as per proof_req_json above
         :param proof: proof as HolderProver creates
@@ -1827,11 +1786,14 @@ class Verifier(_BaseAgent):
             timestamp = proof_id['timestamp']
             get_rr_req_json = await ledger.build_get_revoc_reg_request(self.did, rr_id, timestamp)
             resp_json = await self._submit(get_rr_req_json)
-            (_, rr_json, _) = await ledger.parse_get_revoc_reg_response(resp_json)
-
-            if rr_id not in rr_id2rr:
-                rr_id2rr[rr_id] = {}
-            rr_id2rr[rr_id][timestamp] = json.loads(rr_json)
+            try:
+                (_, rr_json, _) = await ledger.parse_get_revoc_reg_response(resp_json)
+                if rr_id not in rr_id2rr:
+                    rr_id2rr[rr_id] = {}
+                rr_id2rr[rr_id][timestamp] = json.loads(rr_json)
+            except IndyError:  # ledger replied, but there is no such rev reg
+                logger.debug('Verifier.verify_proof: <!< no rev reg exists on {}'.format(rr_id))
+                raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
 
         # print('\n\n-- VV -- Verify: rr_id2rr: {}'.format(ppjson(rr_id2rr)))
         rv = json.dumps(await anoncreds.verifier_verify_proof(

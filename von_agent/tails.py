@@ -38,7 +38,7 @@ class Tails:
 
         Raise AbsentTailsFile if (rev reg id) symbolic link or (tails hash) tails file not present.
 
-        :param base_dir: top directory for tails files, thereafter split by cred def id
+        :param base_dir: base directory for tails files, thereafter split by cred def id
         :param cd_id: credential definition identifier of interest
         :param tag: revocation registry identifier tag of interest, default to most recent
         """
@@ -99,7 +99,7 @@ class Tails:
         """
         Return correct subdirectory of input base dir for artifacts corresponding to input rev reg id.
 
-        :param base_dir: top directory for tails files, thereafter split by cred def id
+        :param base_dir: base directory for tails files, thereafter split by cred def id
         :param rr_id: rev reg id
         """
 
@@ -111,7 +111,7 @@ class Tails:
         Get, from the specified directory, the path to the tails file associated with
         the input revocation registry identifier, or None for no such file.
 
-        :param base_dir: top directory for tails files, thereafter split by cred def id
+        :param base_dir: base directory for tails files, thereafter split by cred def id
         :param rr_id: rev reg id
         :return: (stringified) path to tails file of interest, or None for no such file.
         """
@@ -126,7 +126,7 @@ class Tails:
         Return set of all paths to symbolic links (rev reg ids) associating
         their respective tails files, in specified base tails directory.
 
-        :param base_dir: top directory for tails files, thereafter split by cred def id
+        :param base_dir: base directory for tails files, thereafter split by cred def id
         :return: set of paths to symbolic links associating tails files
         """
 
@@ -135,7 +135,7 @@ class Tails:
     @staticmethod
     def unlinked(base_dir: str) -> set:
         """
-        Return all paths to tails files, in specified tails top directory (recursively),
+        Return all paths to tails files, in specified tails base directory (recursively),
         without symbolic links associating revocation registry identifiers.
 
         At an Issuer, tails files should not persist long without revocation registry identifier
@@ -143,7 +143,7 @@ class Tails:
         unlinked until the agent stores a credential or creates a proof needing it, or else the
         agent restarts.
 
-        :param base_dir: top directory for tails files, thereafter split by cred def id
+        :param base_dir: base directory for tails files, thereafter split by cred def id
         :return: set of paths to tails files with no local symbolic links to them
         """
 
@@ -157,7 +157,7 @@ class Tails:
         Return the next tag name available for a new rev reg id on input cred def id in base directory,
         and suggested size of associated rev reg.
 
-        :param base_dir: top directory for tails files, thereafter split by cred def id
+        :param base_dir: base directory for tails files, thereafter split by cred def id
         :param cd_id: credential definition identifier of interest
         :return: stringified least non-negative integer not yet used in a rev reg id associated with a tails file
             in base directory, and recommendation for next size to use
@@ -176,7 +176,7 @@ class Tails:
 
         Raise AbsentTailsFile if no corresponding tails file, signifying no such revocation registry defined.
 
-        :param base_dir: top directory for tails files, thereafter split by cred def id
+        :param base_dir: base directory for tails files, thereafter split by cred def id
         :param cd_id: credential definition identifier of interest
         :return: identifier for current revocation registry on input credential definition identifier
         """

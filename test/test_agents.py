@@ -118,27 +118,15 @@ async def test_agents_low_level_api(
     assert p.handle
 
     try:
-        xag = SRIAgent(
-            Wallet(p, 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', 'xxx', None, {'auto-remove': True}),
-            {'endpoint': 'http://127.0.0.1:9999/api/v0', 'proxy-relay': True})
+        xag = SRIAgent(Wallet(p, 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', 'xxx', None, {'auto-remove': True}))
     except AbsentWallet:
         pass
 
-    tag = TrustAnchorAgent(
-        await Wallet(p, seed_trustee1, 'trust-anchor').create(),
-        {'endpoint': 'http://127.0.0.1:8000/api/v0', 'proxy-relay': True})
-    sag = SRIAgent(
-        await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create(),
-        {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True})
-    pspcobag = OrgBookAgent(
-        await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create(),
-        {'endpoint': 'http://127.0.0.1:8002/api/v0', 'proxy-relay': True})
-    bcobag = OrgBookAgent(
-        await Wallet(p, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book').create(),
-        {'endpoint': 'http://127.0.0.1:8003/api/v0', 'proxy-relay': True})
-    bcrag = BCRegistrarAgent(
-        await Wallet(p, 'BC-Registrar-Agent-0000000000000', 'bc-registrar').create(),
-        {'endpoint': 'http://127.0.0.1:8004/api/v0', 'proxy-relay': True})
+    tag = TrustAnchorAgent(await Wallet(p, seed_trustee1, 'trust-anchor').create())
+    sag = SRIAgent(await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create())
+    pspcobag = OrgBookAgent( await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create())
+    bcobag = OrgBookAgent(await Wallet(p, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book').create())
+    bcrag = BCRegistrarAgent(await Wallet(p, 'BC-Registrar-Agent-0000000000000', 'bc-registrar').create())
 
     await tag.open()
     await sag.open()
@@ -1462,8 +1450,8 @@ async def test_agents_low_level_api(
 
 
 #noinspection PyUnusedLocal
-# @pytest.mark.asyncio
-async def _test_agents_on_nodepool_restart(
+@pytest.mark.asyncio
+async def test_agents_on_nodepool_restart(
         pool_name,
         pool_genesis_txn_path,
         pool_genesis_txn_file,
@@ -1481,12 +1469,8 @@ async def _test_agents_on_nodepool_restart(
 
     # 2. Open pool, SRI + PSPC Org Book agents (the tests above should obviate its need for trust-anchor)
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-        SRIAgent(
-            await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create(),
-            {'endpoint': 'http://127.0.0.1:8001/api/v0', 'proxy-relay': True})) as sag, (
-        OrgBookAgent(
-            await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create(),
-            {'endpoint': 'http://127.0.0.1:8002/api/v0', 'proxy-relay': True})) as pspcobag:
+        SRIAgent(await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create())) as sag, (
+        OrgBookAgent(await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create())) as pspcobag:
 
         assert p.handle is not None
 
@@ -1551,8 +1535,8 @@ def get_schema_or_cred_def(agent, schema_key, seq_no, issuer_did):
 
 
 #noinspection PyUnusedLocal
-# @pytest.mark.asyncio
-async def _test_cache_locking(
+@pytest.mark.asyncio
+async def test_cache_locking(
         pool_name,
         pool_genesis_txn_path,
         pool_genesis_txn_file):

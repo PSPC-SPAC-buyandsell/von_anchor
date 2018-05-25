@@ -17,7 +17,7 @@ limitations under the License.
 from von_agent.agents import AgentRegistrar, Origin, Verifier, Issuer, HolderProver
 
 
-TrustAnchorAgent = type('TrustAnchorAgent', (AgentRegistrar, Origin), {})
+TrustAnchorAgent = type('TrustAnchorAgent', (AgentRegistrar,), {})
 SRIAgent = type('SRIAgent', (Verifier, Issuer), {})
 BCRegistrarAgent = type('BCRegistrarAgent', (Issuer,), {})
 OrgBookAgent = type('OrgBookAgent', (HolderProver,), {})

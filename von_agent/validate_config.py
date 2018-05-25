@@ -31,21 +31,6 @@ CONFIG_JSON_SCHEMA = {
         },
         'additionalProperties': True
     },
-
-    'agent': {
-        '$schema': 'http://json-schema.org/draft-04/schema',
-        'type': 'object',
-        'properties': {
-            'endpoint': {
-                'type': 'string',
-                'pattern': '^.*://.*[^/]$'
-            },
-            'proxy-relay': {
-                'type': 'boolean'
-            }
-        },
-        'additionalProperties': False
-    }
 }
 
 

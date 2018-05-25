@@ -40,7 +40,7 @@ class ErrorCode(IntEnum):
     BadLedgerTxn = 1012,
     BadRevStateTime = 1013,
     AbsentInterval = 1014,
-    AbsentRevRegDef = 1015,
+    AbsentRevReg = 1015,
 
     # Errors to do with schema identifiers
     SchemaIdSpec = 2000,
@@ -308,10 +308,10 @@ class AbsentInterval(VonAgentError):
         super().__init__(ErrorCode.AbsentInterval, message)
 
 
-class AbsentRevRegDef(VonAgentError):
+class AbsentRevReg(VonAgentError):
     """
-    (HolderProver) agent attempting to create revocation registry state but
-    revocation registry definition is not defined on the ledger.
+    Agent attempting to create revocation registry state but
+    revocation registry is not present on the ledger.
     """
 
     def __init__(self, message: str):
@@ -321,7 +321,7 @@ class AbsentRevRegDef(VonAgentError):
         :param message: error message
         """
 
-        super().__init__(ErrorCode.AbsentRevRegDef, message)
+        super().__init__(ErrorCode.AbsentRevReg, message)
 
 
 class SchemaIdSpec(VonAgentError):
