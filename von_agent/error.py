@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+
 from enum import IntEnum
 
 
@@ -25,11 +26,7 @@ class ErrorCode(IntEnum):
     Success = 0,
 
     # Errors to do with von_agent operation
-    # TokenType = 1000,
-    # ProxyRelayConfig = 1001,
-    # ProxyHop = 1002,
     CredentialFocus = 1003,
-    AbsentAttribute = 1004,
     AbsentLinkSecret = 1005,
     CorruptWallet = 1006,
     AbsentSchema = 1007,
@@ -42,9 +39,6 @@ class ErrorCode(IntEnum):
     AbsentInterval = 1014,
     AbsentRevReg = 1015,
 
-    # Errors to do with schema identifiers
-    SchemaIdSpec = 2000,
-
     # Errors to do with wallet operation
     AbsentWallet = 3000,
 
@@ -56,7 +50,6 @@ class ErrorCode(IntEnum):
 
     # JSON validation
     JSONValidation = 9000
-
 
 class VonAgentError(Exception):
     """
@@ -76,53 +69,6 @@ class VonAgentError(Exception):
         self.message = message
 
 
-'''
-class TokenType(VonAgentError):
-    """
-    Agent does not process a given message token type.
-    """
-
-    def __init__(self, message: str):
-        """
-        Initialize on message.
-
-        :param message: error message
-        """
-
-        super().__init__(ErrorCode.TokenType, message)
-
-
-class ProxyRelayConfig(VonAgentError):
-    """
-    Agent does not operate as a proxy relay.
-    """
-
-    def __init__(self, message: str):
-        """
-        Initialize on message.
-
-        :param message: error message
-        """
-
-        super().__init__(ErrorCode.ProxyRelayConfig, message)
-
-
-class ProxyHop(VonAgentError):
-    """
-    Agent does not operate as a proxy relay.
-    """
-
-    def __init__(self, message: str):
-        """
-        Initialize on message.
-
-        :param message: error message
-        """
-
-        super().__init__(ErrorCode.ProxyHop, message)
-'''
-
-
 class CredentialFocus(VonAgentError):
     """
     Attempt to prove credential in specification that resolve to no claims,
@@ -137,21 +83,6 @@ class CredentialFocus(VonAgentError):
         """
 
         super().__init__(ErrorCode.CredentialFocus, message)
-
-
-class AbsentAttribute(VonAgentError):
-    """
-    Agent attempting to send attribute (e.g., endpoint) to ledger but has none defined.
-    """
-
-    def __init__(self, message: str):
-        """
-        Initialize on message.
-
-        :param message: error message
-        """
-
-        super().__init__(ErrorCode.AbsentAttribute, message)
 
 
 class CorruptWallet(VonAgentError):
@@ -322,21 +253,6 @@ class AbsentRevReg(VonAgentError):
         """
 
         super().__init__(ErrorCode.AbsentRevReg, message)
-
-
-class SchemaIdSpec(VonAgentError):
-    """
-    Cannot derive a schema key from a given specification.
-    """
-
-    def __init__(self, message: str):
-        """
-        Initialize on message.
-
-        :param message: error message
-        """
-
-        super().__init__(ErrorCode.SchemaIdSpec, message)
 
 
 class AbsentWallet(VonAgentError):

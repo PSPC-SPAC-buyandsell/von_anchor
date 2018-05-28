@@ -115,7 +115,7 @@ def rev_reg_id2tag(rev_reg_id: str) -> str:
     return str(rev_reg_id.split(':')[-1])  # tag is last token
 
 
-def rev_reg_id2cred_def_id__tag(rev_reg_id: str) -> str:
+def rev_reg_id2cred_def_id__tag(rev_reg_id: str) -> (str, str):
     """
     Given a revocation registry identifier, return its corresponding credential definition identifier and
     (stringified int) tag.
@@ -152,7 +152,7 @@ def schema_ids_for(creds: dict, cred_ids: list) -> dict:
 
 def prune_creds_json(creds: dict, cred_ids: set) -> str:
     """
-    Strip all claims out of the input json structure that do not match any of the input credential identifiers.
+    Strip all creds out of the input json structure that do not match any of the input credential identifiers.
 
     :param creds: creds structure returned by (HolderProver agent) get_creds()
     :param cred_ids: the set of credential identifiers of interest
@@ -267,26 +267,26 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
 
     :param: filt_dflt_incl: whether to include (True) all attributes for schema that filter does not identify
         or to exclude (False) all such attributes
-    :return: human-legible dict mapping credential identifiers to human-readable creds structures
-        (each as per HolderProver.get_creds_coarse()) for creds matching input filter
+    :return: human-legible dict mapping credential identifiers to human-readable creds synopses -- not proper
+        indy-sdk creds structures (each as per HolderProver.get_creds_display_coarse()) -- for creds matching
+        input filter
     """
 
     rv = {}
     if filt is None:
         filt = {}
-    for uuid2creds in (creds['attrs'], creds['predicates']):
-        for inner_creds in uuid2creds.values():
-            for cred in inner_creds:
-                cred_info = cred['cred_info']
-                if cred_info['referent'] in rv:
-                    continue
-                cred_s_id = cred_info['schema_id']
-                if (not filt) or (filt_dflt_incl and cred_s_id not in filt):
+    for cred_uuid in creds['attrs']:
+        for cred in creds['attrs'][cred_uuid]:  # creds['attrs'][cred_uuid] is a list of dict
+            cred_info = cred['cred_info']
+            if cred_info['referent'] in rv:
+                continue
+            cred_s_id = cred_info['schema_id']
+            if (not filt) or (filt_dflt_incl and cred_s_id not in filt):
+                rv[cred_info['referent']] = cred_info
+                continue
+            if filt and cred_s_id in filt:
+                if ({k: str(filt[cred_s_id][k]) for k in filt[cred_s_id]}.items() <= cred_info['attrs'].items()):
                     rv[cred_info['referent']] = cred_info
-                    continue
-                if filt and cred_s_id in filt:
-                    if ({k: str(filt[cred_s_id][k]) for k in filt[cred_s_id]}.items() <= cred_info['attrs'].items()):
-                        rv[cred_info['referent']] = cred_info
 
     return rv
 

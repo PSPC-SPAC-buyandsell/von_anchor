@@ -30,7 +30,6 @@ from indy.error import IndyError, ErrorCode
 from von_agent.cache import CRED_DEF_CACHE, REVO_CACHE, RevoCacheEntry, SCHEMA_CACHE
 from von_agent.codec import cred_attr_value
 from von_agent.error import (
-    AbsentAttribute,
     AbsentCredDef,
     AbsentInterval,
     AbsentLinkSecret,
@@ -1516,6 +1515,7 @@ class HolderProver(_BaseAgent):
             * BadRevStateTime if a timestamp for a revocation registry state in the proof request
               occurs before revocation registry creation
             * IndyError for any other indy-sdk error.
+            * AbsentInterval if creds missing non-revocation interval, but cred def supports revocation
 
         :param proof_req: proof request as per get_creds() above
         :param creds: credentials to prove

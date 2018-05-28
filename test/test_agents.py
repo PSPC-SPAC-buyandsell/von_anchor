@@ -30,7 +30,6 @@ from von_agent.cache import REVO_CACHE
 from von_agent.codec import canon
 from von_agent.demo_agents import TrustAnchorAgent, SRIAgent, BCRegistrarAgent, OrgBookAgent
 from von_agent.error import (
-    AbsentAttribute,
     AbsentCredDef,
     AbsentInterval,
     AbsentLinkSecret,
@@ -1023,6 +1022,7 @@ async def test_agents_low_level_api(
     assert json.loads(rc_json)
 
     # Create and store SRI registration completion creds, green cred from verified proof + extra data
+    print('\n\n== 35 == Revealed attributes from BC proof: {}'.format(ppjson(revealed_attrs(bc_proof))))
     revealed = revealed_attrs(bc_proof)[cred_def_id(bcrag.did, schema[S_ID['BC']]['seqNo'])]
 
     TODAY = datetime.date.today().strftime('%Y-%m-%d')
@@ -1064,7 +1064,7 @@ async def test_agents_low_level_api(
             EPOCH_CRED_CREATE[s_id].append(epoch_creation)
             sleep(2)  # put an interior second between each cred creation
             assert json.loads(cred_json[s_id])
-            print('\n\n== 35.{}.0 == SRI created cred (revoc id {}) at epoch {} on schema {}: {}'.format(
+            print('\n\n== 36.{}.0 == SRI created cred (revoc id {}) at epoch {} on schema {}: {}'.format(
                 i,
                 cred_rev_id,
                 epoch_creation,
@@ -1073,7 +1073,7 @@ async def test_agents_low_level_api(
             cred_id = await holder_prover[s_key.origin_did].store_cred(
                 cred_json[s_id],
                 cred_req_metadata_json[s_id])
-            print('\n\n== 35.{}.1 == Cred id in wallet: {}'.format(i, cred_id))
+            print('\n\n== 36.{}.1 == Cred id in wallet: {}'.format(i, cred_id))
             i += 1
     EPOCH_PRE_SRI_REVOC = int(time())
 
@@ -1105,7 +1105,7 @@ async def test_agents_low_level_api(
         (sri_cred_ids, creds_found_pspc_json[s_id]) = await holder_prover[s_key.origin_did].get_creds(
             json.dumps(proof_req[s_id]))
 
-        print('\n\n== 36.{} == Creds on schema {} (no filter) cred_ids: {}; creds: {}'.format(
+        print('\n\n== 37.{} == Creds on schema {} (no filter) cred_ids: {}; creds: {}'.format(
             i,
             s_id,
             sri_cred_ids,
@@ -1137,7 +1137,7 @@ async def test_agents_low_level_api(
     }
 
     (sri_cred_ids, sri_creds_found_json) = await pspcobag.get_creds(json.dumps(proof_req_sri))
-    print('\n\n== 37 == All SRI-issued creds (no filter) at PSPC Org Book {}: {}'.format(
+    print('\n\n== 38 == All SRI-issued creds (no filter) at PSPC Org Book {}: {}'.format(
         sri_cred_ids,
         ppjson(sri_creds_found_json)))
 
@@ -1150,13 +1150,13 @@ async def test_agents_low_level_api(
                 'greenLevel': cred_data[S_ID['GREEN']][1]['greenLevel']  # [1]: 'greenLevel': 'Silver'
             }
         })
-    print('\n\n== 38 == SRI creds display, filtered post hoc matching greenLevel {}: {}'.format(
+    print('\n\n== 39 == SRI creds display, filtered post hoc matching greenLevel {}: {}'.format(
         cred_data[S_ID['GREEN']][1]['greenLevel'],
         ppjson(sri_display_filt_post_hoc)))
     sri_pruned = prune_creds_json(
         sri_creds_found,
         {k for k in sri_display_filt_post_hoc})
-    print('\n\n== 39 == SRI creds, stripped down: {}'.format(ppjson(sri_pruned)))
+    print('\n\n== 40 == SRI creds, stripped down: {}'.format(ppjson(sri_pruned)))
 
     filt_get_creds_silver = {
         S_ID['GREEN']: {
@@ -1169,7 +1169,7 @@ async def test_agents_low_level_api(
     (sri_cred_ids_filt, creds_found_pspc_json[S_ID['GREEN']]) = await pspcobag.get_creds(
         json.dumps(proof_req[S_ID['GREEN']]),
         filt_get_creds_silver)
-    print('\n\n== 40 == SRI creds, filtered a priori {}: {}'.format(
+    print('\n\n== 41 == SRI creds, filtered a priori {}: {}'.format(
         sri_cred_ids_filt,
         ppjson(creds_found_pspc_json[S_ID['GREEN']])))
     assert set([*sri_display_filt_post_hoc]) == sri_cred_ids_filt
@@ -1200,12 +1200,12 @@ async def test_agents_low_level_api(
         'requested_predicates': {}
     }
     sri_proof_json = await pspcobag.create_proof(proof_req_sri, sri_creds_found_filt, sri_requested_creds)
-    print('\n\n== 41 == PSPC Org Book proof on cred-ids {}: {}'.format(sri_cred_ids_filt, ppjson(sri_proof_json, 1000)))
+    print('\n\n== 42 == PSPC Org Book proof on cred-ids {}: {}'.format(sri_cred_ids_filt, ppjson(sri_proof_json, 1000)))
     sri_proof = json.loads(sri_proof_json)
 
     # SRI agent (as Verifier) verifies proof
     rc_json = await sag.verify_proof(proof_req_sri, sri_proof)
-    print('\n\n== 42 == SRI agent verifies PSPC Org Book proof by cred_ids {} as: {}'.format(
+    print('\n\n== 43 == SRI agent verifies PSPC Org Book proof by cred_ids {} as: {}'.format(
         sri_cred_ids_filt,
         ppjson(rc_json)))
     assert json.loads(rc_json)
@@ -1229,14 +1229,14 @@ async def test_agents_low_level_api(
         'requested_predicates': {}
     }
     x_sri_proof_json = await pspcobag.create_proof(x_proof_req_sri, x_sri_creds_found, x_sri_requested_creds)
-    print('\n\n== 43 == Org Book proof pre-revoc on cred-ids {}, just before Silver cred creation {}'.format(
+    print('\n\n== 44 == Org Book proof pre-revoc on cred-ids {}, just before Silver cred creation {}'.format(
         sri_cred_ids_filt,
         ppjson(x_sri_proof_json, 1000)))
     x_sri_proof = json.loads(x_sri_proof_json)
 
     # SRI agent (as Verifier) verifies proof
     rc_json = await sag.verify_proof(x_proof_req_sri, x_sri_proof)
-    print('\n\n== 44 == SRI agent verifies BC Org Book proof pre-revoc on cred_ids {} < Silver creation as: {}'.format(
+    print('\n\n== 45 == SRI agent verifies BC Org Book proof pre-revoc on cred_ids {} < Silver creation as: {}'.format(
         sri_cred_ids_filt,
         ppjson(rc_json)))
     assert not json.loads(rc_json)
@@ -1278,14 +1278,14 @@ async def test_agents_low_level_api(
 
     sleep(1)
     EPOCH_SRI_REVOC = await did2ag[schema_key(S_ID['GREEN']).origin_did].revoke_cred(x_rr_id, x_cr_id)
-    print('\n\n== 45 == SRI agent revoked ({}, {}) -> {} green level {}'.format(
+    print('\n\n== 46 == SRI agent revoked ({}, {}) -> {} green level {}'.format(
         x_rr_id,
         x_cr_id,
         sri_revoc_info[(x_rr_id, x_cr_id)]['legalName'],
         sri_revoc_info[(x_rr_id, x_cr_id)]['greenLevel']))
     sleep(1)
     EPOCH_POST_SRI_REVOC = int(time())
-    print('\n\n== 46 == EPOCH times re: SRI Silver revocation: pre-revoc {}, revoc {}, post-revoc {}'.format(
+    print('\n\n== 47 == EPOCH times re: SRI Silver revocation: pre-revoc {}, revoc {}, post-revoc {}'.format(
         EPOCH_PRE_SRI_REVOC,
         EPOCH_SRI_REVOC,
         EPOCH_POST_SRI_REVOC))
@@ -1309,14 +1309,14 @@ async def test_agents_low_level_api(
         'requested_predicates': {}
     }
     x_sri_proof_json = await pspcobag.create_proof(x_proof_req_sri, x_sri_creds_found, x_sri_requested_creds)
-    print('\n\n== 47 == PSPC Org Book proof on cred-ids {} post Silver revocation: {}'.format(
+    print('\n\n== 48 == PSPC Org Book proof on cred-ids {} post Silver revocation: {}'.format(
         sri_cred_ids_filt,
         ppjson(x_sri_proof_json, 1000)))
     x_sri_proof = json.loads(x_sri_proof_json)
 
     # SRI agent (as Verifier) attempts to verify multi-cred proof with revoked cred
     rc_json = await sag.verify_proof(x_proof_req_sri, x_sri_proof)
-    print('\n\n== 48 == SRI agent verifies multi-cred proof (by filter) with Silver cred revoked as: {}'.format(
+    print('\n\n== 49 == SRI agent verifies multi-cred proof (by filter) with Silver cred revoked as: {}'.format(
         ppjson(rc_json)))
     assert not json.loads(rc_json)
 
@@ -1338,14 +1338,14 @@ async def test_agents_low_level_api(
         'requested_predicates': {}
     }
     x_sri_proof_json = await pspcobag.create_proof(x_proof_req_sri, x_sri_creds_found, x_sri_requested_creds)
-    print('\n\n== 49 == Org Book proof on cred-ids {} just before Silver cred revoc: {}'.format(
+    print('\n\n== 50 == Org Book proof on cred-ids {} just before Silver cred revoc: {}'.format(
         sri_cred_ids_filt,
         ppjson(x_sri_proof_json, 1000)))
     x_sri_proof = json.loads(x_sri_proof_json)
 
     # SRI agent (as Verifier) attempts to verify multi-cred proof with revoked cred, back-dated pre-revocation
     rc_json = await sag.verify_proof(x_proof_req_sri, x_sri_proof)
-    print('\n\n== 50 == SRI agent verifies multi-cred proof (by filter) just before Silver cred revoc as: {}'.format(
+    print('\n\n== 51 == SRI agent verifies multi-cred proof (by filter) just before Silver cred revoc as: {}'.format(
         ppjson(rc_json)))
     assert json.loads(rc_json)
 
@@ -1367,14 +1367,14 @@ async def test_agents_low_level_api(
         'requested_predicates': {}
     }
     x_sri_proof_json = await pspcobag.create_proof(x_proof_req_sri, x_sri_creds_found, x_sri_requested_creds)
-    print('\n\n== 51 == Org Book proof on cred-ids {} just before Silver cred creation: {}'.format(
+    print('\n\n== 52 == Org Book proof on cred-ids {} just before Silver cred creation: {}'.format(
         sri_cred_ids_filt,
         ppjson(x_sri_proof_json, 1000)))
     x_sri_proof = json.loads(x_sri_proof_json)
 
     # SRI agent (as Verifier) attempts to verify multi-cred proof with revoked cred
     rc_json = await sag.verify_proof(x_proof_req_sri, x_sri_proof)
-    print('\n\n== 52 == SRI agent verifies multi-cred proof (by filter) just before Silver cred creation as: {}'.format(
+    print('\n\n== 53 == SRI agent verifies multi-cred proof (by filter) just before Silver cred creation as: {}'.format(
         ppjson(rc_json)))
     assert not json.loads(rc_json)
 
@@ -1396,14 +1396,14 @@ async def test_agents_low_level_api(
         'requested_predicates': {}
     }
     x_sri_proof_json = await pspcobag.create_proof(x_proof_req_sri, x_sri_creds_found, x_sri_requested_creds)
-    print('\n\n== 53 == Org Book proof on cred-ids {} before any Green cred creation: {}'.format(
+    print('\n\n== 54 == Org Book proof on cred-ids {} before any Green cred creation: {}'.format(
         sri_cred_ids_filt,
         ppjson(x_sri_proof_json, 1000)))
     x_sri_proof = json.loads(x_sri_proof_json)
 
     # SRI agent (as Verifier) attempts to verify multi-cred proof with revoked cred
     rc_json = await sag.verify_proof(x_proof_req_sri, x_sri_proof)
-    print('\n\n== 54 == SRI agent verifies multi-cred proof (by filter) before any Green cred creation as: {}'.format(
+    print('\n\n== 55 == SRI agent verifies multi-cred proof (by filter) before any Green cred creation as: {}'.format(
         ppjson(rc_json)))
     assert not json.loads(rc_json)
 
@@ -1432,13 +1432,13 @@ async def test_agents_low_level_api(
 
     # Exercise helper GET calls
     txn_json = await sag.process_get_txn(schema[S_ID['GREEN']]['seqNo'])
-    print('\n\n== 55 == GREEN schema by txn #{}: {}'.format(schema[S_ID['GREEN']]['seqNo'], ppjson(txn_json)))
+    print('\n\n== 56 == GREEN schema by txn #{}: {}'.format(schema[S_ID['GREEN']]['seqNo'], ppjson(txn_json)))
     assert json.loads(txn_json)
     txn_json = await sag.process_get_txn(99999)  # ought not exist
     assert not json.loads(txn_json)
 
     did_json = await bcrag.process_get_did()
-    print('\n\n== 56 == BC Registrar agent did: {}'.format(ppjson(did_json)))
+    print('\n\n== 57 == BC Registrar agent did: {}'.format(ppjson(did_json)))
     assert json.loads(did_json)
 
     await bcrag.close()
@@ -1510,28 +1510,26 @@ def do(coro):
     return loop.run_until_complete(coro)
 
 
-def get_schema_or_cred_def(agent, schema_key, seq_no, issuer_did):
-    discriminant = hash(current_thread()) % 3
+def _get_cacheable(agent, schema_key, seq_no, issuer_did):
+    discriminant = hash(current_thread()) % 4
     if discriminant == 0:
         result = do(agent.get_schema(seq_no))
         print('.. Thread {} got schema {} v{} by seq #{}'.format(
-            current_thread(),
+            current_thread().name,
             schema_key.name,
             schema_key.version,
             seq_no))
     elif discriminant == 1:
         result = do(agent.get_schema(schema_key))
-        print('.. Thread {} got schema {} v{} by key'.format(
-            current_thread(),
-            schema_key.name,
-            schema_key.version))
+        print('.. Thread {} got schema {} v{} by key'.format(current_thread().name, schema_key.name, schema_key.version))
     elif discriminant == 2:
-        result = do(agent.get_cred_def(cred_def_id(issuer_did, seq_no)))
-        print('.. Thread {} got cred def for schema {} v{} by seq #{}'.format(
-            current_thread(),
-            schema_key.name,
-            schema_key.version,
-            seq_no))
+        cd_id = cred_def_id(issuer_did, seq_no)
+        result = do(agent.get_cred_def(cd_id))
+        print('.. Thread {} got cred def {}'.format(current_thread().name, cd_id))
+    else:
+        rr_id = rev_reg_id(cred_def_id(issuer_did, seq_no), '0')
+        result = do(agent._get_rev_reg_def(rr_id))
+        print('.. Thread {} got rev reg def {}'.format(current_thread().name, rr_id))
 
 
 #noinspection PyUnusedLocal
@@ -1540,7 +1538,7 @@ async def test_cache_locking(
         pool_name,
         pool_genesis_txn_path,
         pool_genesis_txn_file):
-    THREADS = 64
+    THREADS = 256
     threads = []
 
     print('\n\n== Testing agent cache locking ==')
@@ -1578,7 +1576,7 @@ async def test_cache_locking(
             schema_key2seq_no[s_key] = seq_no
             assert isinstance(seq_no, int) and seq_no > 0
 
-        print('\n\n== 1 == Exercising schema and cred def cache locks, SRI agent DID {}'.format(sri_did))
+        print('\n\n== 1 == Exercising cache locks')
         agents = [sag0, sag1, sag2]
 
         epoch_start = time()
@@ -1586,11 +1584,14 @@ async def test_cache_locking(
 
         for t in range(THREADS):
             s_key = choice(list(schema_key2seq_no.keys()))
-            threads.append(Thread(target=get_schema_or_cred_def, args=(
-                agents[t % modulus],
-                s_key,
-                schema_key2seq_no[s_key],
-                sri_did)))
+            threads.append(Thread(
+                name='#{}'.format(t),
+                target=_get_cacheable,
+                args=(
+                    agents[t % modulus],
+                    s_key,
+                    schema_key2seq_no[s_key],
+                    sri_did)))
 
         shuffle(threads)
         for thread in threads:
