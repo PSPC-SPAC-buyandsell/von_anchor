@@ -34,18 +34,18 @@ from von_agent.error import (
     AbsentInterval,
     AbsentLinkSecret,
     AbsentSchema,
-    AbsentTailsFile,
+    AbsentTails,
     AbsentWallet,
     BadLedgerTxn,
     BadRevocation,
     BadRevStateTime,
     CredentialFocus,
     JSONValidation)
-from von_agent.indy_proto import proof_req_all_attrs_json, req_creds_all_json
 from von_agent.nodepool import NodePool
 from von_agent.tails import Tails
 from von_agent.util import (
     cred_def_id,
+    cred_def_id2seq_no,
     creds_display,
     ppjson,
     prune_creds_json,
@@ -80,13 +80,14 @@ def _set_tails_state(set_on: bool):
         REVO_CACHE.clear()
         REVO_CACHE.update(REVO_CACHE_BAK)
         REVO_CACHE_BAK.clear()
-
     else:  # simulate (HolderProver) not having any tails files
         move(DIR_TAILS, DIR_TAILS_BAK)
         makedirs(DIR_TAILS, exist_ok=True)
         REVO_CACHE_BAK.clear()
         REVO_CACHE_BAK.update(REVO_CACHE)
         REVO_CACHE.clear()
+
+    # print('\n... Presto! Made tails tree and revocation cache {}APPEAR'.format('RE' if set_on else 'DIS'))
 
 
 def _download_tails(rr_id):
@@ -123,7 +124,7 @@ async def test_agents_low_level_api(
 
     tag = TrustAnchorAgent(await Wallet(p, seed_trustee1, 'trust-anchor').create())
     sag = SRIAgent(await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create())
-    pspcobag = OrgBookAgent( await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create())
+    pspcobag = OrgBookAgent(await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create())
     bcobag = OrgBookAgent(await Wallet(p, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book').create())
     bcrag = BCRegistrarAgent(await Wallet(p, 'BC-Registrar-Agent-0000000000000', 'bc-registrar').create())
 
@@ -166,9 +167,9 @@ async def test_agents_low_level_api(
         'bcrag': json.loads(await tag.get_endpoint(bcrag.did))
     }
 
-    print('\n\n== 1 == nyms: {}\nendpoints: {}\n'.format(ppjson(nyms), ppjson(endpoints)))
+    print('\n\n== 1 == nyms: {}\nendpoints: {}'.format(ppjson(nyms), ppjson(endpoints)))
     '''
-    print('\n\n== 1 == nyms: {}\n'.format(ppjson(nyms)))
+    print('\n\n== 1 == nyms: {}'.format(ppjson(nyms)))
 
     for k in nyms:
         assert 'dest' in nyms[k]
@@ -286,13 +287,14 @@ async def test_agents_low_level_api(
     seq_no2schema = {}
     seq_no2schema_id = {}
 
-    # index by SchemaKey
+    # index by schema id
     schema_json = {}
     schema = {}
     cred_offer_json = {}
     cred_offer = {}
     cred_def_json = {}
     cred_def = {}
+    cd_id = {}
     cred_data = {}
     cred_req_json = {}
     cred_req = {}
@@ -321,7 +323,11 @@ async def test_agents_low_level_api(
             await did2ag[s_key.origin_did].send_schema(json.dumps(schema_data[s_id]))
         schema_json[s_id] = await did2ag[s_key.origin_did].get_schema(s_key)
         assert json.loads(schema_json[s_id])  # should exist now
+
+        schema_by_id_json = await did2ag[s_key.origin_did].get_schema(s_id)
         schema[s_id] = json.loads(schema_json[s_id])
+        assert json.loads(schema_by_id_json)['seqNo'] == schema[s_id]['seqNo']
+
         seq_no2schema_id[schema[s_id]['seqNo']] = s_id
         seq_no2schema[schema[s_id]['seqNo']] = schema[s_id]
         print('\n\n== 2.{} == SCHEMA [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
@@ -346,15 +352,15 @@ async def test_agents_low_level_api(
         ag = did2ag[s_key.origin_did]
 
         await ag.send_cred_def(
-            schema_json[s_id],
+            s_id,
             s_id != S_ID['NON-REVO'],
             4 if s_id == S_ID['BC'] else None)  # make initial BC rev reg tiny: exercise rev reg rollover in cred issue
-        cd_id = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
+        cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
 
         assert (s_id == S_ID['NON-REVO']) or (
-            [f for f in Tails.links(str(ag._dir_tails)) if cd_id in f] and not Tails.unlinked(str(ag._dir_tails)))
+            [f for f in Tails.links(str(ag._dir_tails)) if cd_id[s_id] in f] and not Tails.unlinked(str(ag._dir_tails)))
 
-        cred_def_json[s_id] = await holder_prover[s_key.origin_did].get_cred_def(cd_id)  # ought to exist now
+        cred_def_json[s_id] = await holder_prover[s_key.origin_did].get_cred_def(cd_id[s_id])  # ought to exist now
         cred_def[s_id] = json.loads(cred_def_json[s_id])
         print('\n\n== 3.{}.0 == Cred def [{} v{}]: {}'.format(
             i,
@@ -364,7 +370,7 @@ async def test_agents_low_level_api(
         assert cred_def[s_id].get('schemaId', None) == str(schema[s_id]['seqNo'])
 
         repeat_cred_def = json.loads(await ag.send_cred_def(
-            schema_json[s_id],
+            s_id,
             s_id != S_ID['NON-REVO'],
             4 if s_id == S_ID['BC'] else None))  # make initial BC rev reg tiny: exercise rev reg rollover in cred issue
         assert repeat_cred_def  # check idempotence and non-crashing on duplicate cred-def send
@@ -377,6 +383,13 @@ async def test_agents_low_level_api(
             s_key.version,
             ppjson(cred_offer_json[s_id])))
         i += 1
+
+    big_proof_req_json = await tag.build_proof_req_json(
+        {   
+            cd_id[s_id]: schema_data[seq_no2schema_id[cred_def_id2seq_no(cd_id[s_id])]][
+                'attr_names'][0:2] for s_id in schema_data
+        })
+    print('\n\n== 3.{} == Built sample proof request: {}'.format(i, ppjson(big_proof_req_json)))
 
     # Setup link secrets, cred reqs at HolderProver agents
     await bcobag.create_link_secret('LinkSecret')
@@ -391,7 +404,7 @@ async def test_agents_low_level_api(
         s_key = schema_key(s_id)
         (cred_req_json[s_id], cred_req_metadata_json[s_id]) = await holder_prover[s_key.origin_did].create_cred_req(
             cred_offer_json[s_id],
-            cred_def_json[s_id])  # stores cred offer to wallet en passant
+            cd_id[s_id])
         cred_req[s_id] = json.loads(cred_req_json[s_id])
         print('\n\n== 4.{} == Credential request [{} v{}]: metadata {}, cred {}'.format(
             i,
@@ -479,11 +492,10 @@ async def test_agents_low_level_api(
         origin_did = schema_key(s_id).origin_did
         EPOCH_CRED_CREATE[s_id] = [] 
         for c in cred_data[s_id]:
-            (cred_json[s_id], cred_revoc_id) = await did2ag[origin_did].create_cred(
+            (cred_json[s_id], cred_revoc_id, epoch_creation) = await did2ag[origin_did].create_cred(
                 cred_offer_json[s_id],
                 cred_req_json[s_id],
                 c)
-            epoch_creation = int(time())
             EPOCH_CRED_CREATE[s_id].append(epoch_creation)
             if s_id != S_ID['NON-REVO']:
                 sleep(2)  # put an interior second between each cred creation
@@ -502,7 +514,7 @@ async def test_agents_low_level_api(
                         cred_json[s_id],
                         cred_req_metadata_json[s_id])
                     assert False
-                except AbsentTailsFile:
+                except AbsentTails:
                     pass
 
                 _download_tails(cred['rev_reg_id'])
@@ -533,7 +545,9 @@ async def test_agents_low_level_api(
 
     EPOCH_PRE_BC_REVOC = int(time())
     # BC Org Book agent (as HolderProver) finds creds; actuator filters post hoc
-    proof_req[S_ID['BC']] = json.loads(proof_req_all_attrs_json({S_ID['BC']: schema[S_ID['BC']]}, EPOCH_PRE_BC_REVOC)) 
+    proof_req[S_ID['BC']] = json.loads(await bcobag.build_proof_req_json(
+        {cd_id[S_ID['BC']]: None},
+        {cd_id[S_ID['BC']]: EPOCH_PRE_BC_REVOC}))
     (bc_cred_ids_all, bc_creds_found_all_json) = await bcobag.get_creds(json.dumps(proof_req[S_ID['BC']]))
 
     print('\n\n== 7 == All BC creds, no filter {}: {}'.format(bc_cred_ids_all, ppjson(bc_creds_found_all_json)))
@@ -541,7 +555,7 @@ async def test_agents_low_level_api(
     bc_display_pruned_filt_post_hoc = creds_display(
         bc_creds_found_all,
         {
-            S_ID['BC']: {
+            cd_id[S_ID['BC']]: {
                 'legalName': cred_data[S_ID['BC']][2]['legalName']
             }
         })
@@ -556,7 +570,7 @@ async def test_agents_low_level_api(
     print('\n\n== 10 == BC creds, by revocation info:\n{}'.format(ppjson(bc_revoc_info)))
 
     filt_get_creds = {
-        S_ID['BC']: {
+        cd_id[S_ID['BC']]: {
             'attr-match': {
                 k: cred_data[S_ID['BC']][2][k] for k in cred_data[S_ID['BC']][2]
                     if k in ('jurisdictionId', 'busId')
@@ -576,7 +590,7 @@ async def test_agents_low_level_api(
     bc_cred_id = bc_cred_ids_filt.pop()  # Tart City
 
     # BC Org Book agent (as HolderProver) creates proof for cred specified by filter
-    bc_requested_creds = json.loads(req_creds_all_json(bc_creds_found_filt))
+    bc_requested_creds = json.loads(await bcobag.build_req_creds_json(bc_creds_found_filt, None, True))
 
     _set_tails_state(False)  # simulate not having tails file first
     try:
@@ -585,11 +599,12 @@ async def test_agents_low_level_api(
             bc_creds_found_filt,
             bc_requested_creds)
         assert False
-    except AbsentTailsFile:
+    except AbsentTails:
         pass
 
     x_proof_req = deepcopy(proof_req[S_ID['BC']])
-    x_proof_req.pop('non_revoked')
+    for attr_uuid in x_proof_req['requested_attributes']:
+        x_proof_req['requested_attributes'][attr_uuid].pop('non_revoked')
     (_, x_creds_found_json) = await bcobag.get_creds(json.dumps(x_proof_req), filt_get_creds)
     rr_id = list(revoc_info(json.loads(x_creds_found_json), {'legalName': 'Tart City'}).keys())[0][0]
     _download_tails(rr_id)  # simulate sending tails file to HolderProver
@@ -620,22 +635,9 @@ async def test_agents_low_level_api(
     sleep(1)  # make sure EPOCH_BC_REVOC > EPOCH_PRE_BC_REVOC
 
     # BC Registry agent creates proof for non-revocable cred, for verification
-    proof_req[S_ID['NON-REVO']] = {
-        'nonce': str(EPOCH_PRE_BC_REVOC),
-        'name': 'non_revo_proof_req',
-        'version': '0',
-        'requested_attributes': {
-            '{}_{}_uuid'.format(schema[S_ID['NON-REVO']]['seqNo'], attr): {
-                'name': attr,
-                'restrictions': [{
-                    'schema_id': S_ID['NON-REVO']
-                }]
-            } for attr in cred_data[S_ID['NON-REVO']][0]
-        },
-        'requested_predicates': {}
-    }
+    proof_req[S_ID['NON-REVO']] = json.loads(await bcobag.build_proof_req_json({cd_id[S_ID['NON-REVO']]: None}))
     non_revo_filt_get_creds = {
-        S_ID['NON-REVO']: {
+        cd_id[S_ID['NON-REVO']]: {
             'attr-match': {
                 'thing': 'slack'
             }
@@ -647,16 +649,7 @@ async def test_agents_low_level_api(
     assert len(non_revo_cred_ids) == 1
     non_revo_cred_id = non_revo_cred_ids.pop()
     non_revo_creds_found = json.loads(non_revo_creds_found_json)
-    non_revo_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': non_revo_cred_id,
-                'revealed': True
-            } for attr_uuid in proof_req[S_ID['NON-REVO']]['requested_attributes']
-                if attr_uuid in non_revo_creds_found['attrs']},
-        'requested_predicates': proof_req[S_ID['NON-REVO']]['requested_predicates']
-    }
+    non_revo_requested_creds = json.loads(await bcobag.build_req_creds_json(non_revo_creds_found, None, True))
     non_revo_proof_json = await bcobag.create_proof(
         proof_req[S_ID['NON-REVO']],
         non_revo_creds_found,
@@ -705,32 +698,18 @@ async def test_agents_low_level_api(
         pass
 
     # BC Org Book agent (as HolderProver) finds creds after revocation
-    proof_req[S_ID['BC']]['non_revoked'] = {
-        'to': EPOCH_POST_BC_REVOC
-    }
+    proof_req[S_ID['BC']] = json.loads(await bcobag.build_proof_req_json(
+        {cd_id[S_ID['BC']]: None},
+        {cd_id[S_ID['BC']]: EPOCH_POST_BC_REVOC}))
     (bc_cred_ids_all, _) = await bcobag.get_creds(json.dumps(proof_req[S_ID['BC']]))
     assert len(bc_cred_ids_all) == len(cred_data[S_ID['BC']])  # indy-sdk get-creds includes revoked creds here
 
     # BC Org Book agent (as HolderProver) creates non-proof for revoked cred, for non-verification
-    x_proof_req = {
-        'nonce': str(EPOCH_POST_BC_REVOC),
-        'name': 'x_proof_req',
-        'version': '0',
-        'requested_attributes': {
-            '{}_{}_uuid'.format(schema[S_ID['BC']]['seqNo'], attr): {
-                'name': attr,
-                'restrictions': [{
-                    'schema_id': S_ID['BC']
-                }]
-            } for attr in cred_data[S_ID['BC']][3]  # Flan Nebula
-        },
-        'requested_predicates': {},
-        'non_revoked': {
-            'to': EPOCH_POST_BC_REVOC
-        }
-    }
+    x_proof_req = json.loads(await bcobag.build_proof_req_json(
+        {cd_id[S_ID['BC']]: None},
+        {cd_id[S_ID['BC']]: EPOCH_POST_BC_REVOC}))
     x_filt_get_creds = {
-        S_ID['BC']: {
+        cd_id[S_ID['BC']]: {
             'attr-match': {
                 'legalName': 'Flan Nebula'
             }
@@ -740,18 +719,9 @@ async def test_agents_low_level_api(
     assert len(x_cred_ids) == 1
     x_cred_id = x_cred_ids.pop()
     x_creds_found = json.loads(x_creds_found_json)
-    x_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': x_cred_id,
-                'revealed': True,
-                'timestamp': EPOCH_POST_BC_REVOC
-            } for attr_uuid in x_proof_req['requested_attributes']
-                if attr_uuid in x_creds_found['attrs']},
-        'requested_predicates': x_proof_req['requested_predicates']
-    }
+    x_requested_creds = json.loads(await bcobag.build_req_creds_json(x_creds_found, None, True))
     x_proof_json = await bcobag.create_proof(x_proof_req, x_creds_found, x_requested_creds)
+    
     print('\n\n== 18 == Proof (by filter) of revoked cred: {}'.format(ppjson(x_proof_json, 1000)))
 
     # Verifier agent attempts to verify non-proof of revoked cred
@@ -760,25 +730,11 @@ async def test_agents_low_level_api(
     assert not json.loads(rc_json)
 
     # BC Org Book agent (as HolderProver) creates proof for non-revoked cred on same rev reg, for verification
-    ok_proof_req = {
-        'nonce': str(EPOCH_POST_BC_REVOC),
-        'name': 'ok_proof_req',
-        'version': '0',
-        'requested_attributes': {
-            '{}_{}_uuid'.format(schema[S_ID['BC']]['seqNo'], attr): {
-                'name': attr,
-                'restrictions': [{
-                    'schema_id': S_ID['BC']
-                }]
-            } for attr in cred_data[S_ID['BC']][2]  # all cred data has same keys, Tart City will do
-        },
-        'requested_predicates': {},
-        'non_revoked': {
-            'to': EPOCH_POST_BC_REVOC
-        }
-    }
+    ok_proof_req = json.loads(await bcobag.build_proof_req_json(
+        {cd_id[S_ID['BC']]: None},
+        {cd_id[S_ID['BC']]: EPOCH_POST_BC_REVOC}))
     ok_filt_get_creds = {
-        S_ID['BC']: {
+        cd_id[S_ID['BC']]: {
             'attr-match': {
                 'legalName': 'Tart City'
             }
@@ -788,17 +744,7 @@ async def test_agents_low_level_api(
     assert len(ok_cred_ids) == 1
     ok_cred_id = ok_cred_ids.pop()
     ok_creds_found = json.loads(ok_creds_found_json)
-    ok_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': ok_cred_id,
-                'revealed': True,
-                'timestamp': EPOCH_POST_BC_REVOC
-            } for attr_uuid in ok_proof_req['requested_attributes']
-                if attr_uuid in ok_creds_found['attrs']},
-        'requested_predicates': ok_proof_req['requested_predicates']
-    }
+    ok_requested_creds = json.loads(await bcobag.build_req_creds_json(ok_creds_found, None, True))
     ok_proof_json = await bcobag.create_proof(ok_proof_req, ok_creds_found, ok_requested_creds)
     print('\n\n== 20 == Proof (by filter) of non-revoked cred: {}'.format(ppjson(ok_proof_json, 1000)))
 
@@ -808,22 +754,14 @@ async def test_agents_low_level_api(
     assert json.loads(rc_json)
 
     # BC Org Book agent (as HolderProver) creates proof for revoked cred, back-dated just before revocation
-    x_proof_req['non_revoked']['to'] = EPOCH_PRE_BC_REVOC
+    x_proof_req = json.loads(await bcobag.build_proof_req_json(
+        {cd_id[S_ID['BC']]: None},
+        {cd_id[S_ID['BC']]: EPOCH_PRE_BC_REVOC}))
     (x_cred_ids, x_creds_found_json) = await bcobag.get_creds(json.dumps(x_proof_req), x_filt_get_creds)
     assert len(x_cred_ids) == 1
     x_cred_id = x_cred_ids.pop()
     x_creds_found = json.loads(x_creds_found_json)
-    x_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': x_cred_id,
-                'revealed': True,
-                'timestamp': EPOCH_PRE_BC_REVOC
-            } for attr_uuid in x_proof_req['requested_attributes']
-                if attr_uuid in x_creds_found['attrs']},
-        'requested_predicates': x_proof_req['requested_predicates']
-    }
+    x_requested_creds = json.loads(await bcobag.build_req_creds_json(x_creds_found, None, True))
     x_proof_json = await bcobag.create_proof(x_proof_req, x_creds_found, x_requested_creds)
     print('\n\n== 22 == Proof (by filter) of cred before revocation: {}'.format(ppjson(x_proof_json, 1000)))
 
@@ -834,22 +772,14 @@ async def test_agents_low_level_api(
     assert json.loads(rc_json)
 
     # BC Org Book agent (as HolderProver) creates proof for revoked cred, back-dated < rev reg def (indy-sdk cannot)
-    x_proof_req['non_revoked']['to'] = EPOCH_START
+    x_proof_req = json.loads(await bcobag.build_proof_req_json(
+        {cd_id[S_ID['BC']]: None},
+        {cd_id[S_ID['BC']]: EPOCH_START}))
     (x_cred_ids, x_creds_found_json) = await bcobag.get_creds(json.dumps(x_proof_req), x_filt_get_creds)
     assert len(x_cred_ids) == 1
     x_cred_id = x_cred_ids.pop()
     x_creds_found = json.loads(x_creds_found_json)
-    x_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': x_cred_id,
-                'revealed': True,
-                'timestamp': EPOCH_START
-            } for attr_uuid in x_proof_req['requested_attributes']
-                if attr_uuid in x_creds_found['attrs']},
-        'requested_predicates': x_proof_req['requested_predicates']
-    }
+    x_requested_creds = json.loads(await bcobag.build_req_creds_json(x_creds_found, None, True))
     try:
         x_proof_json = await bcobag.create_proof(x_proof_req, x_creds_found, x_requested_creds)
         assert False
@@ -858,23 +788,9 @@ async def test_agents_low_level_api(
 
     # BC Org Book agent (as HolderProver) finds cred by cred-id, no cred by non-cred-id
     s_id = set(schema_ids_for(bc_creds_found_filt, {bc_cred_id}).values()).pop()  # it's unique
-    proof_req_by_id = {
-        'nonce': str(EPOCH_POST_BC_REVOC),
-        'name': 'ok_proof_req',
-        'version': '0',
-        'requested_attributes': {
-            '{}_{}_uuid'.format(schema[S_ID['BC']]['seqNo'], attr): {
-                'name': attr,
-                'restrictions': [{
-                    'schema_id': S_ID['BC']
-                }]
-            } for attr in cred_data[S_ID['BC']][2]  # all cred data has same keys, Tart City will do
-        },
-        'requested_predicates': {},
-        'non_revoked': {
-            'to': EPOCH_POST_BC_REVOC
-        }
-    }
+    proof_req_by_id = json.loads(await bcobag.build_proof_req_json(
+        {cd_id[S_ID['BC']]: None},
+        {cd_id[S_ID['BC']]: EPOCH_POST_BC_REVOC}))
     bc_cred_found_by_cred_id = json.loads(await bcobag.get_creds_by_id(json.dumps(proof_req_by_id), bc_cred_id))
     print('\n\n== 25 == BC cred by cred_id={}: {}'.format(
         bc_cred_id,
@@ -889,17 +805,7 @@ async def test_agents_low_level_api(
     assert all(not bc_non_cred_by_non_cred_id['attrs'][attr] for attr in bc_non_cred_by_non_cred_id['attrs'])
 
     # BC Org Book agent (as HolderProver) creates proof for cred specified by cred_id
-    bc_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': bc_cred_id,
-                'revealed': True,
-                'timestamp': EPOCH_POST_BC_REVOC
-            } for attr_uuid in bc_cred_found_by_cred_id['attrs']
-        },
-        'requested_predicates': {}
-    }
+    bc_requested_creds = json.loads(await bcobag.build_req_creds_json(bc_cred_found_by_cred_id, None, True))
     bc_proof_json = await bcobag.create_proof(
         proof_req[S_ID['BC']],
         bc_cred_found_by_cred_id,
@@ -913,10 +819,11 @@ async def test_agents_low_level_api(
     assert json.loads(rc_json)
 
     # BC Org Book agent (as HolderProver) creates proof by attr for non-revoked Babka Galaxy
-    bg_proof_req = deepcopy(proof_req[S_ID['BC']])
-    bg_proof_req['non_revoked']['to'] = EPOCH_POST_BC_REVOC
+    bg_proof_req = json.loads(await bcobag.build_proof_req_json(
+        {cd_id[S_ID['BC']]: None},
+        {cd_id[S_ID['BC']]: EPOCH_POST_BC_REVOC}))
     bg_filt_get_creds = {
-        S_ID['BC']: {
+        cd_id[S_ID['BC']]: {
             'attr-match': {
                 'legalName': 'Babka Galaxy'
             }
@@ -926,17 +833,7 @@ async def test_agents_low_level_api(
     assert len(bg_cred_ids) == 1
     bg_cred_id = bg_cred_ids.pop()
     bg_creds_found = json.loads(bg_creds_found_json)
-    bg_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': bg_cred_id,
-                'revealed': True,
-                'timestamp': EPOCH_POST_BC_REVOC
-            } for attr_uuid in bg_proof_req['requested_attributes']
-                if attr_uuid in bg_creds_found['attrs']},
-        'requested_predicates': {}
-    }
+    bg_requested_creds = json.loads(await bcobag.build_req_creds_json(bg_creds_found, None, True))
     bg_proof_json = await bcobag.create_proof(bg_proof_req, bg_creds_found, bg_requested_creds)
     print('\n\n== 29 == Proof (by filter) of non-revoked Babka Galaxy: {}'.format(ppjson(bg_proof_json, 1000)))
 
@@ -970,12 +867,11 @@ async def test_agents_low_level_api(
             }
         },
         'non_revoked': {
-            'from': EPOCH_PRE_BC_REVOC,
             'to': EPOCH_POST_BC_REVOC
         }
     }
     filt_pred = {
-        S_ID['BC']: {
+        cd_id[S_ID['BC']]: {
             'pred-match': [{
                 'attr': 'id',
                 'pred-type': '>=',
@@ -1023,7 +919,7 @@ async def test_agents_low_level_api(
 
     # Create and store SRI registration completion creds, green cred from verified proof + extra data
     print('\n\n== 35 == Revealed attributes from BC proof: {}'.format(ppjson(revealed_attrs(bc_proof))))
-    revealed = revealed_attrs(bc_proof)[cred_def_id(bcrag.did, schema[S_ID['BC']]['seqNo'])]
+    revealed = revealed_attrs(bc_proof)[cd_id[S_ID['BC']]]
 
     TODAY = datetime.date.today().strftime('%Y-%m-%d')
     cred_data[S_ID['SRI-1.0']].append({  # map from revealed attrs, taken from indy-sdk proof w/canonicalized attr names
@@ -1056,11 +952,10 @@ async def test_agents_low_level_api(
             continue
         s_key = schema_key(s_id)
         for c in cred_data[s_id]:
-            (cred_json[s_id], cred_rev_id) = await did2ag[s_key.origin_did].create_cred(
+            (cred_json[s_id], cred_rev_id, epoch_creation) = await did2ag[s_key.origin_did].create_cred(
                 cred_offer_json[s_id],
                 cred_req_json[s_id],
                 c)
-            epoch_creation = int(time())
             EPOCH_CRED_CREATE[s_id].append(epoch_creation)
             sleep(2)  # put an interior second between each cred creation
             assert json.loads(cred_json[s_id])
@@ -1083,25 +978,11 @@ async def test_agents_low_level_api(
     for s_id in schema:
         if s_id == S_ID['BC']:
             continue
-        proof_req[s_id] = {
-            'nonce': str(EPOCH_PRE_SRI_REVOC + i),
-            'name': 'proof_req.{}'.format(s_id),
-            'version': '0',
-            'requested_attributes': {
-                '{}_{}_uuid'.format(schema[s_id]['seqNo'], attr_name): {
-                    'name': attr_name,
-                    'restrictions': [{
-                        'schema_id': s_id
-                    }]
-                } for attr_name in cred_data[s_id][0]
-            },
-            'requested_predicates': {},
-            'non_revoked': {
-                'to': EPOCH_PRE_SRI_REVOC
-            }
-        }
-
         s_key = schema_key(s_id)
+        proof_req[s_id] = json.loads(await holder_prover[s_key.origin_did].build_proof_req_json(
+            {cd_id[s_id]: None},
+            {cd_id[s_id]: EPOCH_PRE_SRI_REVOC}))
+
         (sri_cred_ids, creds_found_pspc_json[s_id]) = await holder_prover[s_key.origin_did].get_creds(
             json.dumps(proof_req[s_id]))
 
@@ -1113,28 +994,9 @@ async def test_agents_low_level_api(
         i += 1
 
     # PSPC Org Book agent (as HolderProver) finds all creds on all schemata at once; actuator filters post hoc
-    req_attrs_sri_find = {}
-    for s_id in schema_data:
-        if s_id == S_ID['BC']:
-            continue
-        seq_no = schema[s_id]['seqNo']
-        for attr_name in schema_data[s_id]['attr_names']:
-            req_attrs_sri_find['{}_{}_uuid'.format(seq_no, attr_name)] = {
-                'name': attr_name,
-                'restrictions': [{
-                    'schema_id': s_id
-                }]
-            }
-    proof_req_sri = {
-        'nonce': '9999',
-        'name': 'sri_proof_req',
-        'version': '0',
-        'requested_attributes': req_attrs_sri_find,
-        'requested_predicates': {},
-        'non_revoked': {
-            'to': EPOCH_PRE_SRI_REVOC
-        }
-    }
+    proof_req_sri = json.loads(await sag.build_proof_req_json(
+        {cd_id[s_id]: None for s_id in schema_data if s_id != S_ID['BC']},
+        {cd_id[s_id]: EPOCH_PRE_SRI_REVOC for s_id in schema_data}))
 
     (sri_cred_ids, sri_creds_found_json) = await pspcobag.get_creds(json.dumps(proof_req_sri))
     print('\n\n== 38 == All SRI-issued creds (no filter) at PSPC Org Book {}: {}'.format(
@@ -1145,7 +1007,7 @@ async def test_agents_low_level_api(
     sri_display_filt_post_hoc = creds_display(
         sri_creds_found,
         {
-            S_ID['GREEN']: {
+            cd_id[S_ID['GREEN']]: {
                 'legalName': cred_data[S_ID['GREEN']][1]['legalName'],
                 'greenLevel': cred_data[S_ID['GREEN']][1]['greenLevel']  # [1]: 'greenLevel': 'Silver'
             }
@@ -1159,7 +1021,7 @@ async def test_agents_low_level_api(
     print('\n\n== 40 == SRI creds, stripped down: {}'.format(ppjson(sri_pruned)))
 
     filt_get_creds_silver = {
-        S_ID['GREEN']: {
+        cd_id[S_ID['GREEN']]: {
             'attr-match': {
                 'legalName': cred_data[S_ID['GREEN']][1]['legalName'],
                 'greenLevel': cred_data[S_ID['GREEN']][1]['greenLevel']  # [1]: 'greenLevel': 'Silver'
@@ -1179,7 +1041,7 @@ async def test_agents_low_level_api(
     sri_display_filt = creds_display(
         sri_creds_found,
         {
-            S_ID['GREEN']: {
+            cd_id[S_ID['GREEN']]: {
                 'greenLevel': 'Silver'
             }
         },
@@ -1189,16 +1051,7 @@ async def test_agents_low_level_api(
     sri_cred_ids_filt = set(creds_display(sri_creds_found_filt).keys())
 
     # PSPC Org Book agent (as HolderProver) creates proof for multiple creds
-    sri_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': sri_creds_found_filt['attrs'][attr_uuid][0]['cred_info']['referent'],
-                'revealed': True,
-                'timestamp': EPOCH_PRE_SRI_REVOC
-            } for attr_uuid in sri_creds_found_filt['attrs']},
-        'requested_predicates': {}
-    }
+    sri_requested_creds = json.loads(await pspcobag.build_req_creds_json(sri_creds_found_filt, None, True))
     sri_proof_json = await pspcobag.create_proof(proof_req_sri, sri_creds_found_filt, sri_requested_creds)
     print('\n\n== 42 == PSPC Org Book proof on cred-ids {}: {}'.format(sri_cred_ids_filt, ppjson(sri_proof_json, 1000)))
     sri_proof = json.loads(sri_proof_json)
@@ -1211,23 +1064,15 @@ async def test_agents_low_level_api(
     assert json.loads(rc_json)
 
     # PSPC Org Book agent (as HolderProver) creates proof for multi creds; back-dated between Bronze, Silver issue
-    x_proof_req_sri = deepcopy(proof_req_sri)
-    x_proof_req_sri['non_revoked']['to'] = EPOCH_CRED_CREATE[S_ID['GREEN']][1] - 1
+    x_proof_req_sri = json.loads(await sag.build_proof_req_json(
+        {cd_id[s_id]: None for s_id in schema_data if s_id != S_ID['BC']},
+        {cd_id[s_id]: EPOCH_CRED_CREATE[S_ID['GREEN']][1] - 1 for s_id in schema_data if s_id != S_ID['BC']}))
     (x_cred_ids, x_sri_creds_found_json) = await pspcobag.get_creds(
         json.dumps(x_proof_req_sri),
         filt_get_creds_silver,
         True)
     x_sri_creds_found = json.loads(x_sri_creds_found_json)
-    x_sri_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': sri_creds_found_filt['attrs'][attr_uuid][0]['cred_info']['referent'],
-                'revealed': True,
-                'timestamp': EPOCH_CRED_CREATE[S_ID['GREEN']][1] - 1
-            } for attr_uuid in sri_creds_found_filt['attrs']},
-        'requested_predicates': {}
-    }
+    x_sri_requested_creds = json.loads(await pspcobag.build_req_creds_json(x_sri_creds_found, None, True))
     x_sri_proof_json = await pspcobag.create_proof(x_proof_req_sri, x_sri_creds_found, x_sri_requested_creds)
     print('\n\n== 44 == Org Book proof pre-revoc on cred-ids {}, just before Silver cred creation {}'.format(
         sri_cred_ids_filt,
@@ -1243,22 +1088,15 @@ async def test_agents_low_level_api(
 
     # PSPC Org Book agent (as HolderProver) tries to create (non)-proof for multi creds; post-dated in future
     TOMORROW = int(time()) + 86400
-    x_proof_req_sri['non_revoked']['to'] = TOMORROW
+    x_proof_req_sri = json.loads(await sag.build_proof_req_json(
+        {cd_id[s_id]: None for s_id in schema_data if s_id != S_ID['BC']},
+        {cd_id[s_id]: TOMORROW for s_id in schema_data if s_id != S_ID['BC']}))
     (x_cred_ids, x_sri_creds_found_json) = await pspcobag.get_creds(
         json.dumps(x_proof_req_sri),
         filt_get_creds_silver,
         True)
     x_sri_creds_found = json.loads(x_sri_creds_found_json)
-    x_sri_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': sri_creds_found_filt['attrs'][attr_uuid][0]['cred_info']['referent'],
-                'revealed': True,
-                'timestamp': TOMORROW
-            } for attr_uuid in sri_creds_found_filt['attrs']},
-        'requested_predicates': {}
-    }
+    x_sri_requested_creds = json.loads(await pspcobag.build_req_creds_json(x_sri_creds_found, None, True))
     try:
         x_sri_proof_json = await pspcobag.create_proof(x_proof_req_sri, x_sri_creds_found, x_sri_requested_creds)
         assert False
@@ -1291,23 +1129,15 @@ async def test_agents_low_level_api(
         EPOCH_POST_SRI_REVOC))
 
     # PSPC Org Book agent (as HolderProver) creates multi-cred proof with revoked cred, for non-verification
-    x_proof_req_sri = deepcopy(proof_req_sri)
-    x_proof_req_sri['non_revoked']['to'] = EPOCH_POST_SRI_REVOC
+    x_proof_req_sri = json.loads(await pspcobag.build_proof_req_json(
+        {cd_id[s_id]: None for s_id in schema_data if s_id != S_ID['BC']},
+        {cd_id[s_id]: EPOCH_POST_SRI_REVOC for s_id in schema_data if s_id != S_ID['BC']}))
     (x_cred_ids, x_sri_creds_found_json) = await pspcobag.get_creds(
         json.dumps(x_proof_req_sri),
         filt_get_creds_silver,
         True)
     x_sri_creds_found = json.loads(x_sri_creds_found_json)
-    x_sri_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': x_sri_creds_found['attrs'][attr_uuid][0]['cred_info']['referent'],
-                'revealed': True,
-                'timestamp': EPOCH_POST_SRI_REVOC
-            } for attr_uuid in x_sri_creds_found['attrs']},
-        'requested_predicates': {}
-    }
+    x_sri_requested_creds = json.loads(await pspcobag.build_req_creds_json(x_sri_creds_found, None, True))
     x_sri_proof_json = await pspcobag.create_proof(x_proof_req_sri, x_sri_creds_found, x_sri_requested_creds)
     print('\n\n== 48 == PSPC Org Book proof on cred-ids {} post Silver revocation: {}'.format(
         sri_cred_ids_filt,
@@ -1321,22 +1151,15 @@ async def test_agents_low_level_api(
     assert not json.loads(rc_json)
 
     # PSPC Org Book agent (as HolderProver) creates proof for revoked cred, back-dated just before revocation
-    x_proof_req_sri['non_revoked']['to'] = EPOCH_PRE_SRI_REVOC
+    x_proof_req_sri = json.loads(await pspcobag.build_proof_req_json(
+        {cd_id[s_id]: None for s_id in schema_data if s_id != S_ID['BC']},
+        {cd_id[s_id]: EPOCH_PRE_SRI_REVOC for s_id in schema_data if s_id != S_ID['BC']}))
     (x_cred_ids, x_sri_creds_found_json) = await pspcobag.get_creds(
         json.dumps(x_proof_req_sri),
         filt_get_creds_silver,
         True)
     x_sri_creds_found = json.loads(x_sri_creds_found_json)
-    x_sri_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': x_sri_creds_found['attrs'][attr_uuid][0]['cred_info']['referent'],
-                'revealed': True,
-                'timestamp': EPOCH_PRE_SRI_REVOC
-            } for attr_uuid in x_sri_creds_found['attrs']},
-        'requested_predicates': {}
-    }
+    x_sri_requested_creds = json.loads(await pspcobag.build_req_creds_json(x_sri_creds_found, None, True))
     x_sri_proof_json = await pspcobag.create_proof(x_proof_req_sri, x_sri_creds_found, x_sri_requested_creds)
     print('\n\n== 50 == Org Book proof on cred-ids {} just before Silver cred revoc: {}'.format(
         sri_cred_ids_filt,
@@ -1350,22 +1173,15 @@ async def test_agents_low_level_api(
     assert json.loads(rc_json)
 
     # PSPC Org Book agent (as HolderProver) creates proof for revoked cred, between 1st cred creation and its own
-    x_proof_req_sri['non_revoked']['to'] = EPOCH_CRED_CREATE[S_ID['GREEN']][0] + 1
+    x_proof_req_sri = json.loads(await pspcobag.build_proof_req_json(
+        {cd_id[s_id]: None for s_id in schema_data if s_id != S_ID['BC']},
+        {cd_id[s_id]: EPOCH_CRED_CREATE[S_ID['GREEN']][0] + 1 for s_id in schema_data if s_id != S_ID['BC']}))
     (x_cred_ids, x_sri_creds_found_json) = await pspcobag.get_creds(
         json.dumps(x_proof_req_sri),
         filt_get_creds_silver,
         True)
     x_sri_creds_found = json.loads(x_sri_creds_found_json)
-    x_sri_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': x_sri_creds_found['attrs'][attr_uuid][0]['cred_info']['referent'],
-                'revealed': True,
-                'timestamp': EPOCH_CRED_CREATE[S_ID['GREEN']][0] + 1
-            } for attr_uuid in x_sri_creds_found['attrs']},
-        'requested_predicates': {}
-    }
+    x_sri_requested_creds = json.loads(await pspcobag.build_req_creds_json(x_sri_creds_found, None, True))
     x_sri_proof_json = await pspcobag.create_proof(x_proof_req_sri, x_sri_creds_found, x_sri_requested_creds)
     print('\n\n== 52 == Org Book proof on cred-ids {} just before Silver cred creation: {}'.format(
         sri_cred_ids_filt,
@@ -1379,22 +1195,17 @@ async def test_agents_low_level_api(
     assert not json.loads(rc_json)
 
     # PSPC Org Book agent (as HolderProver) creates proof for revoked cred, between cred def and 1st cred creation
-    x_proof_req_sri['non_revoked']['to'] = EPOCH_CRED_CREATE[S_ID['GREEN']][0] - 1
+    x_proof_req_sri = json.loads(await pspcobag.build_proof_req_json(
+        {cd_id[s_id]: None for s_id in schema_data if s_id != S_ID['BC']},
+        {cd_id[s_id]: EPOCH_CRED_CREATE[S_ID['GREEN']][0] - 1 for s_id in schema_data if s_id != S_ID['BC']}))
     (x_cred_ids, x_sri_creds_found_json) = await pspcobag.get_creds(
         json.dumps(x_proof_req_sri),
         filt_get_creds_silver,
         True)
     x_sri_creds_found = json.loads(x_sri_creds_found_json)
-    x_sri_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': x_sri_creds_found['attrs'][attr_uuid][0]['cred_info']['referent'],
-                'revealed': True,
-                'timestamp': EPOCH_CRED_CREATE[S_ID['GREEN']][0] - 1
-            } for attr_uuid in x_sri_creds_found['attrs']},
-        'requested_predicates': {}
-    }
+    x_sri_requested_creds = json.loads(await pspcobag.build_req_creds_json(x_sri_creds_found, None, True))
+    x_sri_proof_json = await pspcobag.create_proof(x_proof_req_sri, x_sri_creds_found, x_sri_requested_creds)
+
     x_sri_proof_json = await pspcobag.create_proof(x_proof_req_sri, x_sri_creds_found, x_sri_requested_creds)
     print('\n\n== 54 == Org Book proof on cred-ids {} before any Green cred creation: {}'.format(
         sri_cred_ids_filt,
@@ -1408,22 +1219,15 @@ async def test_agents_low_level_api(
     assert not json.loads(rc_json)
 
     # PSPC Org Book agent (as HolderProver) tries to create (non)-proof for revoked cred in future
-    x_proof_req_sri['non_revoked']['to'] = TOMORROW
+    x_proof_req_sri = json.loads(await pspcobag.build_proof_req_json(
+        {cd_id[s_id]: None for s_id in schema_data if s_id != S_ID['BC']},
+        {cd_id[s_id]: TOMORROW for s_id in schema_data if s_id != S_ID['BC']}))
     (x_cred_ids, x_sri_creds_found_json) = await pspcobag.get_creds(
         json.dumps(x_proof_req_sri),
         filt_get_creds_silver,
         True)
     x_sri_creds_found = json.loads(x_sri_creds_found_json)
-    x_sri_requested_creds = {
-        'self_attested_attributes': {},
-        'requested_attributes': {
-            attr_uuid: {
-                'cred_id': x_sri_creds_found['attrs'][attr_uuid][0]['cred_info']['referent'],
-                'revealed': True,
-                'timestamp': TOMORROW
-            } for attr_uuid in x_sri_creds_found['attrs']},
-        'requested_predicates': {}
-    }
+    x_sri_requested_creds = json.loads(await pspcobag.build_req_creds_json(x_sri_creds_found, None, True))
     try:
         x_sri_proof_json = await pspcobag.create_proof(x_proof_req_sri, x_sri_creds_found, x_sri_requested_creds)
         assert False
@@ -1451,11 +1255,7 @@ async def test_agents_low_level_api(
 
 #noinspection PyUnusedLocal
 @pytest.mark.asyncio
-async def test_agents_on_nodepool_restart(
-        pool_name,
-        pool_genesis_txn_path,
-        pool_genesis_txn_file,
-        path_home):
+async def test_agents_on_nodepool_restart(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_home):
 
     print('\n\n== Testing agent survival on node pool restart ==')
 
@@ -1480,8 +1280,8 @@ async def test_agents_on_nodepool_restart(
         schema = json.loads(schema_json)
         assert schema
 
-        # 4. Create, store, and publish cred def to ledger (should re-use existing)
-        await sag.send_cred_def(schema_json)
+        # 4. Get cred def (should re-use existing), create cred offer
+        await sag.send_cred_def(schema_id(*s_key))
         cd_id = cred_def_id(s_key.origin_did, schema['seqNo'])
         assert ([f for f in Tails.links(str(sag._dir_tails)) if cd_id in f] and
             not Tails.unlinked(str(sag._dir_tails)))
@@ -1499,6 +1299,141 @@ async def test_agents_on_nodepool_restart(
             s_key.name,
             s_key.version,
             ppjson(cred_offer_json)))
+
+
+#noinspection PyUnusedLocal
+@pytest.mark.asyncio
+async def test_revo_cache_reg_delta_maintenance(pool_name, pool_genesis_txn_path, pool_genesis_txn_file):
+
+    print('\n\n== Testing agent revocation cache reg delta maintenance ==')
+
+    async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
+        OrgBookAgent(await Wallet(
+            p,
+            'PSPC-Org-Book-Agent-000000000000',
+            'pspc-org-book').create())) as pspcobag, (
+        SRIAgent(await Wallet(
+            p,
+            'SRI-Agent-0000000000000000000000',
+            'sri-0').create())) as sag:
+
+        nyms = {
+            'pspcobag': json.loads(await sag.get_nym(pspcobag.did)),
+            'sag': json.loads(await sag.get_nym(sag.did))
+        }
+        print('\n\n== 1 == nyms: {}'.format(ppjson(nyms)))
+
+        # SRI agent sends schema for revocation cache registry delta exercise
+        schema_data = {
+            'name': 'revo',
+            'version': '{}.0'.format(int(time())),  # ensure it's not already on ledger nor in wallet
+            'attr_names': [
+                'id',
+                'favourite_number'
+            ]
+        }
+
+        s_id = schema_id(sag.did, schema_data['name'], schema_data['version'])
+        s_key = schema_key(s_id)
+        try:
+            await sag.send_schema(json.dumps(schema_data))
+        except Exception as x:
+            print(x)
+            assert False
+        schema_json = await sag.get_schema(s_key)
+        assert json.loads(schema_json)  # should exist now
+        schema = json.loads(schema_json)
+        seq_no = schema['seqNo']
+        print('\n\n== 2 == SCHEMA for revocation cache exercise [{} v{}]: {}'.format(
+            s_key.name,
+            s_key.version,
+            ppjson(schema)))
+
+        # SRI agent creates credential definition on revocation registry large enough to clean
+        RR_SIZE = 128
+        await sag.send_cred_def(s_id, True, RR_SIZE)
+        cd_id = cred_def_id(s_key.origin_did, seq_no)
+        rr_id = Tails.current_rev_reg_id(sag._dir_tails, cd_id)
+
+        assert [f for f in Tails.links(str(sag._dir_tails)) if cd_id in f] and not Tails.unlinked(str(sag._dir_tails))
+
+        cred_def_json = await pspcobag.get_cred_def(cd_id)  # ought to exist now
+        cred_def = json.loads(cred_def_json)
+        print('\n\n== 3.0 == Cred def [{} v{}]: {}'.format(
+            s_key.name,
+            s_key.version,
+            ppjson(json.loads(cred_def_json))))
+        assert cred_def.get('schemaId', None) == str(seq_no)
+
+        cred_offer_json = await sag.create_cred_offer(seq_no)
+        cred_offer = json.loads(cred_offer_json)
+        print('\n\n== 3.1 == Credential offer [{} v{}]: {}'.format(s_key.name, s_key.version, ppjson(cred_offer_json)))
+
+        # Set up cred req at PSPC Org Book agent
+        await pspcobag.create_link_secret('SecretLink')
+        (cred_req_json, cred_req_metadata_json) = await pspcobag.create_cred_req(cred_offer_json, cred_def['id'])
+        cred_req = json.loads(cred_req_json)
+        print('\n\n== 4 == Credential request [{} v{}]: metadata {}, cred {}'.format(
+            s_key.name,
+            s_key.version,
+            ppjson(cred_req_metadata_json),
+            ppjson(cred_req_json)))
+        assert json.loads(cred_req_json)
+
+        print('\n\n== 5 == Creating {} credentials'.format(RR_SIZE))
+        creation2cred_json = {}  # map creation epoch to cred
+        creation2cred_data = {}
+        for i in range(RR_SIZE):
+            print('.', end='' if (i + 1) % 10 else '{}\n'.format(i + 1), flush=True)
+            now = int(time())
+            cred_data = {
+                'id': i,
+                'favourite_number': now
+            }
+            (cred_json, cred_revoc_id, epoch_creation) = await sag.create_cred(
+                cred_offer_json,
+                cred_req_json,
+                cred_data)
+            creation2cred_json[epoch_creation] = cred_json
+            creation2cred_data[epoch_creation] = cred_data
+            assert json.loads(cred_json)
+            cred = json.loads(cred_json)
+
+            cred_id = await pspcobag.store_cred(cred_json, cred_req_metadata_json)
+
+        assert len(REVO_CACHE[rr_id].rr_delta_frames) == 0  # no queries on it yet
+
+        # PSPC Org Book agent finds each cred and creates a proof (which touches revo cache reg delta frames)
+        print('\n\n== 6 == Creating {} proofs'.format(RR_SIZE))
+        cache_frames_size = {}
+        i = 0
+        for creation_epoch in creation2cred_data:
+            filt_get_creds = {
+                cd_id: {'attr-match': creation2cred_data[creation_epoch]}
+            }
+
+            proof_req = json.loads(await pspcobag.build_proof_req_json(
+                {cd_id: None},
+                {cd_id: creation_epoch}))
+            (cred_ids_filt, creds_found_filt_json) = await pspcobag.get_creds(json.dumps(proof_req), filt_get_creds)
+            creds_found_filt = json.loads(creds_found_filt_json)
+            assert len(cred_ids_filt) == 1
+
+            requested_creds = json.loads(await pspcobag.build_req_creds_json(creds_found_filt, None, True))
+            proof_json = await pspcobag.create_proof(proof_req, creds_found_filt, requested_creds)
+            cache_frames_size[creation_epoch] = len(REVO_CACHE[rr_id].rr_delta_frames)
+            print('  .. 6.{}: after proof for {}, {} revo cache reg delta frames'.format(
+                i,
+                creation_epoch,
+                cache_frames_size[creation_epoch]))
+            i += 1
+
+        MARK = 4096**0.5  # replicated from cache heuristic: if cache code changes, this test has to change with it
+        assert int(MARK * 0.75) <= len(REVO_CACHE[rr_id].rr_delta_frames) <= int(MARK * 1.25)
+
+        print('\n\n== 7 == Revocation cache {} reg delta frames cleaned, size now {}'.format(
+            rr_id,
+            len(REVO_CACHE[rr_id].rr_delta_frames)))
 
 
 def do(coro):
@@ -1521,7 +1456,10 @@ def _get_cacheable(agent, schema_key, seq_no, issuer_did):
             seq_no))
     elif discriminant == 1:
         result = do(agent.get_schema(schema_key))
-        print('.. Thread {} got schema {} v{} by key'.format(current_thread().name, schema_key.name, schema_key.version))
+        print('.. Thread {} got schema {} v{} by key'.format(
+            current_thread().name,
+            schema_key.name,
+            schema_key.version))
     elif discriminant == 2:
         cd_id = cred_def_id(issuer_did, seq_no)
         result = do(agent.get_cred_def(cd_id))
@@ -1534,16 +1472,19 @@ def _get_cacheable(agent, schema_key, seq_no, issuer_did):
 
 #noinspection PyUnusedLocal
 @pytest.mark.asyncio
-async def test_cache_locking(
-        pool_name,
-        pool_genesis_txn_path,
-        pool_genesis_txn_file):
+async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_file):
     THREADS = 256
     threads = []
 
     print('\n\n== Testing agent cache locking ==')
 
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
+        OrgBookAgent(await Wallet(
+            p,
+            'PSPC-Org-Book-Agent-000000000000',
+            'pspc-org-book',
+            None,
+            {'auto-remove': True}).create())) as pspcobag, (
         SRIAgent(await Wallet(
             p,
             'SRI-Agent-0000000000000000000000',
@@ -1576,8 +1517,8 @@ async def test_cache_locking(
             schema_key2seq_no[s_key] = seq_no
             assert isinstance(seq_no, int) and seq_no > 0
 
-        print('\n\n== 1 == Exercising cache locks')
-        agents = [sag0, sag1, sag2]
+        # SRI Agents exercise cache locks
+        sri_agents = [sag0, sag1, sag2]
 
         epoch_start = time()
         modulus = len(schema_key2seq_no)
@@ -1588,7 +1529,7 @@ async def test_cache_locking(
                 name='#{}'.format(t),
                 target=_get_cacheable,
                 args=(
-                    agents[t % modulus],
+                    sri_agents[t % modulus],
                     s_key,
                     schema_key2seq_no[s_key],
                     sri_did)))
@@ -1601,4 +1542,4 @@ async def test_cache_locking(
             thread.join()
         elapsed = ceil(int(time()) - epoch_start)
 
-    print('\n\n== 2 == END: exercised schema and cred def cache locks, elapsed time: {} sec'.format(elapsed))
+        print('\n\n== 1 == Exercised cache locks, elapsed time: {} sec'.format(elapsed))

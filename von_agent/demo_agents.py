@@ -14,7 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from von_agent.agents import AgentRegistrar, Origin, Verifier, Issuer, HolderProver
+
+from von_agent.agents import AgentRegistrar, Verifier, Issuer, HolderProver
 
 
 TrustAnchorAgent = type('TrustAnchorAgent', (AgentRegistrar,), {})

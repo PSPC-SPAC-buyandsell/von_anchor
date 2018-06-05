@@ -18,10 +18,9 @@ limitations under the License.
 import asyncio
 import json
 import logging
-import re
 
 from os import makedirs
-from os.path import basename, expanduser, isfile, islink, join
+from os.path import basename, expanduser, isfile, join
 from time import time
 from typing import Set, Union
 
@@ -35,11 +34,10 @@ from von_agent.error import (
     AbsentLinkSecret,
     AbsentRevReg,
     AbsentSchema,
-    AbsentTailsFile,
+    AbsentTails,
     BadLedgerTxn,
     BadRevocation,
     BadRevStateTime,
-    CacheIndex,
     CredentialFocus,
     CorruptTails,
     CorruptWallet)
@@ -47,11 +45,10 @@ from von_agent.nodepool import NodePool
 from von_agent.tails import Tails
 from von_agent.util import (
     cred_def_id,
-    ppjson,
+    cred_def_id2seq_no,
     prune_creds_json,
     rev_reg_id,
     rev_reg_id2cred_def_id__tag,
-    revoc_info,
     schema_id,
     SchemaKey,
     schema_key)
@@ -92,7 +89,7 @@ class _BaseAgent:
         return self.wallet.pool
 
     @property
-    def wallet(self) -> 'Wallet':
+    def wallet(self) -> Wallet:
         """
         Accessor for wallet.
 
@@ -182,6 +179,193 @@ class _BaseAgent:
 
         logger.debug('_BaseAgent.close: <<<')
 
+    async def build_proof_req_json(self, cd_id2attrs: dict, cd_id2timestamp: dict = None) -> str:
+        """
+        Build and return indy-sdk proof request for input attributes and timestamps by cred def id.
+
+        :param cd_id2attrs: dict mapping cred def identifier to list of names of
+            attributes of interest (empty list or None to include all); e.g.,
+
+        ::
+
+            {
+                'Vx4E82R17q...:3:CL:16': [
+                    'name',
+                    'favouriteDrink'
+                ],
+                'R17v42T4pk...:3:CL:19': None,  # include all attributes from schema underpinning this cred def
+                'Z9ccax812j...:3:CL:27': [],  # include all attributes from schema underpinning this cred def
+                ...
+            }
+
+        :param cd_id2timestamp: dict mapping cred def identifiers to timestamps (epoch seconds)
+            for non-revocation proof; defaulting to current time for cred defs supporting revocation; e.g.,
+
+        ::
+
+            {
+                'Vx4E82R17q...:3:CL:16': 1528116004,
+                'R17v42T4pk...:3:CL:19': 1512391236,
+                ...
+            }
+
+        :return: indy-sdk proof request json
+        """
+
+        # TODO: support predicates
+        logger = logging.getLogger(__name__)
+        logger.debug('_BaseAgent.build_proof_req_json: >>> cd_id2attrs: {}, cd_id2timestamp: {}'.format(
+            cd_id2attrs,
+            cd_id2timestamp))
+
+        cd_id2schema = {}
+        now = int(time())
+        proof_req = {
+            'nonce': str(int(time())),
+            'name': 'proof_req',
+            'version': '0.0',
+            'requested_attributes': {},
+            'requested_predicates': {}
+        }
+
+        cd_id2interval = {}
+        for cd_id in cd_id2timestamp or cd_id2attrs:  # pass over if None
+            cred_def = json.loads(await self.get_cred_def(cd_id))
+            if 'revocation' not in cred_def['value']:
+                continue
+            cd_id2schema[cd_id] = json.loads(await self.get_schema(cred_def_id2seq_no(cd_id)))
+            timestamp = cd_id2timestamp.get(cd_id, now) if cd_id2timestamp else now
+            if timestamp:
+                cd_id2interval[cd_id] = {
+                    'from': timestamp,
+                    'to': timestamp
+                }
+
+        for cd_id in cd_id2attrs:
+            cred_def = json.loads(await self.get_cred_def(cd_id))
+            cd_id2schema[cd_id] = json.loads(await self.get_schema(cred_def_id2seq_no(cd_id)))
+
+            for attr_name in (cd_id2attrs.get(cd_id, []) if cd_id2attrs else []) or cd_id2schema[cd_id]['attrNames']:
+                attr_uuid = '{}_{}_uuid'.format(cred_def_id2seq_no(cd_id), attr_name)
+                proof_req['requested_attributes'][attr_uuid] = {
+                    'name': attr_name,
+                    'restrictions': [{
+                        'cred_def_id': cd_id
+                    }]
+                }
+                if cd_id in cd_id2interval:
+                    proof_req['requested_attributes'][attr_uuid]['non_revoked'] = cd_id2interval[cd_id]
+                elif 'revocation' in cred_def['value']:
+                    proof_req['requested_attributes'][attr_uuid]['non_revoked'] = {  # caller neglected; default to now
+                        'from': now,
+                        'to': now
+                    }
+
+        rv_json = json.dumps(proof_req)
+        logger.debug('_BaseAgent.build_proof_req_json: <<< {}'.format(rv_json))
+        return rv_json
+
+    async def build_req_creds_json(self, creds: dict, filt: dict = None, filt_dflt_incl: bool = False) -> str:
+        """
+        Build and return indy-sdk requested credentials json on all attributes (and no predicates)
+        of specified creds structure.
+
+        :param creds: indy-sdk creds structure
+        :param filt: filter for matching attribute-value pairs and predicates; dict mapping
+            each cred def id to dict (specify empty dict or None for no filter, matching all)
+            mapping attributes to values to match or compare. E.g.,
+
+        ::
+
+            {
+                'Vx4E82R17q...:3:CL:16': {
+                    'attr-match': {
+                        'name': 'Alex',
+                        'sex': 'M',
+                        'favouriteDrink': None
+                    },
+                    'pred-match': [  # if both attr-match and pred-match present, combined conjunctively (i.e., via AND)
+                        {
+                            'attr' : 'favouriteNumber',
+                            'pred-type': '>=',
+                            'value': 10
+                        },
+                        {  # if more than one predicate present, combined conjunctively (i.e., via AND)
+                            'attr' : 'score',
+                            'pred-type': '>=',
+                            'value': 100
+                        }
+                    ]
+                },
+                'R17v42T4pk...:3:CL:19': {
+                    'attr-match': {
+                        'height': 175,
+                        'birthdate': '1975-11-15'  # combined conjunctively (i.e., via AND)
+                    }
+                },
+                'Z9ccax812j...:3:CL:27': {
+                    'attr-match': {}  # match all attributes on this cred def
+                }
+                ...
+            }
+
+        :param filt_dflt_incl: whether to include (True) all credentials that filter does not
+            identify by cred def, or to exclude (False) all such credentials
+        :return: indy_sdk requested_credentials json for use in proof creation
+        """
+
+        # TODO: support predicates
+
+        logger = logging.getLogger(__name__)
+        logger.debug('_BaseAgent.build_req_creds_json: >>> creds: {}, filt: {}'.format(creds, filt))
+
+        req_creds = {
+            'self_attested_attributes': {},
+            'requested_attributes': {},
+            'requested_predicates': {}
+        }
+
+        def _add_cred(cred, attr_uuid):
+            nonlocal req_creds
+            req_creds['requested_attributes'][attr_uuid] = {
+                'cred_id': cred['cred_info']['referent'],
+                'revealed': True
+            }
+            if cred.get('interval', None):
+                req_creds['requested_attributes'][attr_uuid]['timestamp'] = cred['interval']['to']
+
+        if filt:
+            for cd_id in filt:
+                cred_def = json.loads(await self.get_cred_def(cd_id))
+                if not cred_def:
+                    logger.warning(
+                        '_BaseAgent.build_req_creds_json: ignoring filter criterion, no cred def on {}'.format(cd_id))
+                    filt.pop(cd_id)
+
+        for attr_uuid in creds['attrs']:
+            for cred in creds['attrs'][attr_uuid]:
+                if attr_uuid in req_creds['requested_attributes']:
+                    continue
+                cred_info = cred['cred_info']
+                cred_cd_id = cred_info['cred_def_id']
+
+                if filt:
+                    if cred_cd_id not in filt:
+                        if filt_dflt_incl:
+                            _add_cred(cred, attr_uuid)
+                        continue
+                    if cred_cd_id in filt and 'attr-match' in filt[cred_cd_id]:
+                        if not {k: str(filt[cred_cd_id].get('attr-match', {})[k])
+                                for k in filt[cred_cd_id].get('attr-match', {})}.items() <= cred_info['attrs'].items():
+                            continue
+                    _add_cred(cred, attr_uuid)
+                else:
+                    _add_cred(cred, attr_uuid)
+
+        rv_json = json.dumps(req_creds)
+        logger.debug('_BaseAgent.build_req_creds_json: <<< {}'.format(rv_json))
+        return rv_json
+
     async def get_nym(self, did: str) -> str:
         """
         Get json cryptonym (including current verification key) for input (agent) DID from ledger.
@@ -210,7 +394,7 @@ class _BaseAgent:
         """
         Return the indy-sdk role for an agent in building its nym for the trust anchor to send to the ledger.
 
-        :param: agent: agent instance
+        :param agent: agent instance
         :return: role string
         """
 
@@ -248,7 +432,7 @@ class _BaseAgent:
 
         if 'reason' in resp and 'result' in resp and resp['result'].get('seqNo', None) is None:
             logger.debug('_BaseAgent._submit: <!< response indicates no transaction: {}'.format(resp['reason']))
-            raise BadLedgerTxn('Response indicates no transaction'.format(resp['reason']))
+            raise BadLedgerTxn('Response indicates no transaction: {}'.format(resp['reason']))
 
         logger.debug('_BaseAgent._submit: <<< {}'.format(rv_json))
         return rv_json
@@ -270,8 +454,8 @@ class _BaseAgent:
         try:
             rv_json = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
             await asyncio.sleep(0)
-        except IndyError as e:
-            if e.error_code == ErrorCode.WalletIncompatiblePoolError:
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletIncompatiblePoolError:
                 logger.debug('_BaseAgent._sign_submit: <!< Corrupt wallet {} is not compatible with pool {}'.format(
                     self.wallet.name,
                     self.pool.name))
@@ -281,7 +465,8 @@ class _BaseAgent:
                 logger.debug(
                     '_BaseAgent._sign_submit: <!<  cannot sign/submit request for ledger: indy error code {}'.format(
                         self.wallet.name))
-                raise BadLedgerTxn('Cannot sign/submit request for ledger: indy error code {}'.format(e.error_code))
+                raise BadLedgerTxn('Cannot sign/submit request for ledger: indy error code {}'.format(
+                    x_indy.error_code))
 
         resp = json.loads(rv_json)
         if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
@@ -291,7 +476,7 @@ class _BaseAgent:
         if 'reason' in resp and 'result' in resp and resp['result'].get('seqNo', None) is None:
             logger.debug('_BaseAgent._sign_submit: <!< response indicates no transaction: {}'.format(
                 resp['reason']))
-            raise BadLedgerTxn('Response indicates no transaction'.format(resp['reason']))
+            raise BadLedgerTxn('Response indicates no transaction: {}'.format(resp['reason']))
 
         logger.debug('_BaseAgent._sign_submit: <<< {}'.format(rv_json))
         return rv_json
@@ -339,6 +524,49 @@ class _BaseAgent:
         logger.debug('_BaseAgent._get_rev_reg_def: <<< {}'.format(rv_json))
         return rv_json
 
+    async def _build_rr_delta_json(self, rr_id: str, to: int, fro: int = None, fro_delta: dict = None) -> (str, int):
+        """
+        Build rev reg delta json, potentially starting from existing (earlier) delta.
+        Return delta json and its timestamp on the distributed ledger.
+
+        :param rr_id: rev reg id
+        :param to: time (epoch seconds) of interest; upper-bounds returned timestamp
+        :param fro: optional prior time of known delta json
+        :param fro_delta: optional known delta as of time fro
+        :return: rev reg delta json and ledger timestamp (epoch seconds)
+        """
+
+        logger = logging.getLogger(__name__)
+        logger.debug('_BaseAgent._build_rr_delta_json: >>> rr_id: {}, to: {}, fro: {}, fro_delta: {}'.format(
+            rr_id,
+            to,
+            fro,
+            fro_delta))
+
+        rr_delta_json = None
+        ledger_timestamp = None
+
+        get_rr_delta_req_json = await ledger.build_get_revoc_reg_delta_request(self.did, rr_id, fro, to)
+        resp_json = await self._submit(get_rr_delta_req_json)
+        resp = json.loads(resp_json)
+        if 'result' in resp and 'data' in resp['result'] and 'value' in resp['result']['data']:
+            # it's a delta to a moment some time after the rev reg def
+            (_, rr_delta_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_delta_response(resp_json)
+        else:
+            logger.debug(
+                '_BaseAgent._build_rr_delta_json: <!< Rev reg {} created after asked-for time {}'.format(rr_id, to))
+            raise BadRevStateTime(
+                'Rev reg {} created after asked-for time {}'.format(rr_id, to))
+
+        if fro and fro_delta:
+            rr_delta_json = await anoncreds.issuer_merge_revocation_registry_deltas(
+                json.dumps(fro_delta),
+                rr_delta_json)
+
+        rv = (rr_delta_json, ledger_timestamp)
+        logger.debug('_BaseAgent._build_rr_delta_json: <<< {}'.format(rv))
+        return rv
+
     async def get_cred_def(self, cd_id: str) -> str:
         """
         Get credential definition from ledger by its identifier. Raise AbsentCredDef
@@ -381,16 +609,18 @@ class _BaseAgent:
         logger.debug('_BaseAgent.get_cred_def: <<< {}'.format(rv_json))
         return rv_json
 
-    async def get_schema(self, index: Union[SchemaKey, int]) -> str:
+    async def get_schema(self, index: Union[SchemaKey, int, str]) -> str:
         """
-        Get schema from ledger by sequence number or SchemaKey namedtuple (origin DID, name, version).
+        Get schema from ledger by SchemaKey namedtuple (origin DID, name, version),
+        sequence number, or schema identifier.
+
         Raise AbsentSchema for no such credential definition, logging any error condition and raising
         BadLedgerTxn on bad request.
 
         Retrieve the schema from the agent's schema cache if it has it; cache it
-        en passant if it does not (and if there is a corresponding schema on the ledger).
+        en passant if it does not (and there is a corresponding schema on the ledger).
 
-        :param schema_id: schema key (origin DID, name, version) or sequence number
+        :param index: schema key (origin DID, name, version), sequence number, or schema identifier
         :return: schema json, parsed from ledger
         """
 
@@ -405,23 +635,25 @@ class _BaseAgent:
                 logger.debug('_BaseAgent.get_schema: <<< {}'.format(rv_json))
                 return json.dumps(rv_json)
 
-            if isinstance(index, SchemaKey):
-                req_json = await ledger.build_get_schema_request(self.did, schema_id(*index))
+            if isinstance(index, SchemaKey) or (isinstance(index, str) and ':2:' in index):
+                s_id = schema_id(*index) if isinstance(index, SchemaKey) else index
+                s_key = schema_key(s_id)
+                req_json = await ledger.build_get_schema_request(self.did, s_id)
                 resp_json = await self._submit(req_json)
                 resp = json.loads(resp_json)
                 if not ('result' in resp and resp['result'].get('data', {}).get('attr_names', None)):
                     logger.debug('_BaseAgent.get_schema: <!< no schema exists on {}'.format(index))
                     raise AbsentSchema('No schema exists on {}'.format(index))
                 try:
-                    (s_id, rv_json) = await ledger.parse_get_schema_response(resp_json)
-                except IndyError as e:  # ledger replied, but there is no such schema
+                    (_, rv_json) = await ledger.parse_get_schema_response(resp_json)
+                except IndyError:  # ledger replied, but there is no such schema
                     logger.debug('_BaseAgent.get_schema: <!< no schema exists on {}'.format(index))
                     raise AbsentSchema('No schema exists on {}'.format(index))
-                SCHEMA_CACHE[index] = json.loads(rv_json)  # cache indexes by both txn# and schema key en passant
+                SCHEMA_CACHE[s_key] = json.loads(rv_json)  # cache indexes by both txn# and schema key en passant
                 logger.info('_BaseAgent.get_schema: got schema {} from ledger'.format(index))
 
-            elif isinstance(index, int):
-                txn_json = await self.process_get_txn(index)
+            elif isinstance(index, (int, str)):  # :2: not in index - it's a stringified int txn no
+                txn_json = await self.process_get_txn(int(index))
                 txn = json.loads(txn_json)
                 if txn.get('type', None) == '101':  # {} for no such txn; 101 marks indy-sdk schema txn type
                     rv_json = await self.get_schema(SchemaKey(
@@ -539,7 +771,7 @@ class Origin(_BaseAgent):
                 'version': '1.234',
                 'attr_names': ['favourite_drink', 'height', 'last_visit_date']
             }
-        
+
         :return: schema json as written to ledger (or existed a priori)
         """
 
@@ -655,16 +887,14 @@ class Issuer(Origin):
         delta = Tails.unlinked(self._dir_tails) - apriori
         if len(delta) != 1:
             logger.debug(
-                'Issuer._create_rev_reg: <!< Could not create tails file for rev reg id: {}'.format(
-                    rr_id,
-                    resp['reason']))
-            raise CorruptTailsFile('Could not create tails file for rev reg id {}'.format(rr_id))
+                'Issuer._create_rev_reg: <!< Could not create tails file for rev reg id: {}'.format(rr_id))
+            raise CorruptTails('Could not create tails file for rev reg id {}'.format(rr_id))
         tails_hash = basename(delta.pop())
         Tails.associate(self._dir_tails, rr_id, tails_hash)
 
         with REVO_CACHE.lock:
             rrd_req_json = await ledger.build_revoc_reg_def_request(self.did, rrd_json)
-            resp_json = await self._sign_submit(rrd_req_json)
+            await self._sign_submit(rrd_req_json)
             await self._get_rev_reg_def(rr_id)  # add to cache en passant
 
         rre_req_json = await ledger.build_revoc_reg_entry_request(self.did, rr_id, 'CL_ACCUM', rre_json)
@@ -699,19 +929,18 @@ class Issuer(Origin):
 
         with REVO_CACHE.lock:
             revo_cache_entry = REVO_CACHE.get(rr_id, None)
-            t = None if revo_cache_entry is None else revo_cache_entry.tails
-            if t is None:  #  it's a new revocation registry, or not yet set in cache
+            tails = None if revo_cache_entry is None else revo_cache_entry.tails
+            if tails is None:  #  it's a new revocation registry, or not yet set in cache
                 try:
-                    t = await Tails(self._dir_tails, cd_id, tag).open()
-                except AbsentTailsFile as e:
+                    tails = await Tails(self._dir_tails, cd_id, tag).open()
+                except AbsentTails:
                     await self._create_rev_reg(rr_id, rr_size)   # it's a new revocation registry
-                    t = await Tails(self._dir_tails, cd_id, tag).open()  # symlink should exist now
+                    tails = await Tails(self._dir_tails, cd_id, tag).open()  # symlink should exist now
 
                 if revo_cache_entry is None:
-                    REVO_CACHE[rr_id] = RevoCacheEntry(None, t)
+                    REVO_CACHE[rr_id] = RevoCacheEntry(None, tails)
                 else:
-                    REVO_CACHE[rr_id]._tails = t
-            # else: print('\n\n$$ tfile $$ got tails file {} from cache'.format(rr_id))
+                    REVO_CACHE[rr_id]._tails = tails
 
         logger.debug('Issuer._sync_revoc: <<<')
 
@@ -725,7 +954,7 @@ class Issuer(Origin):
 
         return Tails.linked(self._dir_tails, rr_id)
 
-    async def send_cred_def(self, schema_json: str, revocation: bool = True, rr_size: int = None) -> str:
+    async def send_cred_def(self, s_id: str, revocation: bool = True, rr_size: int = None) -> str:
         """
         Create a credential definition as Issuer, store it in its wallet, and send it to the ledger.
 
@@ -733,22 +962,22 @@ class Issuer(Origin):
         to send credential definition to ledger if need be, or IndyError for any other failure
         to create and store credential definition in wallet.
 
-        :param schema_json: schema as it appears on ledger via get_schema()
+        :param s_id: schema identifier
         :param revocation: whether to support revocation for cred def
         :param rr_size: size of initial revocation registry (default as per _create_rev_reg()), if revocation supported
         :return: json credential definition as it appears on ledger
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('Issuer.send_cred_def: >>> schema_json: {}, revocation: {}, rr_size: {}'.format(   
-            schema_json,
+        logger.debug('Issuer.send_cred_def: >>> s_id: {}, revocation: {}, rr_size: {}'.format(
+            s_id,
             revocation,
             rr_size))
 
         rv_json = json.dumps({})
+        schema_json = await self.get_schema(schema_key(s_id))
         schema = json.loads(schema_json)
 
-        s_id = schema_id(self.did, schema['name'], schema['version'])
         cd_id = cred_def_id(self.did, schema['seqNo'])
         private_key_ok = True
         with CRED_DEF_CACHE.lock:
@@ -775,8 +1004,8 @@ class Issuer(Origin):
                     logger.warning(
                         'New cred def on {} in wallet shadows existing one on ledger: private key not usable'.format(
                             cd_id))  # carry on though, this agent may have other roles so public key is good enough
-            except IndyError as e:
-                if e.error_code == ErrorCode.AnoncredsCredDefAlreadyExistsError:
+            except IndyError as x_indy:
+                if x_indy.error_code == ErrorCode.AnoncredsCredDefAlreadyExistsError:
                     if json.loads(rv_json):
                         logger.info('Issuer wallet {} reusing existing cred def on schema {} version {}'.format(
                             self.wallet.name,
@@ -793,12 +1022,12 @@ class Issuer(Origin):
                     logger.debug(
                         'Issuer.send_cred_def: <!< cannot store cred def in wallet {}: indy error code {}'.format(
                             self.wallet.name,
-                            e.error_code))
+                            x_indy.error_code))
                     raise
 
             if not json.loads(rv_json):  # checking the ledger returned no cred def: send it
                 req_json = await ledger.build_cred_def_request(self.did, cred_def_json)
-                resp_json = await self._sign_submit(req_json)
+                await self._sign_submit(req_json)
                 rv_json = await self.get_cred_def(cd_id)  # pick up from ledger and parse; add to cache
 
                 if revocation:
@@ -828,24 +1057,27 @@ class Issuer(Origin):
         cd_id = cred_def_id(self.did, schema_seq_no)
         try:
             rv = await anoncreds.issuer_create_credential_offer(self.wallet.handle, cd_id)
-        except IndyError as e:
-            if e.error_code == ErrorCode.WalletNotFoundError:
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletNotFoundError:
                 logger.debug('Issuer.create_cred_offer: <!< did not issue cred definition from wallet {}'.format(
                     self.wallet.name))
                 raise CorruptWallet('Cannot create cred offer: did not issue cred definition from wallet {}'.format(
                     self.wallet.name))
             else:
                 logger.debug('Issuer.create_cred_offer: <!<  cannot create cred offer, indy error code {}'.format(
-                    e.error_code))
+                    x_indy.error_code))
                 raise
 
         logger.debug('Issuer.create_cred_offer: <<< {}'.format(rv))
         return rv
 
-    async def create_cred(self, cred_offer_json, cred_req_json: str, cred_attrs: dict) -> (str, str):
+    async def create_cred(self, cred_offer_json, cred_req_json: str, cred_attrs: dict) -> (str, str, int):
         """
-        Create credential as Issuer out of credential request and dict of key:value (raw, unencoded) entries
-        for attributes; return credential json and credential revocation identifier.
+        Create credential as Issuer out of credential request and dict of key:value (raw, unencoded)
+        entries for attributes.
+
+        Return credential json, and if cred def supports revocation, credential revocation identifier
+        and revocation registry delta ledger timestamp (epoch seconds).
 
         If the credential definition supports revocation, and the current revocation registry is full,
         the processing creates a new revocation registry en passant. Depending on the revocation
@@ -881,20 +1113,30 @@ class Issuer(Origin):
         if 'revocation' in cred_def['value']:
             with REVO_CACHE.lock:
                 rr_id = Tails.current_rev_reg_id(self._dir_tails, cd_id)
-                t = REVO_CACHE[rr_id].tails
-                assert t  # at (re)start, at cred def, Issuer sync_revoc() sets this index in revocation cache
+                tails = REVO_CACHE[rr_id].tails
+                assert tails  # at (re)start, at cred def, Issuer sync_revoc() sets this index in revocation cache
 
                 try:
-                    (cred_json, cred_revoc_id, rev_reg_delta_json) = await anoncreds.issuer_create_credential(
+                    (cred_json, cred_revoc_id, rr_delta_json) = await anoncreds.issuer_create_credential(
                         self.wallet.handle,
                         cred_offer_json,
                         cred_req_json,
                         json.dumps({k: cred_attr_value(cred_attrs[k]) for k in cred_attrs}),
-                        t.rr_id,
-                        t.reader_handle)
-                    rv = (cred_json, cred_revoc_id)
-                except IndyError as e:
-                    if e.error_code == ErrorCode.AnoncredsRevocationRegistryFullError:
+                        tails.rr_id,
+                        tails.reader_handle)
+                    # do not create rr delta frame and append to cached delta frames list: timestamp could lag or skew
+                    rre_req_json = await ledger.build_revoc_reg_entry_request(
+                        self.did,
+                        tails.rr_id,
+                        'CL_ACCUM',
+                        rr_delta_json)
+                    await self._sign_submit(rre_req_json)
+                    resp_json = await self._sign_submit(rre_req_json)
+                    resp = json.loads(resp_json)
+                    rv = (cred_json, cred_revoc_id, resp['result']['txnTime'])
+
+                except IndyError as x_indy:
+                    if x_indy.error_code == ErrorCode.AnoncredsRevocationRegistryFullError:
                         (tag, rr_size) = Tails.next_tag(self._dir_tails, cd_id)
                         rr_id = rev_reg_id(cd_id, tag)
                         await self._create_rev_reg(rr_id, rr_size)
@@ -902,15 +1144,8 @@ class Issuer(Origin):
                         return await self.create_cred(cred_offer_json, cred_req_json, cred_attrs)  # should be ok now
                     else:
                         logger.debug('Issuer.create_cred: <!<  cannot create cred, indy error code {}'.format(
-                            e.error_code))
+                            x_indy.error_code))
                         raise
-                else:
-                    rre_req_json = await ledger.build_revoc_reg_entry_request(
-                        self.did,
-                        t.rr_id,
-                        'CL_ACCUM',
-                        rev_reg_delta_json)
-                    await self._sign_submit(rre_req_json)
         else:
             try:
                 (cred_json, _, _) = await anoncreds.issuer_create_credential(
@@ -920,10 +1155,10 @@ class Issuer(Origin):
                     json.dumps({k: cred_attr_value(cred_attrs[k]) for k in cred_attrs}),
                     None,
                     None)
-                rv = (cred_json, _)
-            except IndyError as e:
+                rv = (cred_json, _, _)
+            except IndyError as x_indy:
                 logger.debug('Issuer.create_cred: <!<  cannot create cred, indy error code {}'.format(
-                    e.error_code))
+                    x_indy.error_code))
                 raise
 
         logger.debug('Issuer.create_cred: <<< {}'.format(rv))
@@ -936,7 +1171,7 @@ class Issuer(Origin):
 
         Return (epoch seconds) time of revocation.
 
-        Raise AbsentTailsFile if no tails file is available for input
+        Raise AbsentTails if no tails file is available for input
         revocation registry identifier. Raise BadRevocation if issuer cannot
         revoke specified credential for any other reason (e.g., did not issue it,
         already revoked it).
@@ -958,16 +1193,16 @@ class Issuer(Origin):
                 tails_reader_handle,
                 rr_id,
                 cr_id)
-        except IndyError as e:
+        except IndyError as x_indy:
             logger.debug(
                 'Issuer.revoke_cred: <!< Could not revoke revoc reg id {}, cred rev id {}: indy error code {}'.format(
                     rr_id,
                     cr_id,
-                    e.error_code))
+                    x_indy.error_code))
             raise BadRevocation('Could not revoke revoc reg id {}, cred rev id {}: indy error code {}'.format(
                     rr_id,
                     cr_id,
-                    e.error_code))
+                    x_indy.error_code))
 
         rre_req_json = await ledger.build_revoc_reg_entry_request(self.did, rr_id, 'CL_ACCUM', rrd_json)
         resp_json = await self._sign_submit(rre_req_json)
@@ -1007,7 +1242,7 @@ class HolderProver(_BaseAgent):
         """
         Pick up tails file reader handle for input revocation registry identifier.  If no symbolic
         link is present, get the revocation registry definition to retrieve its tails file hash,
-        then find the tails file and link it. Raise AbsentTailsFile for missing corresponding tails file.
+        then find the tails file and link it. Raise AbsentTails for missing corresponding tails file.
 
         :param rr_id: revocation registry identifier
         """
@@ -1025,24 +1260,24 @@ class HolderProver(_BaseAgent):
 
         with REVO_CACHE.lock:
             revo_cache_entry = REVO_CACHE.get(rr_id, None)
-            t = revo_cache_entry.tails if revo_cache_entry else None
-            if t is None:  #  it's not yet set in cache
+            tails = revo_cache_entry.tails if revo_cache_entry else None
+            if tails is None:  #  it's not yet set in cache
                 try:
-                    t = await Tails(self._dir_tails, cd_id, tag).open()
-                except AbsentTailsFile as x:  # get hash from ledger and check for tails file
+                    tails = await Tails(self._dir_tails, cd_id, tag).open()
+                except AbsentTails:  # get hash from ledger and check for tails file
                     rrdef = json.loads(await self._get_rev_reg_def(rr_id))
                     tails_hash = rrdef['value']['tailsHash']
                     path_tails = join(Tails.dir(self._dir_tails, rr_id), tails_hash)
                     if not isfile(path_tails):
                         logger.debug('HolderProver._sync_revoc: <!< No tails file present at {}'.format(path_tails))
-                        raise AbsentTailsFile('No tails file present at {}'.format(path_tails))
+                        raise AbsentTails('No tails file present at {}'.format(path_tails))
                     Tails.associate(self._dir_tails, rr_id, tails_hash)
-                    t = await Tails(self._dir_tails, cd_id, tag).open()  # OK now since tails file present
+                    tails = await Tails(self._dir_tails, cd_id, tag).open()  # OK now since tails file present
 
                 if revo_cache_entry is None:
-                    REVO_CACHE[rr_id] = RevoCacheEntry(None, t)
+                    REVO_CACHE[rr_id] = RevoCacheEntry(None, tails)
                 else:
-                    REVO_CACHE[rr_id]._tails = t
+                    REVO_CACHE[rr_id]._tails = tails
 
         logger.debug('HolderProver._sync_revoc: <<<')
 
@@ -1074,100 +1309,6 @@ class HolderProver(_BaseAgent):
         logger.debug('HolderProver.open: <<<')
         return self
 
-    '''
-    async def _update_rev_reg_state(self, rr_id: str, cr_id: str, tails: Tails, timestamp: int = None) -> str:
-        """
-        Get revocation registry state from ledger (or rev reg state cache) by its identifier.
-        If input timestamp is an update, update state in cache and return. Otherwise, create
-        state and return but do not update cache.
-
-        Log and raise exception on error.
-
-        :param rr_id: (revocation registry) identifier string
-            ('<issuer-did>:4:<issuer-did>:3:CL:<schema-seq-no>:CL_ACCUM:<tag>')
-        :param cr_id: credential revocation identifier to use in creating initial state if need be
-        :param tails: Tails object to use in creating initial state if need be (avoids
-            locking revocation cache to get it, obviating deadlock)
-        :param timestamp: epoch time of interest
-        :return: revocation registry state json as retrieved from ledger,
-            empty production '{}' for no such revocation registry state
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('HolderProver._update_rev_reg_state: >>> rr_id: {}, tails: {}'.format(rr_id, tails))
-
-        timestamp = timestamp or int(time())
-        rr_state = None
-
-        rr_def_json = await self._get_rev_reg_def(rr_id)
-        if not json.loads(rr_def_json):
-            logger.debug('HolderProver._update_rev_reg_state: <!< Rev reg def for {} is not on ledger'.format( 
-                rr_id))
-            raise AbsentRevReg('Rev reg def for {} is not on ledger')
-
-        with REVO_STATE_CACHE.lock:
-            if rr_id in REVO_STATE_CACHE:
-                logger.info('HolderProver._update_rev_reg_state: rev reg state for {} from cache'.format(rr_id))
-                rr_state = REVO_STATE_CACHE[rr_id]
-                print('\n\n-- URR -- got rr_state from cache: {}'.format(ppjson(rr_state)))
-                rr_state_json = json.dumps(rr_state)
-
-            get_rr_delta_req_json = await ledger.build_get_revoc_reg_delta_request(  # get delta to the present
-                self.did,
-                rr_id,
-                rr_state['timestamp']
-                    if rr_state and timestamp > rr_state['timestamp']
-                    else None,
-                timestamp)
-            resp_json = await self._submit(get_rr_delta_req_json)
-            resp = json.loads(resp_json)
-            if 'result' in resp and 'data' in resp['result'] and 'value' in resp['result']['data']:
-                # it's a delta to a moment some time after the rev reg def
-                (_, rr_delta_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_delta_response(resp_json)
-            else:
-                logger.debug(
-                    'HolderProver._update_rev_reg_state: <!< Revocation registry {} created in the future'.format(
-                        rr_id))
-                raise BadRevStateTime(
-                    'Revocation registry {} created in the future {}'.format(  
-                        rr_id))
-
-            if rr_id in REVO_STATE_CACHE:  # OK since we have the lock
-                rv_json = await anoncreds.update_revocation_state(
-                    tails.reader_handle,
-                    rr_state_json,
-                    rr_def_json,
-                    rr_delta_json,
-                    ledger_timestamp,
-                    cr_id)
-                print('\n\n-- URR -- updating revo state for rr_id {}, cr_id {}, timestamp {} -> {}: {}'.format(
-                    rr_id,
-                    cr_id,
-                    timestamp,
-                    ledger_timestamp,
-                    ppjson(rv_json)))
-                rr_state = json.loads(rv_json)
-                if timestamp > rr_state['timestamp']:
-                    REVO_STATE_CACHE[rr_id] = rr_state
-            else:
-                rv_json = await anoncreds.create_revocation_state(  # create rev reg state to the present
-                    tails.reader_handle,
-                    rr_def_json,
-                    rr_delta_json,
-                    ledger_timestamp,
-                    cr_id)
-                print('\n\n-- URR -- created revo state for rr_id {}, cr_id {}, timestamp {} -> {}: {}'.format(
-                    rr_id,
-                    cr_id,
-                    timestamp,
-                    ledger_timestamp,
-                    ppjson(rv_json)))
-                REVO_STATE_CACHE[rr_id] = json.loads(rv_json)
-
-        logger.debug('HolderProver._update_rev_reg_state: <<< {}'.format(rv_json))
-        return rv_json
-    '''
-
     def rev_regs(self) -> list:
         """
         Return list of revocation registry identifiers for which HolderProver has tails files.
@@ -1191,42 +1332,41 @@ class HolderProver(_BaseAgent):
 
         try:
             await anoncreds.prover_create_master_secret(self.wallet.handle, link_secret)
-        except IndyError as e:
-            if e.error_code == ErrorCode.AnoncredsMasterSecretDuplicateNameError:
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.AnoncredsMasterSecretDuplicateNameError:
                 logger.info('HolderProver did not create link secret - it already exists')
             else:
                 logger.debug(
                     'HolderProver.create_link_secret: <!<  cannot create link secret {}, indy error code {}'.format(
                         self.wallet.name,
-                        e.error_code))
+                        x_indy.error_code))
                 raise
 
         self._link_secret = link_secret
         logger.debug('HolderProver.create_link_secret: <<<')
 
-    async def create_cred_req(self, cred_offer_json: str, cred_def_json: str) -> (str, str):
+    async def create_cred_req(self, cred_offer_json: str, cd_id: str) -> (str, str):
         """
         Create credential request as HolderProver and store in wallet; return credential json and metadata json.
 
         Raise AbsentLinkSecret if link secret not set.
 
         :param cred_offer_json: credential offer json
-        :param cred_def_json: credential definition json as retrieved from ledger via get_cred_def()
+        :param cd_id: credential definition identifier
         :return: cred request json and corresponding metadata json as created and stored in wallet
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('HolderProver.create_cred_req: >>> cred_offer_json: {}, cred_def_json: {}'.format(
-            cred_offer_json,
-            cred_def_json))
+        logger.debug('HolderProver.create_cred_req: >>> cred_offer_json: {}, cd_id: {}'.format(cred_offer_json, cd_id))
 
         if self._link_secret is None:
             logger.debug('HolderProver.create_cred_req: <!< link secret not set')
             raise AbsentLinkSecret('Link secret is not set')
 
         # Check that ledger has schema on ledger where cred def expects - in case of pool reset with extant wallet
+        cred_def_json = await self.get_cred_def(cd_id)
         schema_seq_no = int(json.loads(cred_def_json)['schemaId'])
-        schema_json = await self.get_schema(schema_seq_no)  # update schema cache en passant if need be
+        schema_json = await self.get_schema(schema_seq_no)
         schema = json.loads(schema_json)
         if not schema:
             logger.debug(
@@ -1248,7 +1388,7 @@ class HolderProver(_BaseAgent):
         """
         Store cred in wallet as HolderProver, return its credential identifier as created in wallet.
 
-        Raise AbsentTailsFile if tails file not available for revocation registry for input credential.
+        Raise AbsentTails if tails file not available for revocation registry for input credential.
 
         :param cred_json: credential json as HolderProver created
         :param cred_req_metadata_json: credential request metadata as HolderProver created via create_cred_req()
@@ -1285,7 +1425,7 @@ class HolderProver(_BaseAgent):
         schema identifier and/or credential definition identifier components;
         return all credentials for no filter.
 
-        :param filt: filter for credentials; i.e.,
+        :param filt: indy-sdk filter for credentials; i.e.,
 
         ::
 
@@ -1332,9 +1472,9 @@ class HolderProver(_BaseAgent):
 
         :param proof_req_json: proof request json as Verifier creates; has entries for proof request's
             nonce, name, and version; plus credential's requested attributes, requested predicates. I.e.,
-        
+
         ::
-        
+
             {
                 'nonce': string,  # indy-sdk makes no semantic specification on this value
                 'name': string,  # indy-sdk makes no semantic specification on this value
@@ -1393,14 +1533,14 @@ class HolderProver(_BaseAgent):
                 }
             }
 
-        :param filt: filter for matching attribute-value pairs and predicates;
-            dict mapping each schema identifier to dict (specify empty dict for no filter)
+        :param filt: filter for matching attribute-value pairs and predicates; dict mapping each
+            cred def id to dict (specify empty dict or none for no filter, matching all)
             mapping attributes to values to match or compare. E.g.,
 
         ::
 
             {
-                'Vx4E82R17q...:2:friendlies:1.0': {
+                'Vx4E82R17q...:3:CL:16': {
                     'attr-match': {
                         'name': 'Alex',
                         'sex': 'M',
@@ -1419,17 +1559,20 @@ class HolderProver(_BaseAgent):
                         },
                     ]
                 },
-                'R17v42T4pk...:2:tombstone:2.1': {
+                'R17v42T4pk...:3:CL:19': {
                     'attr-match': {
                         'height': 175,
                         'birthdate': '1975-11-15'  # combined conjunctively (i.e., via AND)
                     }
                 },
+                'Z9ccax812j...:3:CL:27': {
+                    'attr-match': {}  # match all attributes on this cred def
+                }
                 ...
             }
 
-        :param: filt_dflt_incl: whether to include (True) all credentials in results for schemata on which wallet has
-            credentials but filter does not identify, or to exclude (False) all such credentials
+        :param filt_dflt_incl: whether to include (True) all credentials from wallet that filter does not
+            identify by cred def, or to exclude (False) all such credentials
         :return: tuple with (set of referents, creds json for input proof request);
             empty set and empty production for no such credential
         """
@@ -1445,29 +1588,31 @@ class HolderProver(_BaseAgent):
         cred_ids = set()
 
         if filt:
-            for s_id in filt:
-                schema = json.loads(await self.get_schema(schema_key(s_id)))
-                if not schema:
-                    logger.warning('HolderProver.get_creds: ignoring filter criterion, no schema on {}'.format(s_id))
-                    filt.pop(s_id)
+            for cd_id in filt:
+                cred_def = json.loads(await self.get_cred_def(cd_id))
+                if not cred_def:
+                    logger.warning(
+                        'HolderProver.get_creds: ignoring filter criterion, no cred def on {}'.format(cd_id))
+                    filt.pop(cd_id)
 
         for attr_uuid in creds['attrs']:
             for candidate in creds['attrs'][attr_uuid]:  # candidate is a dict in a list of dicts
                 cred_info = candidate['cred_info']
                 if filt:
-                    cred_s_id = cred_info['schema_id']
-                    if filt_dflt_incl and cred_s_id not in filt:
-                        cred_ids.add(cred_info['referent'])
+                    cred_cd_id = cred_info['cred_def_id']
+                    if cred_cd_id not in filt:
+                        if filt_dflt_incl:
+                            cred_ids.add(cred_info['referent'])
                         continue
-                    if cred_s_id in filt and 'attr-match' in filt[cred_s_id]:
-                        if not {k: str(filt[cred_s_id]['attr-match'][k])
-                                for k in filt[cred_s_id]['attr-match']}.items() <= cred_info['attrs'].items():
+                    if 'attr-match' in filt[cred_cd_id]:
+                        if not {k: str(filt[cred_cd_id].get('attr-match', {})[k])
+                                for k in filt[cred_cd_id].get('attr-match', {})}.items() <= cred_info['attrs'].items():
                             continue
-                    if cred_s_id in filt and 'pred-match' in filt[cred_s_id]:
+                    if 'pred-match' in filt[cred_cd_id]:
                         try:
                             if any((pred_match['attr'] not in cred_info['attrs']) or
                                 (int(cred_info['attrs'][pred_match['attr']]) < pred_match['value'])
-                                    for pred_match in filt[cred_s_id]['pred-match']):
+                                    for pred_match in filt[cred_cd_id].get('pred-match', {})):
                                 continue
                         except ValueError:
                             # int conversion failed - reject candidate
@@ -1511,7 +1656,7 @@ class HolderProver(_BaseAgent):
         Raise:
             * AbsentLinkSecret if link secret not set
             * CredentialFocus on attempt to create proof on no creds or multiple creds for a credential definition
-            * AbsentTailsFile if missing required tails file
+            * AbsentTails if missing required tails file
             * BadRevStateTime if a timestamp for a revocation registry state in the proof request
               occurs before revocation registry creation
             * IndyError for any other indy-sdk error.
@@ -1541,7 +1686,7 @@ class HolderProver(_BaseAgent):
                     }
                 }
             }
-    
+
         :return: proof json
         """
 
@@ -1560,19 +1705,9 @@ class HolderProver(_BaseAgent):
             logger.debug('HolderProver.create_proof: <!< creds specification out of focus (non-uniqueness)')
             raise CredentialFocus('Proof request requires unique cred per attribute; violators: {}'.format(x_uuids))
 
-        '''
-        to_default = proof_req.get('non_revoked', {}).get('to', 0)
-        c_id2to = {}  # credential identifier to max timestamp of interest
-        if requested_creds:
-            for cred in {**requested_cred['requested_attributes'], **requested_creds['requested_predicates']}.values():
-                if 'timestamp' in cred:
-                    (c_id, timestamp) = (cred['cred_id'], cred['timestamp'])
-                    c_id2to[c_id]] = max(timestamp, c_id2to.get(c_id, to_default))
-        '''
-
         s_id2schema = {}  # schema identifier to schema
         cd_id2cred_def = {}  # credential definition identifier to credential definition
-        rr_id2interval = {}  # revocation registry of interest to non-revocation interval of interest (or None)
+        rr_id2timestamp = {}  # revocation registry of interest to timestamp of interest (or None)
         rr_id2cr_id = {}  # revocation registry of interest to credential revocation identifier
         for referents in {**creds['attrs'], **creds['predicates']}.values():
             interval = referents[0].get('interval', None)
@@ -1601,22 +1736,17 @@ class HolderProver(_BaseAgent):
             if rr_id:
                 await self._sync_revoc(rr_id)  # link tails file to its rr_id if it's new
                 if interval:
-                    if rr_id in rr_id2interval:
-                        rr_id2interval[rr_id]['from'] = min(
-                            rr_id2interval[rr_id]['from'] or 0,
-                            interval['from'] or 0) or None
-                        rr_id2interval[rr_id]['to'] = max(rr_id2interval[rr_id]['to'], interval['to'])
-                        if rr_id2interval[rr_id]['to'] > int(time()):
+                    if rr_id not in rr_id2timestamp:
+                        if interval['to'] > int(time()):
                             logger.debug(
                                 'HolderProver.create_proof: <!< interval to {} for rev reg {} is in the future'.format(
-                                    rr_id2interval[rr_id]['to'],
+                                    interval['to'],
                                     rr_id))
                             raise BadRevStateTime(
-                                'Revocation registry {} created after requested interval {}'.format(  
+                                'Revocation registry {} timestamp {} is in the future'.format(
                                     rr_id,
-                                    rr_id2interval[rr_id]))
-                    else:
-                        rr_id2interval[rr_id] = interval
+                                    interval['to']))
+                        rr_id2timestamp[rr_id] = interval['to']
                 elif 'revocation' in cd_id2cred_def[cd_id]['value']:
                     logger.debug(
                         'HolderProver.create_proof: <!< creds on cred def id {} missing non-revocation interval'.format(
@@ -1627,60 +1757,26 @@ class HolderProver(_BaseAgent):
                 rr_id2cr_id[rr_id] = cred_info['cred_rev_id']
 
         rr_id2rev_state = {}  # revocation registry identifier to its state
-        for rr_id in rr_id2interval:
+        for rr_id in rr_id2timestamp:
             revo_cache_entry = REVO_CACHE.get(rr_id, None)
             tails = revo_cache_entry.tails if revo_cache_entry else None
             if tails is None:  # missing tails file
                 logger.debug(
-                    'HolderProver.create_proof: <!< missing tails file for rev reg id {}'.format(resp['reason']))
-                raise AbsentTailsFile('Missing tails file for rev reg id {}'.format(rr_id))
+                    'HolderProver.create_proof: <!< missing tails file for rev reg id {}'.format(rr_id))
+                raise AbsentTails('Missing tails file for rev reg id {}'.format(rr_id))
             rr_def_json = await self._get_rev_reg_def(rr_id)
-            '''
-            # cache doesn't work well: future request could backdate current one, and updating to backdate doesn't work
-            rr_state_json = await self._update_rev_reg_state(rr_id, rr_id2cr_id[rr_id], t, rr_id2interval[rr_id]['to'])
-            '''
-            get_rr_delta_req_json = await ledger.build_get_revoc_reg_delta_request(
-                self.did,
-                rr_id,
-                None, # rr_id2rev_state[rr_id]['timestamp']
-                    # if rr_state and timestamp > rr_id2rev_state[rr_id]['timestamp']
-                    # else None,
-                rr_id2interval[rr_id]['to'])
-            resp_json = await self._submit(get_rr_delta_req_json)
-            resp = json.loads(resp_json)
-            if 'result' in resp and 'data' in resp['result'] and 'value' in resp['result']['data']:
-                # it's a delta to a moment some time after the rev reg def
-                (_, rr_delta_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_delta_response(resp_json)
-            else:
-                logger.debug(
-                    'HolderProver._update_rev_reg_state: <!< Revocation registry {} created in the future'.format(
-                        rr_id))
-                raise BadRevStateTime(
-                    'Revocation registry {} created in the future'.format(  
-                        rr_id))
+            (rr_delta_json, ledger_timestamp) = await revo_cache_entry.get_delta_json(
+                self._build_rr_delta_json,
+                rr_id2timestamp[rr_id])
             rr_state_json = await anoncreds.create_revocation_state(
                 tails.reader_handle,
                 rr_def_json,
                 rr_delta_json,
                 ledger_timestamp,
                 rr_id2cr_id[rr_id])
-            '''
-            rr_state_json = await anoncreds.update_revocation_state(
-                tails.reader_handle,
-                rr_state_json,
-                rr_def_json,
-                rr_delta_json,
-                ledger_timestamp,
-                rr_id2cr_id[rr_id])
-            '''
-
-            '''
-                ledger_timestamp: json.loads(rr_state_json)
-            '''
             rr_id2rev_state[rr_id] = {
-                rr_id2interval[rr_id]['to']: json.loads(rr_state_json)
+                rr_id2timestamp[rr_id]: json.loads(rr_state_json)
             }
-        # print('\n\n!! HP.CP !! create_proof: rr_id2revstate {}'.format(ppjson(rr_id2rev_state)))
         rv = await anoncreds.prover_create_proof(
             self.wallet.handle,
             json.dumps(proof_req),
@@ -1714,11 +1810,17 @@ class HolderProver(_BaseAgent):
         wallet_name = self.wallet.name
         wallet_cfg = self.wallet.cfg
         wallet_xtype = self.wallet.xtype
-        wallet_creds = self.wallet.creds
+        wallet_access_creds = self.wallet.access_creds
 
         await self.wallet.close()
         await self.wallet.remove()
-        self._wallet = await Wallet(self.pool, seed, wallet_name, wallet_xtype, wallet_cfg, wallet_creds).create()
+        self._wallet = await Wallet(
+            self.pool,
+            seed,
+            wallet_name,
+            wallet_xtype,
+            wallet_cfg,
+            wallet_access_creds).create()
         await self.wallet.open()
 
         await self.create_link_secret(self._link_secret)  # carry over link secret to new wallet
@@ -1795,7 +1897,6 @@ class Verifier(_BaseAgent):
                 logger.debug('Verifier.verify_proof: <!< no rev reg exists on {}'.format(rr_id))
                 raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
 
-        # print('\n\n-- VV -- Verify: rr_id2rr: {}'.format(ppjson(rr_id2rr)))
         rv = json.dumps(await anoncreds.verifier_verify_proof(
             json.dumps(proof_req),
             json.dumps(proof),

@@ -17,28 +17,29 @@ limitations under the License.
 
 import json
 
-from binascii import hexlify, unhexlify
 from collections import namedtuple
 from copy import deepcopy
 from pprint import pformat
-from math import ceil, log
+from typing import Any
 from von_agent.codec import decode
 
 
 SchemaKey = namedtuple('SchemaKey', 'origin_did name version')
 
-def ppjson(dumpit, elide = None):
+
+def ppjson(dumpit: Any, elide_to: int = None):
     """
     JSON pretty printer, whether already json-encoded or not
     """
 
-    if elide is not None:
-        elide = max(elide - 3, 0) # make room for ellipses '...'
+    if elide_to is not None:
+        elide_to = max(elide_to - 3, 0) # make room for ellipses '...'
     try:
         rv = json.dumps(json.loads(dumpit) if isinstance(dumpit, str) else dumpit, indent=4)
-    except:
+    except TypeError:
         rv = '{}'.format(pformat(dumpit, indent=4, width=120))
-    return rv if elide is None else '{}...'.format(rv[0 : elide])
+    return rv if elide_to is None else '{}...'.format(rv[0 : elide_to])
+
 
 def schema_id(origin_did: str, name: str, version: str) -> str:
     """
@@ -53,16 +54,16 @@ def schema_id(origin_did: str, name: str, version: str) -> str:
     return '{}:2:{}:{}'.format(origin_did, name, version)  # 2 marks indy-sdk schema id
 
 
-def schema_key(schema_id: str) -> SchemaKey:
+def schema_key(s_id: str) -> SchemaKey:
     """
     Return schema key (namedtuple) convenience for schema identifier components.
 
-    :param schema_id: schema identifier
+    :param s_id: schema identifier
     :return: schema key (namedtuple) object
     """
 
-    s_key = schema_id.split(':')
-    s_key.pop(1)  # take out indy-sdk schema marker
+    s_key = s_id.split(':')
+    s_key.pop(1)  # take out indy-sdk schema marker: 2 marks indy-sdk schema id
 
     return SchemaKey(*s_key)
 
@@ -79,53 +80,64 @@ def cred_def_id(issuer_did: str, schema_seq_no: int) -> str:
     return '{}:3:CL:{}'.format(issuer_did, schema_seq_no)  # 3 marks indy-sdk cred def id, CL denotes sig type
 
 
-def rev_reg_id(cred_def_id: str, tag: str) -> str:
+def cred_def_id2seq_no(cd_id: str) -> int:
+    """
+    Given a credential definition identifier, return its schema sequence number.
+
+    :param cd_id: credential definition identifier
+    :return: sequence number
+    """
+
+    return int(cd_id.split(':')[-1])  # sequence number is last token
+
+
+def rev_reg_id(cd_id: str, tag: str) -> str:
     """
     Given a credential definition identifier and a tag, return the corresponding
     revocation registry identifier, repeating the issuer DID from the
     input identifier.
 
-    :param cred_def_did: credential definition identifier
+    :param cd_id: credential definition identifier
     :param tag: tag to use
     :return: revocation registry identifier
     """
 
-    return '{}:4:{}:CL_ACCUM:{}'.format(cred_def_id.split(':', 1)[0], cred_def_id, tag)  # 4 marks rev reg def id
+    return '{}:4:{}:CL_ACCUM:{}'.format(cd_id.split(':', 1)[0], cd_id, tag)  # 4 marks rev reg def id
 
 
-def rev_reg_id2cred_def_id(rev_reg_id: str) -> str:
+def rev_reg_id2cred_def_id(rr_id: str) -> str:
     """
     Given a revocation registry identifier, return its corresponding credential definition identifier.
 
-    :param rev_reg_id: revocation registry identifier
+    :param rr_id: revocation registry identifier
     :return: credential definition identifier
     """
 
-    return ':'.join(rev_reg_id.split(':')[2:-2])  # rev_reg_id comprises prefixes:<cred_def_id>:suffixes
+    return ':'.join(rr_id.split(':')[2:-2])  # rev reg id comprises (prefixes):<cred_def_id>:(suffixes)
 
 
-def rev_reg_id2tag(rev_reg_id: str) -> str:
+def rev_reg_id2tag(rr_id: str) -> str:
     """
     Given a revocation registry identifier, return its corresponding (stringified int) tag.
 
-    :param rev_reg_id: revocation registry identifier
+    :param rr_id: revocation registry identifier
     :return: tag
     """
 
-    return str(rev_reg_id.split(':')[-1])  # tag is last token
+    return str(rr_id.split(':')[-1])  # tag is last token
 
 
-def rev_reg_id2cred_def_id__tag(rev_reg_id: str) -> (str, str):
+def rev_reg_id2cred_def_id__tag(rr_id: str) -> (str, str):
     """
     Given a revocation registry identifier, return its corresponding credential definition identifier and
     (stringified int) tag.
 
-    :param rev_reg_id: revocation registry identifier
+    :param rr_id: revocation registry identifier
     :return: credential definition identifier and tag
     """
 
-    return (':'.join(rev_reg_id.split(':')[2:-2]),  # rev_reg_id comprises prefixes:<cred_def_id>:suffixes
-        str(rev_reg_id.split(':')[-1]))  # tag is last token
+    return (':'.join(rr_id.split(':')[2:-2]),  # rev reg id comprises (prefixes):<cred_def_id>:(suffixes)
+        str(rr_id.split(':')[-1]))  # tag is last token
 
 
 def schema_ids_for(creds: dict, cred_ids: list) -> dict:
@@ -252,13 +264,13 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
             }
         }
 
-    :param filt: filter for matching attributes and values; dict (None or empty for no filter)
-        mapping each schema identifier to dict mapping attributes to values to match; e.g.,
+    :param filt: filter for matching attributes and values; dict (None or empty for no filter, matching all)
+        mapping each cred def identifier to dict mapping attributes to values to match; e.g.,
 
     ::
 
         {
-            'Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0': {
+            'Q4zqM7aXqm7gDQkUVLng9h:3:CL:18': {
                 'attr0': '1',
                 'attr1': 'Nice'
             },
@@ -280,12 +292,12 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
             cred_info = cred['cred_info']
             if cred_info['referent'] in rv:
                 continue
-            cred_s_id = cred_info['schema_id']
-            if (not filt) or (filt_dflt_incl and cred_s_id not in filt):
+            cred_cd_id = cred_info['cred_def_id']
+            if (not filt) or (filt_dflt_incl and cred_cd_id not in filt):
                 rv[cred_info['referent']] = cred_info
                 continue
-            if filt and cred_s_id in filt:
-                if ({k: str(filt[cred_s_id][k]) for k in filt[cred_s_id]}.items() <= cred_info['attrs'].items()):
+            if filt and cred_cd_id in filt:
+                if ({k: str(filt[cred_cd_id][k]) for k in filt[cred_cd_id]}.items() <= cred_info['attrs'].items()):
                     rv[cred_info['referent']] = cred_info
 
     return rv
@@ -296,7 +308,7 @@ def revoc_info(creds: dict, filt: dict = None) -> dict:
     Given a creds structure, return a dict mapping pairs
     (revocation registry identifier, credential revocation identifier)
     to (decoded) attribute name:value dicts.
-    
+
     If the caller includes a filter of attribute:value pairs, retain only matching attributes.
 
     :param creds: creds structure returned by HolderProver.get_creds() as above
@@ -335,7 +347,7 @@ def revealed_attrs(proof: dict) -> dict:
     to dicts, each dict mapping attribute names to (decoded) values, for processing in further creds downstream.
 
     :param: indy-sdk proof as dict
-    :return: dict mapping cred-ids to dicts mapping revealed attribute names to (decoded) values
+    :return: dict mapping cred-ids to dicts, each mapping revealed attribute names to (decoded) values
     """
 
     rv = {}

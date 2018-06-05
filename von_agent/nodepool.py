@@ -143,12 +143,12 @@ class NodePool:
 
         try:
             await pool.create_pool_ledger_config(self.name, json.dumps({'genesis_txn': str(self.genesis_txn_path)}))
-        except IndyError as e:
-            if e.error_code == ErrorCode.PoolLedgerConfigAlreadyExistsError:
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.PoolLedgerConfigAlreadyExistsError:
                 logger.info('Pool ledger config for {} already exists'.format(self.name))
             else:
-                logger.debug('NodePool.open: <!< indy error code {}'.format(e.error_code))
-                raise e
+                logger.debug('NodePool.open: <!< indy error code {}'.format(x_indy.error_code))
+                raise x_indy
 
         self._handle = await pool.open_pool_ledger(self.name, json.dumps(self.cfg))
 
@@ -203,8 +203,8 @@ class NodePool:
 
         try:
             await pool.delete_pool_ledger_config(self.name)
-        except IndyError as e:
-            logger.info('Abstaining from pool removal; indy-sdk error code {}'.format(e.error_code))
+        except IndyError as x_indy:
+            logger.info('Abstaining from pool removal; indy-sdk error code {}'.format(x_indy.error_code))
 
         logger.debug('NodePool.remove: <<<')
 

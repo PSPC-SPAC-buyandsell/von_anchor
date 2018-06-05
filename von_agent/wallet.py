@@ -29,6 +29,8 @@ class Wallet:
     Class encapsulating indy-sdk wallet.
     """
 
+    DEFAULT_ACCESS_CREDS = {'key': 'key'}
+
     def __init__(
             self,
             pool: NodePool,
@@ -36,7 +38,7 @@ class Wallet:
             name: str,
             wallet_type: str = None,
             cfg: dict = None,
-            creds: dict = None) -> None:
+            access_creds: dict = None) -> None:
         """
         Initializer for wallet. Store input parameters and create wallet.
         Does not open until open() or __aenter__().
@@ -51,16 +53,17 @@ class Wallet:
                 'auto-remove': bool (default False) - whether to remove serialized indy configuration data on close,
                 ... (more keys) : ... (more types) - any other configuration data to pass through to indy-sdk
             }
-        :param creds: wallet credentials dict, None for default
+        :param access_creds: wallet access credentials dict, None for default
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('Wallet.__init__: >>> pool {}, seed [SEED], name {}, wallet_type {}, cfg {}, creds {}'.format(
-            pool,
-            name,
-            wallet_type,
-            cfg,
-            creds))
+        logger.debug(
+            'Wallet.__init__: >>> pool {}, seed [SEED], name {}, wallet_type {}, cfg {}, access_creds {}'.format(
+                pool,
+                name,
+                wallet_type,
+                cfg,
+                access_creds))
 
         self._pool = pool
         self._seed = seed
@@ -79,7 +82,7 @@ class Wallet:
         if 'freshness_time' not in self._cfg:
             self._cfg['freshness_time'] = 0
 
-        self._creds = creds or None
+        self._access_creds = access_creds or Wallet.DEFAULT_ACCESS_CREDS
         self._did = None
         self._verkey = None
         self._created = False
@@ -137,14 +140,14 @@ class Wallet:
         return self._auto_remove
 
     @property
-    def creds(self) -> dict:
+    def access_creds(self) -> dict:
         """
-        Accessor for wallet credentials.
+        Accessor for wallet access credentials.
 
-        :return: wallet credentials
+        :return: wallet access credentials
         """
 
-        return self._creds
+        return self._access_creds
 
     @property
     def xtype(self) -> str:
@@ -231,21 +234,21 @@ class Wallet:
                 name=self.name,
                 xtype=self.xtype,
                 config=json.dumps(self.cfg),
-                credentials=json.dumps(self.creds) if self.creds else None)
+                credentials=json.dumps(self.access_creds))
             self._created = True
             logger.info('Created wallet {} on pool {}:{}'.format(self.name, self.pool.handle, self.pool.name))
-        except IndyError as e:
-            if e.error_code == ErrorCode.WalletAlreadyExistsError:
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletAlreadyExistsError:
                 logger.info('Wallet already exists: {}'.format(self.name))
             else:
-                logger.debug('Wallet.create: <!< indy error code {}'.format(e.error_code))
+                logger.debug('Wallet.create: <!< indy error code {}'.format(x_indy.error_code))
                 raise
 
         logger.debug('Attempting to open wallet {}'.format(self.name))
         self._handle = await wallet.open_wallet(
             self.name,
             json.dumps(self.cfg),
-            json.dumps(self.creds) if self.creds else None)
+            json.dumps(self.access_creds))
         logger.info('Opened wallet {} on handle {}'.format(self.name, self.handle))
 
         if self._created:
@@ -318,7 +321,7 @@ class Wallet:
         self._handle = await wallet.open_wallet(
             self.name,
             json.dumps(self.cfg),
-            json.dumps(self.creds) if self.creds else None)
+            json.dumps(self.access_creds))
         logger.info('Opened wallet {} on handle {}'.format(self.name, self.handle))
 
         self._did = await self._seed2did()
@@ -376,9 +379,9 @@ class Wallet:
 
         try:
             logger.info('Removing wallet: {}'.format(self.name))
-            await wallet.delete_wallet(self.name, self.creds)
-        except IndyError as e:
-            logger.info('Abstaining from wallet removal; indy-sdk error code {}'.format(e.error_code))
+            await wallet.delete_wallet(self.name, json.dumps(self.access_creds))
+        except IndyError as x_indy:
+            logger.info('Abstaining from wallet removal; indy-sdk error code {}'.format(x_indy.error_code))
 
         logger.debug('Wallet.remove: <<<')
 

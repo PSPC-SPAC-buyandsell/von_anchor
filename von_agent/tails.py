@@ -14,15 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+
 import json
 
-from os import chdir, getcwd, listdir, makedirs, readlink, symlink, walk
+from os import chdir, getcwd, makedirs, readlink, symlink, walk
 from os.path import basename, dirname, isfile, islink, join
 
-from indy import anoncreds, blob_storage, ledger
-from indy.error import IndyError, ErrorCode
-from von_agent.error import AbsentTailsFile
+from indy import blob_storage
+from von_agent.error import AbsentTails
 from von_agent.util import rev_reg_id, rev_reg_id2cred_def_id, rev_reg_id2tag
+
 
 class Tails:
     """
@@ -36,27 +37,27 @@ class Tails:
         (on credential definition on input identifier plus tag, default most recent),
         and tails file, via symbolic link.
 
-        Raise AbsentTailsFile if (rev reg id) symbolic link or (tails hash) tails file not present.
+        Raise AbsentTails if (rev reg id) symbolic link or (tails hash) tails file not present.
 
         :param base_dir: base directory for tails files, thereafter split by cred def id
         :param cd_id: credential definition identifier of interest
         :param tag: revocation registry identifier tag of interest, default to most recent
         """
 
-        if tag == None:
+        if tag is None:
             self._rr_id = Tails.current_rev_reg_id(base_dir, cd_id)
         else:  # including tag == 0
             self._rr_id = rev_reg_id(cd_id, tag)
             if self._rr_id not in [basename(f) for f in Tails.links(base_dir)]:
-                raise AbsentTailsFile('No tails files present for cred def id {} on tag {}'.format(cd_id, tag))
+                raise AbsentTails('No tails files present for cred def id {} on tag {}'.format(cd_id, tag))
 
         path_link = join(Tails.dir(base_dir, self._rr_id), self._rr_id)
         if not islink(path_link):
-            raise AbsentTailsFile('No symbolic link present at {} for rev reg id {}'.format(path_link, self._rr_id))
+            raise AbsentTails('No symbolic link present at {} for rev reg id {}'.format(path_link, self._rr_id))
 
         path_tails = Tails.linked(base_dir, self._rr_id)
         if not isfile(path_tails):
-            raise AbsentTailsFile('No tails file present at {} for rev reg id {}'.format(path_tails, self._rr_id))
+            raise AbsentTails('No tails file present at {} for rev reg id {}'.format(path_tails, self._rr_id))
 
         self._tails_cfg_json = json.dumps({
             'base_dir': dirname(path_tails),
@@ -87,10 +88,10 @@ class Tails:
         """
 
         cd_id = rev_reg_id2cred_def_id(rr_id)
-        d = join(base_dir, cd_id)
+        directory = join(base_dir, cd_id)
         cwd = getcwd()
-        makedirs(d, exist_ok=True)
-        chdir(d)
+        makedirs(directory, exist_ok=True)
+        chdir(directory)
         symlink(tails_hash, rr_id)
         chdir(cwd)
 
@@ -174,7 +175,7 @@ class Tails:
         Return the current revocation registry identifier for
         input credential definition identifier, in input directory.
 
-        Raise AbsentTailsFile if no corresponding tails file, signifying no such revocation registry defined.
+        Raise AbsentTails if no corresponding tails file, signifying no such revocation registry defined.
 
         :param base_dir: base directory for tails files, thereafter split by cred def id
         :param cd_id: credential definition identifier of interest
@@ -184,7 +185,7 @@ class Tails:
         tags = [int(rev_reg_id2tag(basename(f))) for f in Tails.links(base_dir)
             if cd_id in basename(f)]
         if not tags:
-            raise AbsentTailsFile('No tails files present for cred def id {}'.format(cd_id))
+            raise AbsentTails('No tails files present for cred def id {}'.format(cd_id))
 
         return rev_reg_id(cd_id, str(max(tags)))  # ensure 10 > 9, not '9' > '10'
 
@@ -217,6 +218,7 @@ class Tails:
         :return: (stringified) path to current tails file.
         """
 
+        cfg = json.loads(self._tails_cfg_json)
         return join(cfg['base_dir'], cfg['file'])
 
     def __str__(self) -> str:

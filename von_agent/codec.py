@@ -15,8 +15,6 @@ limitations under the License.
 """
 
 
-import json
-
 from binascii import hexlify, unhexlify
 from math import ceil, log
 from typing import Any, Union
@@ -36,15 +34,15 @@ def encode(raw: Any) -> str:
     if raw is None:
         return '4294967297'  # sentinel 2**32 + 1
 
-    s = str(raw)
+    stringified = str(raw)
     try:
         i = int(raw)
         if 0 <= i < 2**32:  # it's an i32, leave it (as numeric string)
-            return s
+            return stringified
     except (ValueError, TypeError):
         pass
 
-    return str(int.from_bytes(hexlify(s.encode()), 'big') + 2**32)
+    return str(int.from_bytes(hexlify(stringified.encode()), 'big') + 2**32)
 
 
 def decode(value: str) -> Union[str, None]:
@@ -91,5 +89,5 @@ def canon(raw_attr_name: str) -> str:
     """
 
     if raw_attr_name:  # do not dereference None, and '' is already canonical
-        return raw_attr_name.replace(' ', '').lower() 
+        return raw_attr_name.replace(' ', '').lower()
     return raw_attr_name

@@ -54,8 +54,8 @@ def proof_req_all_attrs_json(s_id2schema: dict, non_revoked_to: int = None) -> s
                 'version': '1.1',
                 'ver': '1.0',
                 'attrNames': [
-                    'favourite_hot',
-                    'favourite_cold'
+                    'favouriteHot',
+                    'favouriteCold'
                 ]
             }
         }

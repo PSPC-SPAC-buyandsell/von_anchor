@@ -23,30 +23,30 @@ class ErrorCode(IntEnum):
     Error codes particular to von_agent operation. Start at 1000 to avoid collisions with HTTP error codes.
     """
 
-    Success = 0,
+    Success = 0
 
     # Errors to do with von_agent operation
-    CredentialFocus = 1003,
-    AbsentLinkSecret = 1005,
-    CorruptWallet = 1006,
-    AbsentSchema = 1007,
-    AbsentCredDef = 1008,
-    AbsentTailsFile = 1009,
-    CorruptTails = 1010,
-    BadRevocation = 1011,
-    BadLedgerTxn = 1012,
-    BadRevStateTime = 1013,
-    AbsentInterval = 1014,
-    AbsentRevReg = 1015,
+    CredentialFocus = 1003
+    AbsentLinkSecret = 1005
+    CorruptWallet = 1006
+    AbsentSchema = 1007
+    AbsentCredDef = 1008
+    AbsentTails = 1009
+    CorruptTails = 1010
+    BadRevocation = 1011
+    BadLedgerTxn = 1012
+    BadRevStateTime = 1013
+    AbsentInterval = 1014
+    AbsentRevReg = 1015
 
     # Errors to do with wallet operation
-    AbsentWallet = 3000,
+    AbsentWallet = 3000
 
     # Errors to do with node pool operation
-    ClosedPool = 4000,
+    ClosedPool = 4000
 
     # Errors to do with caching
-    CacheIndex = 5000,
+    CacheIndex = 5000
 
     # JSON validation
     JSONValidation = 9000
@@ -130,7 +130,7 @@ class AbsentCredDef(VonAgentError):
         super().__init__(ErrorCode.AbsentCredDef, message)
 
 
-class AbsentTailsFile(VonAgentError):
+class AbsentTails(VonAgentError):
     """
     (Issuer or HolderProver) agent attempting to open nonexistent tails file.
     """
@@ -142,7 +142,7 @@ class AbsentTailsFile(VonAgentError):
         :param message: error message
         """
 
-        super().__init__(ErrorCode.AbsentTailsFile, message)
+        super().__init__(ErrorCode.AbsentTails, message)
 
 
 class CorruptTails(VonAgentError):
