@@ -190,13 +190,13 @@ class RevRegDeltaFrame:
     Necessarily for each cached delta, timestamp <= ask_for.
     Issuer agents cannot revoke retroactively.
     Hence, for any new request against asked-for time ask_for:
-    * if the cache has a frame e on e.timestamp <= ask_for <= e.ask_for,
+    * if the cache has a frame f on f.timestamp <= ask_for <= f.ask_for,
       > return its rev reg delta
-    * if the cache has a frame e on e.timestamp < ask_for,
+    * if the cache has a frame f on f.timestamp < ask_for,
       > check the distributed ledger for a delta to the rev reg delta since e.timestamp;
         - if there is one, merge it to a new delta and add new frame to cache; return rev reg delta
         - otherwise, update the ask_for time in the frame and return the rev reg delta
-    * otherwise, there is no cache frame on e.timestamp < ask_for:
+    * otherwise, there is no cache frame f on f.timestamp < ask_for:
       > create new frame and add it to cache; return rev reg delta.
 
     On return of any rev reg delta, always update its query time beforehand.
@@ -334,7 +334,7 @@ class RevoCacheEntry:
         from cached rev reg delta frames list or distributed ledger,
         updating cache as necessary.
 
-        Raise BadRevRegDeltaTime if caller asks for a delta to the future.
+        Raise BadRevStateTime if caller asks for a delta to the future.
 
         :param rr_delta_builder: callback to build rev reg delta if need be (specify agent instance's _build_rr_delta())
         :param ask_for: time (epoch seconds) of interest; upper-bounds returned revocation delta timestamp 
@@ -359,7 +359,7 @@ class RevoCacheEntry:
         else:
             '''
             Can we have non-empty frames = [
-                frame for frame in self._rr_delta_frames if frame.timestamp == ask_for and ask_for > frame.ask.for]?
+                frame for frame in self._rr_delta_frames if frame.ask_for < ask_for == frame.timestamp]?
 
             Consider frame in frames.
             Since we are in 'else', frame.ask_for < ask_for (otherwise frames above would be nonempty hence truthy).
@@ -388,13 +388,13 @@ class RevoCacheEntry:
         if cache_frame is None:
             cache_frame = RevRegDeltaFrame(ask_for, timestamp, json.loads(rr_delta_json))
             self._rr_delta_frames.append(cache_frame)
+
+            mark = 4096**0.5  # max rev reg size = 4096; heuristic: hover max around sqrt(4096) = 64
+            if len(self._rr_delta_frames) > int(mark * 1.25):
+                self._rr_delta_frames.sort(key=lambda x: -x.qtime)  # order by descending query time
+                del self._rr_delta_frames[int(mark * 0.75):]  # retain most recent, grow again from here
         else:
             cache_frame._qtime = int(time())
-
-        mark = 4096**0.5  # max rev reg size = 4096; heuristic: hover max around sqrt(4096) = 64
-        if len(self._rr_delta_frames) > int(mark * 1.25):
-            self._rr_delta_frames.sort(key=lambda x: -x.qtime)  # order by descending query time
-            del self._rr_delta_frames[int(mark * 0.75):]  # retain most recent, grow again from here
 
         rv_json = (json.dumps(cache_frame.rr_delta), cache_frame.timestamp)
         logger.debug('RevoCacheEntry.get_delta_json: <<< {}'.format(rv_json))

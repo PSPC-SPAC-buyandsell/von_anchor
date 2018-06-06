@@ -183,7 +183,7 @@ class _BaseAgent:
         """
         Build and return indy-sdk proof request for input attributes and timestamps by cred def id.
 
-        :param cd_id2attrs: dict mapping cred def identifier to list of names of
+        :param cd_id2attrs: dict mapping cred def ids to lists of names of
             attributes of interest (empty list or None to include all); e.g.,
 
         ::
@@ -198,7 +198,7 @@ class _BaseAgent:
                 ...
             }
 
-        :param cd_id2timestamp: dict mapping cred def identifiers to timestamps (epoch seconds)
+        :param cd_id2timestamp: dict mapping cred def ids to timestamps (epoch seconds)
             for non-revocation proof; defaulting to current time for cred defs supporting revocation; e.g.,
 
         ::
@@ -523,49 +523,6 @@ class _BaseAgent:
 
         logger.debug('_BaseAgent._get_rev_reg_def: <<< {}'.format(rv_json))
         return rv_json
-
-    async def _build_rr_delta_json(self, rr_id: str, to: int, fro: int = None, fro_delta: dict = None) -> (str, int):
-        """
-        Build rev reg delta json, potentially starting from existing (earlier) delta.
-        Return delta json and its timestamp on the distributed ledger.
-
-        :param rr_id: rev reg id
-        :param to: time (epoch seconds) of interest; upper-bounds returned timestamp
-        :param fro: optional prior time of known delta json
-        :param fro_delta: optional known delta as of time fro
-        :return: rev reg delta json and ledger timestamp (epoch seconds)
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent._build_rr_delta_json: >>> rr_id: {}, to: {}, fro: {}, fro_delta: {}'.format(
-            rr_id,
-            to,
-            fro,
-            fro_delta))
-
-        rr_delta_json = None
-        ledger_timestamp = None
-
-        get_rr_delta_req_json = await ledger.build_get_revoc_reg_delta_request(self.did, rr_id, fro, to)
-        resp_json = await self._submit(get_rr_delta_req_json)
-        resp = json.loads(resp_json)
-        if 'result' in resp and 'data' in resp['result'] and 'value' in resp['result']['data']:
-            # it's a delta to a moment some time after the rev reg def
-            (_, rr_delta_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_delta_response(resp_json)
-        else:
-            logger.debug(
-                '_BaseAgent._build_rr_delta_json: <!< Rev reg {} created after asked-for time {}'.format(rr_id, to))
-            raise BadRevStateTime(
-                'Rev reg {} created after asked-for time {}'.format(rr_id, to))
-
-        if fro and fro_delta:
-            rr_delta_json = await anoncreds.issuer_merge_revocation_registry_deltas(
-                json.dumps(fro_delta),
-                rr_delta_json)
-
-        rv = (rr_delta_json, ledger_timestamp)
-        logger.debug('_BaseAgent._build_rr_delta_json: <<< {}'.format(rv))
-        return rv
 
     async def get_cred_def(self, cd_id: str) -> str:
         """
@@ -1097,8 +1054,8 @@ class Issuer(Origin):
                 'weaknesses': None
             }
 
-        :return: newly issued credential json, credential revocation identifier (None for cred on
-            cred def without revocation support)
+        :return: newly issued credential json; credential revocation identifier (if cred def supports
+            revocation, None otherwise), and ledger timestamp (if cred def supports revocation, None otherwise)
         """
 
         logger = logging.getLogger(__name__)
@@ -1280,6 +1237,49 @@ class HolderProver(_BaseAgent):
                     REVO_CACHE[rr_id]._tails = tails
 
         logger.debug('HolderProver._sync_revoc: <<<')
+
+    async def _build_rr_delta_json(self, rr_id: str, to: int, fro: int = None, fro_delta: dict = None) -> (str, int):
+        """
+        Build rev reg delta json, potentially starting from existing (earlier) delta.
+        Return delta json and its timestamp on the distributed ledger.
+
+        :param rr_id: rev reg id
+        :param to: time (epoch seconds) of interest; upper-bounds returned timestamp
+        :param fro: optional prior time of known delta json
+        :param fro_delta: optional known delta as of time fro
+        :return: rev reg delta json and ledger timestamp (epoch seconds)
+        """
+
+        logger = logging.getLogger(__name__)
+        logger.debug('_HolderProver._build_rr_delta_json: >>> rr_id: {}, to: {}, fro: {}, fro_delta: {}'.format(
+            rr_id,
+            to,
+            fro,
+            fro_delta))
+
+        rr_delta_json = None
+        ledger_timestamp = None
+
+        get_rr_delta_req_json = await ledger.build_get_revoc_reg_delta_request(self.did, rr_id, fro, to)
+        resp_json = await self._submit(get_rr_delta_req_json)
+        resp = json.loads(resp_json)
+        if 'result' in resp and 'data' in resp['result'] and 'value' in resp['result']['data']:
+            # it's a delta to a moment some time after the rev reg def
+            (_, rr_delta_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_delta_response(resp_json)
+        else:
+            logger.debug(
+                '_HolderProver._build_rr_delta_json: <!< Rev reg {} created after asked-for time {}'.format(rr_id, to))
+            raise BadRevStateTime(
+                'Rev reg {} created after asked-for time {}'.format(rr_id, to))
+
+        if fro and fro_delta:
+            rr_delta_json = await anoncreds.issuer_merge_revocation_registry_deltas(
+                json.dumps(fro_delta),
+                rr_delta_json)
+
+        rv = (rr_delta_json, ledger_timestamp)
+        logger.debug('_HolderProver._build_rr_delta_json: <<< {}'.format(rv))
+        return rv
 
     def dir_tails(self, rr_id: str) -> str:
         """

@@ -82,7 +82,8 @@ def cred_attr_value(raw: Any) -> dict:
 
 def canon(raw_attr_name: str) -> str:
     """
-    Canonicalize input attribute name as it appears in proofs: strip out white space and convert to lower case.
+    Canonicalize input attribute name as it appears in proofs and credential offers: strip out
+    white space and convert to lower case.
 
     :param raw_attr_name: attribute name
     :return: canonicalized attribute name
