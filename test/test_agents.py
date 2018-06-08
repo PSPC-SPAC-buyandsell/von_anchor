@@ -1517,7 +1517,11 @@ async def test_revo_cache_reg_delta_maintenance(pool_name, pool_genesis_txn_path
         print('\n\n== 5 == Creating {} credentials'.format(RR_SIZE))
         creation2cred_json = {}  # map creation epoch to cred
         creation2cred_data = {}
+        now = int(time())
         for i in range(RR_SIZE):
+            while int(time()) == now:
+                sleep(0.1)
+            now = int(time())
             print('.', end='' if (i + 1) % 10 else '{}\n'.format(i + 1), flush=True)
             now = int(time())
             cred_data = {
