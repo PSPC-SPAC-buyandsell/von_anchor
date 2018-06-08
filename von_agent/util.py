@@ -140,24 +140,26 @@ def rev_reg_id2cred_def_id__tag(rr_id: str) -> (str, str):
         str(rr_id.split(':')[-1]))  # tag is last token
 
 
-def schema_ids_for(creds: dict, cred_ids: list) -> dict:
+def schema__cred_def__rev_reg_ids(creds: dict, cred_ids: list) -> dict:
     """
     Given a credentials structure and a list of credential identifiers (aka wallet cred-ids, referents),
-    return dict mapping each credential identifier to its corresponding schema identifier (string).
+    return dict mapping each credential identifier to a triple (all strings) with its corresponding
+    schema identifier, credential definition identifier, and revocation registry identifier (None if
+    cred def does not support revocation).
 
     :param creds: creds structure returned by (HolderProver agent) get_creds()
     :param cred_ids: list of credential identifiers for which to find corresponding schema identifiers
-    :return: dict mapping each credential identifier to its corresponding schema identifier
+    :return: dict mapping each credential identifier to its corresponding schema id, cred def id, rev reg id
         (empty dict if no such credential identifiers present)
     """
 
     rv = {}
-    for uuid2creds in (creds['attrs'], creds['predicates']):
-        for inner_creds in uuid2creds.values():
-            for cred in inner_creds:  # it's a list of dicts, each dict a cred
-                cred_id = cred['cred_info']['referent']
-                if (cred_id not in rv) and (cred_id in cred_ids):
-                    rv[cred_id] = cred['cred_info']['schema_id']
+    for uuid, inner_creds in {**creds['attrs'], **creds['predicates']}.items():
+        for cred in inner_creds:  # cred is a dict in a list of dicts
+            cred_info = cred['cred_info']
+            cred_id = cred_info['referent']
+            if (cred_id not in rv) and (cred_id in cred_ids):
+                rv[cred_id] = (cred_info['schema_id'], cred_info['cred_def_id'], cred_info['rev_reg_id'])
 
     return rv
 

@@ -179,44 +179,54 @@ class _BaseAgent:
 
         logger.debug('_BaseAgent.close: <<<')
 
-    async def build_proof_req_json(self, cd_id2attrs: dict, cd_id2timestamp: dict = None) -> str:
+    async def build_proof_req_json(self, cd_id2spec: dict) -> str:
         """
         Build and return indy-sdk proof request for input attributes and timestamps by cred def id.
 
-        :param cd_id2attrs: dict mapping cred def ids to lists of names of
-            attributes of interest (empty list or None to include all); e.g.,
+        :param cd_id2spec: dict mapping cred def ids to:
+            - (optionally) 'attrs': lists of names of attributes of interest (omit for all, empty list or None for none)
+            - (optionally) 'minima': (pred) integer lower-bounds of interest (omit, empty list, or None for none)
+            - (optionally) 'timestamp': timestamp (epoch seconds) if cred def supports revocation (default now);
+            e.g.,
 
         ::
 
             {
-                'Vx4E82R17q...:3:CL:16': [
-                    'name',
-                    'favouriteDrink'
-                ],
-                'R17v42T4pk...:3:CL:19': None,  # include all attributes from schema underpinning this cred def
-                'Z9ccax812j...:3:CL:27': [],  # include all attributes from schema underpinning this cred def
-                ...
-            }
-
-        :param cd_id2timestamp: dict mapping cred def ids to timestamps (epoch seconds)
-            for non-revocation proof; defaulting to current time for cred defs supporting revocation; e.g.,
-
-        ::
-
-            {
-                'Vx4E82R17q...:3:CL:16': 1528116004,
-                'R17v42T4pk...:3:CL:19': 1512391236,
+                'Vx4E82R17q...:3:CL:16': {
+                    'attrs': [  # request attrs 'name' and 'favouriteDrink' from this cred def's schema
+                        'name',
+                        'favouriteDrink'
+                    ],
+                    'minima': {  # request predicate score>=80 from this cred def
+                        'score': 80
+                    }
+                    'timestamp': 1528116008  # set timestamp for all attrs and preds from this cred def's schema
+                },
+                'R17v42T4pk...:3:CL:19': None,  # request all attrs, no preds, default timestamps on all attrs
+                'e3vc5K168n...:3:CL:23': {},  # request all attrs, no preds, default timestamps on all attrs
+                'Z9ccax812j...:3:CL:27': {  # request all attrs, no preds, this timestamp on all attrs
+                    'timestamp': 1528116008
+                },
+                '9cHbp54C8n...:3:CL:37': {  # request no attrs, one pred, specify timestamp on pred
+                    'attrs': [],  # or equivalently, 'attrs': None
+                    'minima': {
+                        'employees': '50'  # nicety: implementation converts to int for caller
+                    },
+                    'timestamp': 1528116008
+                },
+                '6caBcmLi33...:3:CL:41': {  # all attrs, one pred, default timestamps to now on attrs & pred
+                    'minima': {
+                        'regEpoch': 1514782800
+                    }
+                }
                 ...
             }
 
         :return: indy-sdk proof request json
         """
 
-        # TODO: support predicates
         logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent.build_proof_req_json: >>> cd_id2attrs: {}, cd_id2timestamp: {}'.format(
-            cd_id2attrs,
-            cd_id2timestamp))
+        logger.debug('_BaseAgent.build_proof_req_json: >>> cd_id2spec: {}'.format(cd_id2spec))
 
         cd_id2schema = {}
         now = int(time())
@@ -228,38 +238,48 @@ class _BaseAgent:
             'requested_predicates': {}
         }
 
-        cd_id2interval = {}
-        for cd_id in cd_id2timestamp or cd_id2attrs:  # pass over if None
+        for cd_id in cd_id2spec:
+            interval = None
             cred_def = json.loads(await self.get_cred_def(cd_id))
-            if 'revocation' not in cred_def['value']:
-                continue
-            cd_id2schema[cd_id] = json.loads(await self.get_schema(cred_def_id2seq_no(cd_id)))
-            timestamp = cd_id2timestamp.get(cd_id, now) if cd_id2timestamp else now
-            if timestamp:
-                cd_id2interval[cd_id] = {
+            seq_no = cred_def_id2seq_no(cd_id)
+            cd_id2schema[cd_id] = json.loads(await self.get_schema(seq_no))
+            if 'revocation' in cred_def['value']:
+                timestamp = cd_id2spec[cd_id].get('timestamp', now) if cd_id2spec[cd_id] else now  # maybe cd_id: None
+                interval = {
                     'from': timestamp,
                     'to': timestamp
                 }
 
-        for cd_id in cd_id2attrs:
-            cred_def = json.loads(await self.get_cred_def(cd_id))
-            cd_id2schema[cd_id] = json.loads(await self.get_schema(cred_def_id2seq_no(cd_id)))
-
-            for attr_name in (cd_id2attrs.get(cd_id, []) if cd_id2attrs else []) or cd_id2schema[cd_id]['attrNames']:
-                attr_uuid = '{}_{}_uuid'.format(cred_def_id2seq_no(cd_id), attr_name)
+            for attr in (cd_id2spec[cd_id].get('attrs', cd_id2schema[cd_id]['attrNames']) or []  # maybe 'attrs': None
+                    if cd_id2spec[cd_id] else cd_id2schema[cd_id]['attrNames']):  # maybe cd_id: None or cd_id: {}
+                attr_uuid = '{}_{}_uuid'.format(seq_no, attr)
                 proof_req['requested_attributes'][attr_uuid] = {
-                    'name': attr_name,
+                    'name': attr,
                     'restrictions': [{
                         'cred_def_id': cd_id
                     }]
                 }
-                if cd_id in cd_id2interval:
-                    proof_req['requested_attributes'][attr_uuid]['non_revoked'] = cd_id2interval[cd_id]
-                elif 'revocation' in cred_def['value']:
-                    proof_req['requested_attributes'][attr_uuid]['non_revoked'] = {  # caller neglected; default to now
-                        'from': now,
-                        'to': now
+                if interval:
+                    proof_req['requested_attributes'][attr_uuid]['non_revoked'] = interval
+
+            for attr in (cd_id2spec[cd_id].get('minima', {}) or {} if cd_id2spec[cd_id] else {}):
+                pred_uuid = '{}_{}_uuid'.format(seq_no, attr)
+                try:
+                    proof_req['requested_predicates'][pred_uuid] = {
+                        'name': attr,
+                        'p_type': '>=',
+                        'p_value': int(cd_id2spec[cd_id]['minima'][attr]),
+                        'restrictions': [{
+                            'cred_def_id': cd_id
+                        }]
                     }
+                except ValueError:
+                    logger.info('cannot build predicate on non-int minimum {} for {}'.format(
+                        cd_id2spec[cd_id]['minima'][attr],
+                        attr))
+                    continue  # int conversion failed - reject candidate
+                if interval:
+                    proof_req['requested_predicates'][pred_uuid]['non_revoked'] = interval
 
         rv_json = json.dumps(proof_req)
         logger.debug('_BaseAgent.build_proof_req_json: <<< {}'.format(rv_json))
@@ -267,13 +287,14 @@ class _BaseAgent:
 
     async def build_req_creds_json(self, creds: dict, filt: dict = None, filt_dflt_incl: bool = False) -> str:
         """
-        Build and return indy-sdk requested credentials json on all attributes (and no predicates)
-        of specified creds structure.
+        Build and return indy-sdk requested credentials json from input indy-sdk creds structure
+        through specified filter.
 
         :param creds: indy-sdk creds structure
-        :param filt: filter for matching attribute-value pairs and predicates; dict mapping
-            each cred def id to dict (specify empty dict or None for no filter, matching all)
-            mapping attributes to values to match or compare. E.g.,
+        :param filt: filter  mapping cred def ids to:
+            - (optionally) 'attr-match': dict mapping attributes to values (omit, empty dict, or None to match all);
+            - (optionally) 'minima': (pred) integer lower-bounds of interest (omit, empty dict, or None to match all);
+            omit parameter or specify empty dict or None for no filter, matching all; e.g.,
 
         ::
 
@@ -284,18 +305,10 @@ class _BaseAgent:
                         'sex': 'M',
                         'favouriteDrink': None
                     },
-                    'pred-match': [  # if both attr-match and pred-match present, combined conjunctively (i.e., via AND)
-                        {
-                            'attr' : 'favouriteNumber',
-                            'pred-type': '>=',
-                            'value': 10
-                        },
-                        {  # if more than one predicate present, combined conjunctively (i.e., via AND)
-                            'attr' : 'score',
-                            'pred-type': '>=',
-                            'value': 100
-                        }
-                    ]
+                    'minima': {  # if both attr-match and minima present, combined conjunctively (i.e., via AND)
+                        'favouriteNumber' : 10,
+                        'score': 100  # if more than one minimum present, combined conjunctively (i.e., via AND)
+                    }
                 },
                 'R17v42T4pk...:3:CL:19': {
                     'attr-match': {
@@ -305,16 +318,21 @@ class _BaseAgent:
                 },
                 'Z9ccax812j...:3:CL:27': {
                     'attr-match': {}  # match all attributes on this cred def
+                },
+                '9cHbp54C8n...:3:CL:37': {
+                    'minima': {  # request all attributes on this cred def, request preds specifying employees>=50
+                        'employees' : 50,
+                    }
                 }
                 ...
             }
 
-        :param filt_dflt_incl: whether to include (True) all credentials that filter does not
-            identify by cred def, or to exclude (False) all such credentials
+        :param filt_dflt_incl: whether to request (True) all creds by attribute/predicate
+            that filter does not identify by cred def, or (False) to exclude them. Note that
+            if the filter is None or {}, this parameter is unnecessary - it applies to a filter,
+            not a non-filter.
         :return: indy_sdk requested_credentials json for use in proof creation
         """
-
-        # TODO: support predicates
 
         logger = logging.getLogger(__name__)
         logger.debug('_BaseAgent.build_req_creds_json: >>> creds: {}, filt: {}'.format(creds, filt))
@@ -325,14 +343,16 @@ class _BaseAgent:
             'requested_predicates': {}
         }
 
-        def _add_cred(cred, attr_uuid):
+        def _add_cred(cred, uuid, key):
             nonlocal req_creds
-            req_creds['requested_attributes'][attr_uuid] = {
+            req_creds[key][uuid] = {
                 'cred_id': cred['cred_info']['referent'],
                 'revealed': True
             }
             if cred.get('interval', None):
-                req_creds['requested_attributes'][attr_uuid]['timestamp'] = cred['interval']['to']
+                req_creds[key][uuid]['timestamp'] = cred['interval']['to']
+            if key == 'requested_attributes':
+                req_creds[key][uuid]['revealed'] = True
 
         if filt:
             for cd_id in filt:
@@ -352,15 +372,40 @@ class _BaseAgent:
                 if filt:
                     if cred_cd_id not in filt:
                         if filt_dflt_incl:
-                            _add_cred(cred, attr_uuid)
+                            _add_cred(cred, attr_uuid, 'requested_attributes')
                         continue
-                    if cred_cd_id in filt and 'attr-match' in filt[cred_cd_id]:
+                    if cred_cd_id in filt and 'attr-match' in (filt[cred_cd_id] or {}):  # maybe filt[cred_cd_id]: None
                         if not {k: str(filt[cred_cd_id].get('attr-match', {})[k])
                                 for k in filt[cred_cd_id].get('attr-match', {})}.items() <= cred_info['attrs'].items():
                             continue
-                    _add_cred(cred, attr_uuid)
+                    _add_cred(cred, attr_uuid, 'requested_attributes')
                 else:
-                    _add_cred(cred, attr_uuid)
+                    _add_cred(cred, attr_uuid, 'requested_attributes')
+
+        for pred_uuid in creds['predicates']:
+            for cred in creds['predicates'][pred_uuid]:
+                if pred_uuid in req_creds['requested_predicates']:
+                    continue
+                cred_info = cred['cred_info']
+                cred_cd_id = cred_info['cred_def_id']
+
+                if filt:
+                    if cred_cd_id not in filt:
+                        if filt_dflt_incl:
+                            _add_cred(cred, pred_uuid, 'requested_predicates')
+                        continue
+                    if cred_cd_id in filt and 'minima' in (filt[cred_cd_id] or {}):  # maybe filt[cred_cd_id]: None
+                        minima = filt[cred_cd_id].get('minima', {})
+                        try:
+                            if any((attr not in cred_info['attrs'])
+                                or (int(cred_info['attrs'][attr]) < int(minima[attr]))
+                                    for attr in minima):
+                                continue
+                        except ValueError:
+                            continue  # int conversion failed - reject candidate
+                    _add_cred(cred, pred_uuid, 'requested_predicates')
+                else:
+                    _add_cred(cred, pred_uuid, 'requested_predicates')
 
         rv_json = json.dumps(req_creds)
         logger.debug('_BaseAgent.build_req_creds_json: <<< {}'.format(rv_json))
@@ -610,7 +655,7 @@ class _BaseAgent:
                 logger.info('_BaseAgent.get_schema: got schema {} from ledger'.format(index))
 
             elif isinstance(index, (int, str)):  # :2: not in index - it's a stringified int txn no
-                txn_json = await self.process_get_txn(int(index))
+                txn_json = await self.get_txn(int(index))
                 txn = json.loads(txn_json)
                 if txn.get('type', None) == '101':  # {} for no such txn; 101 marks indy-sdk schema txn type
                     rv_json = await self.get_schema(SchemaKey(
@@ -629,7 +674,7 @@ class _BaseAgent:
         logger.debug('_BaseAgent.get_schema: <<< {}'.format(rv_json))
         return rv_json
 
-    async def process_get_txn(self, txn: int) -> str:
+    async def get_txn(self, txn: int) -> str:
         """
         Find a transaction on the distributed ledger by its sequence number.
 
@@ -638,29 +683,15 @@ class _BaseAgent:
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent.process_get_txn: >>> txn: {}'.format(txn))
+        logger.debug('_BaseAgent.get_txn: >>> txn: {}'.format(txn))
 
         rv_json = json.dumps({})
         req_json = await ledger.build_get_txn_request(self.did, txn)
         resp = json.loads(await self._submit(req_json))
 
         rv_json = json.dumps(resp['result'].get('data', {}))
-        logger.debug('_BaseAgent.process_get_txn: <<< {}'.format(rv_json))
+        logger.debug('_BaseAgent.get_txn: <<< {}'.format(rv_json))
         return rv_json
-
-    async def process_get_did(self) -> str:
-        """
-        Get current agent's DID, return json accordingly.
-
-        :return: json DID
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('_BaseAgent.process_get_did: >>>')
-
-        rv = json.dumps(self.did or {})
-        logger.debug('_BaseAgent.process_get_did: <<< {}'.format(rv))
-        return rv
 
     def __repr__(self) -> str:
         """
@@ -1546,18 +1577,10 @@ class HolderProver(_BaseAgent):
                         'sex': 'M',
                         'favouriteDrink': None
                     },
-                    'pred-match': [  # if both attr-match and pred-match present, combined conjunctively (i.e., via AND)
-                        {
-                            'attr' : 'favouriteNumber',
-                            'pred-type': '>=',
-                            'value': 10
-                        },
-                        {  # if more than one predicate present, combined conjunctively (i.e., via AND)
-                            'attr' : 'score',
-                            'pred-type': '>=',
-                            'value': 100
-                        },
-                    ]
+                    'minima': {  # if both attr-match and minima present, combined conjunctively (i.e., via AND)
+                        'favouriteNumber' : 10,
+                        'score': '100'  # nicety: implementation converts to int for caller
+                    },
                 },
                 'R17v42T4pk...:3:CL:19': {
                     'attr-match': {
@@ -1595,28 +1618,28 @@ class HolderProver(_BaseAgent):
                         'HolderProver.get_creds: ignoring filter criterion, no cred def on {}'.format(cd_id))
                     filt.pop(cd_id)
 
-        for attr_uuid in creds['attrs']:
-            for candidate in creds['attrs'][attr_uuid]:  # candidate is a dict in a list of dicts
-                cred_info = candidate['cred_info']
+        for uuid, inner_creds in {**creds['attrs'], **creds['predicates']}.items():
+            for cred in inner_creds:  # cred is a dict in a list of dicts
+                cred_info = cred['cred_info']
                 if filt:
                     cred_cd_id = cred_info['cred_def_id']
                     if cred_cd_id not in filt:
                         if filt_dflt_incl:
                             cred_ids.add(cred_info['referent'])
                         continue
-                    if 'attr-match' in filt[cred_cd_id]:
+                    if 'attr-match' in (filt[cred_cd_id] or {}):  # maybe filt[cred_cd_id]: None
                         if not {k: str(filt[cred_cd_id].get('attr-match', {})[k])
                                 for k in filt[cred_cd_id].get('attr-match', {})}.items() <= cred_info['attrs'].items():
                             continue
-                    if 'pred-match' in filt[cred_cd_id]:
+                    if 'minima' in (filt[cred_cd_id] or {}):  # maybe filt[cred_cd_id]: None
+                        minima = filt[cred_cd_id].get('minima', {})
                         try:
-                            if any((pred_match['attr'] not in cred_info['attrs']) or
-                                (int(cred_info['attrs'][pred_match['attr']]) < pred_match['value'])
-                                    for pred_match in filt[cred_cd_id].get('pred-match', {})):
+                            if any((attr not in cred_info['attrs'])
+                                or (int(cred_info['attrs'][attr]) < int(minima[attr]))
+                                    for attr in minima):
                                 continue
                         except ValueError:
-                            # int conversion failed - reject candidate
-                            continue
+                            continue  # int conversion failed - reject candidate
                     cred_ids.add(cred_info['referent'])
                 else:
                     cred_ids.add(cred_info['referent'])

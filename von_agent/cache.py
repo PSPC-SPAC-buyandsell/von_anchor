@@ -186,20 +186,8 @@ class RevRegDeltaFrame:
     Revocation registry delta plus metadata in revocation cache (revocation cache indexes on rev reg id).
     Keeps track of last query time, last-asked-for time, timestamp on distributed ledger, and rev reg delta.
     The last query time is purely for cache management.
-    
-    Necessarily for each cached delta, timestamp <= ask_for.
-    Issuer agents cannot revoke retroactively.
-    Hence, for any new request against asked-for time ask_for:
-    * if the cache has a frame f on f.timestamp <= ask_for <= f.ask_for,
-      > return its rev reg delta
-    * if the cache has a frame f on f.timestamp < ask_for,
-      > check the distributed ledger for a delta to the rev reg delta since e.timestamp;
-        - if there is one, merge it to a new delta and add new frame to cache; return rev reg delta
-        - otherwise, update the ask_for time in the frame and return the rev reg delta
-    * otherwise, there is no cache frame f on f.timestamp < ask_for:
-      > create new frame and add it to cache; return rev reg delta.
 
-    On return of any rev reg delta, always update its query time beforehand.
+    Necessarily for each cached delta frame, timestamp <= ask_for <= qtime.
     """
 
     def __init__(self, ask_for: int, timestamp: int, rr_delta: dict):
@@ -336,8 +324,21 @@ class RevoCacheEntry:
 
         Raise BadRevStateTime if caller asks for a delta to the future.
 
+        Issuer agents cannot revoke retroactively.
+        Hence, for any new request against asked-for time ask_for:
+        * if the cache has a frame f on f.timestamp <= ask_for <= f.ask_for,
+          > return its rev reg delta
+        * if the cache has a frame f on f.timestamp < ask_for,
+          > check the distributed ledger for a delta to the rev reg delta since e.timestamp;
+            - if there is one, merge it to a new delta and add new frame to cache; return rev reg delta
+            - otherwise, update the ask_for time in the frame and return the rev reg delta
+        * otherwise, there is no cache frame f on f.timestamp < ask_for:
+          > create new frame and add it to cache; return rev reg delta.
+
+        On return of any previously existing rev reg delta frame, always update its query time beforehand.
+
         :param rr_delta_builder: callback to build rev reg delta if need be (specify agent instance's _build_rr_delta())
-        :param ask_for: time (epoch seconds) of interest; upper-bounds returned revocation delta timestamp 
+        :param ask_for: time (epoch seconds) of interest; upper-bounds returned revocation delta timestamp
         :return: rev reg delta json and ledger timestamp (epoch seconds)
         """
 
@@ -357,18 +358,6 @@ class RevoCacheEntry:
             cache_frame = frames[0]
 
         else:
-            '''
-            Can we have non-empty frames = [
-                frame for frame in self._rr_delta_frames if frame.ask_for < ask_for == frame.timestamp]?
-
-            Consider frame in frames.
-            Since we are in 'else', frame.ask_for < ask_for (otherwise frames above would be nonempty hence truthy).
-            But frame.timestamp <= frame.ask_for, since ask_for on a future timestamp is forbidden.
-            Hence frame.timestamp <= frame.ask_for < ask_for == frame.timestamp
-            And so frame.timestamp < frame.timestamp, a contradiction.
-            Therefore frames = []
-            '''
-
             frames = [frame for frame in self._rr_delta_frames if frame.timestamp < ask_for]  # frame.ask_for < ask_for
             if frames:
                 latest_cached = max(frames, key=lambda frame: frame.timestamp)
@@ -378,7 +367,7 @@ class RevoCacheEntry:
                     fro=latest_cached.timestamp,
                     fro_delta=latest_cached.rr_delta)
                 if timestamp == latest_cached.timestamp:
-                    latest_cached._ask_for = ask_for  # this timestamp now known good through newer ask_for
+                    latest_cached._ask_for = ask_for  # this timestamp now known good through more recent ask_for
                     cache_frame = latest_cached
                 else:
                     pass
