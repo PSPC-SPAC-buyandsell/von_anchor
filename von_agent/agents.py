@@ -908,10 +908,10 @@ class Issuer(Origin):
             await self.get_cred_def(cd_id)
         except AbsentCredDef:
             logger.debug(
-                'Issuer._sync_revoc: <!< tails tree {} may pertain to another ledger; no cred def found on {}'.format(
+                'Issuer._sync_revoc: <!< tails tree {} may be for another ledger; no cred def found on {}'.format(
                     self._dir_tails,
                     cd_id))
-            raise AbsentCredDef('Tails tree {} may pertain to another ledger; no cred def found on {}'.format(
+            raise AbsentCredDef('Tails tree {} may be for another ledger; no cred def found on {}'.format(
                 self._dir_tails,
                 cd_id))
 
@@ -1242,9 +1242,9 @@ class HolderProver(_BaseAgent):
 
         if not json.loads(await self.get_cred_def(cd_id)):
             logger.debug(
-                'HolderProver._sync_revoc: <!< corrupt tails tree {} may pertain to another ledger'.format(
+                'HolderProver._sync_revoc: <!< corrupt tails tree {} may be for another ledger'.format(
                     self._dir_tails))
-            raise AbsentCredDef('Corrupt tails tree {} may pertain to another ledger'.format(self._dir_tails))
+            raise AbsentCredDef('Corrupt tails tree {} may be for another ledger'.format(self._dir_tails))
 
         with REVO_CACHE.lock:
             revo_cache_entry = REVO_CACHE.get(rr_id, None)
@@ -1272,7 +1272,11 @@ class HolderProver(_BaseAgent):
     async def _build_rr_delta_json(self, rr_id: str, to: int, fro: int = None, fro_delta: dict = None) -> (str, int):
         """
         Build rev reg delta json, potentially starting from existing (earlier) delta.
+
         Return delta json and its timestamp on the distributed ledger.
+
+        Raise AbsentRevReg for no such revocation registry, or BadRevStateTime for a requested delta to
+        a time preceding revocation registry creation.
 
         :param rr_id: rev reg id
         :param to: time (epoch seconds) of interest; upper-bounds returned timestamp
@@ -1295,8 +1299,12 @@ class HolderProver(_BaseAgent):
         resp_json = await self._submit(get_rr_delta_req_json)
         resp = json.loads(resp_json)
         if 'result' in resp and 'data' in resp['result'] and 'value' in resp['result']['data']:
-            # it's a delta to a moment some time after the rev reg def
-            (_, rr_delta_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_delta_response(resp_json)
+            # delta is to some time at or beyond rev reg creation, carry on
+            try:
+                (_, rr_delta_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_delta_response(resp_json)
+            except IndyError:  # ledger replied, but there is no such rev reg
+                logger.debug('_HolderProver._build_rr_delta_json: <!< no rev reg exists on {}'.format(rr_id))
+                raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
         else:
             logger.debug(
                 '_HolderProver._build_rr_delta_json: <!< Rev reg {} created after asked-for time {}'.format(rr_id, to))
@@ -1311,6 +1319,7 @@ class HolderProver(_BaseAgent):
         rv = (rr_delta_json, ledger_timestamp)
         logger.debug('_HolderProver._build_rr_delta_json: <<< {}'.format(rv))
         return rv
+
 
     def dir_tails(self, rr_id: str) -> str:
         """
@@ -1401,9 +1410,9 @@ class HolderProver(_BaseAgent):
         schema = json.loads(schema_json)
         if not schema:
             logger.debug(
-                'HolderProver.create_cred_req: <!< absent schema@#{}, cred req may pertain to another ledger'.format(
+                'HolderProver.create_cred_req: <!< absent schema@#{}, cred req may be for another ledger'.format(
                     schema_seq_no))
-            raise AbsentSchema('Absent schema@#{}, cred req may pertain to another ledger'.format(schema_seq_no))
+            raise AbsentSchema('Absent schema@#{}, cred req may be for another ledger'.format(schema_seq_no))
         (cred_req_json, cred_req_metadata_json) = await anoncreds.prover_create_credential_req(
             self.wallet.handle,
             self.did,
@@ -1741,10 +1750,10 @@ class HolderProver(_BaseAgent):
                 schema = json.loads(await self.get_schema(s_key))  # add to cache en passant
                 if not schema:
                     logger.debug(
-                        'HolderProver.create_proof: <!< absent schema {}, proof req may pertain to another ledger'
+                        'HolderProver.create_proof: <!< absent schema {}, proof req may be for another ledger'
                             .format(s_id))
                     raise AbsentSchema(
-                        'Absent schema {}, proof req may pertain to another ledger'.format(s_id))
+                        'Absent schema {}, proof req may be for another ledger'.format(s_id))
                 s_id2schema[s_id] = schema
 
             cd_id = cred_info['cred_def_id']
@@ -1780,26 +1789,28 @@ class HolderProver(_BaseAgent):
                 rr_id2cr_id[rr_id] = cred_info['cred_rev_id']
 
         rr_id2rev_state = {}  # revocation registry identifier to its state
-        for rr_id in rr_id2timestamp:
-            revo_cache_entry = REVO_CACHE.get(rr_id, None)
-            tails = revo_cache_entry.tails if revo_cache_entry else None
-            if tails is None:  # missing tails file
-                logger.debug(
-                    'HolderProver.create_proof: <!< missing tails file for rev reg id {}'.format(rr_id))
-                raise AbsentTails('Missing tails file for rev reg id {}'.format(rr_id))
-            rr_def_json = await self._get_rev_reg_def(rr_id)
-            (rr_delta_json, ledger_timestamp) = await revo_cache_entry.get_delta_json(
-                self._build_rr_delta_json,
-                rr_id2timestamp[rr_id])
-            rr_state_json = await anoncreds.create_revocation_state(
-                tails.reader_handle,
-                rr_def_json,
-                rr_delta_json,
-                ledger_timestamp,
-                rr_id2cr_id[rr_id])
-            rr_id2rev_state[rr_id] = {
-                rr_id2timestamp[rr_id]: json.loads(rr_state_json)
-            }
+        with REVO_CACHE.lock:
+            for rr_id in rr_id2timestamp:
+                revo_cache_entry = REVO_CACHE.get(rr_id, None)
+                tails = revo_cache_entry.tails if revo_cache_entry else None
+                if tails is None:  # missing tails file
+                    logger.debug(
+                        'HolderProver.create_proof: <!< missing tails file for rev reg id {}'.format(rr_id))
+                    raise AbsentTails('Missing tails file for rev reg id {}'.format(rr_id))
+                rr_def_json = await self._get_rev_reg_def(rr_id)
+                (rr_delta_json, ledger_timestamp) = await revo_cache_entry.get_delta_json(
+                    self._build_rr_delta_json,
+                    rr_id2timestamp[rr_id])
+                rr_state_json = await anoncreds.create_revocation_state(
+                    tails.reader_handle,
+                    rr_def_json,
+                    rr_delta_json,
+                    ledger_timestamp,
+                    rr_id2cr_id[rr_id])
+                rr_id2rev_state[rr_id] = {
+                    rr_id2timestamp[rr_id]: json.loads(rr_state_json)
+                }
+
         rv = await anoncreds.prover_create_proof(
             self.wallet.handle,
             json.dumps(proof_req),
@@ -1858,6 +1869,48 @@ class Verifier(_BaseAgent):
     Mixin for agent acting in the role of Verifier. Verifier agents verify proofs.
     """
 
+    async def _build_rr_state_json(self, rr_id: str, timestamp: int) -> (str, int):
+        """
+        Build rev reg state json at a given requested timestamp.
+
+        Return delta json and its transaction time on the distributed ledger,
+        with upper bound at input timestamp of interest.
+        
+        Raise AbsentRevReg if no revocation registry exists on input rev reg id,
+        or BadRevStateTime if requested timestamp predates revocation registry creation.
+
+        :param rr_id: rev reg id
+        :param timestamp: timestamp of interest (epoch seconds)
+        :return: rev reg delta json and ledger timestamp (epoch seconds)
+        """
+
+        logger = logging.getLogger(__name__)
+        logger.debug('_Verifier._build_rr_state_json: >>> rr_id: {}, timestamp: {}'.format(rr_id, timestamp))
+
+        rr_json = None
+        ledger_timestamp = None
+
+        get_rr_req_json = await ledger.build_get_revoc_reg_request(self.did, rr_id, timestamp)
+        resp_json = await self._submit(get_rr_req_json)
+        resp = json.loads(resp_json)
+        if 'result' in resp and 'data' in resp['result'] and 'value' in resp['result']['data']:
+            # timestamp at or beyond rev reg creation, carry on
+            try:
+                (_, rr_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_response(resp_json)
+            except IndyError:  # ledger replied, but there is no such rev reg
+                logger.debug('Verifier._build_rr_state_json: <!< no rev reg exists on {}'.format(rr_id))
+                raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
+        else:
+            logger.debug(
+                '_Verifier._build_rr_state_json: <!< Rev reg {} created after asked-for time {}'.format(
+                    rr_id,
+                    timestamp))
+            raise BadRevStateTime('Rev reg {} created after asked-for time {}'.format(rr_id, timestamp))
+
+        rv = (rr_json, ledger_timestamp)
+        logger.debug('_Verifier._build_rr_state_json: <<< {}'.format(rv))
+        return rv
+
     async def verify_proof(self, proof_req: dict, proof: dict) -> str:
         """
         Verify proof as Verifier. Raise AbsentRevReg if a proof cites a revocation registry
@@ -1876,49 +1929,45 @@ class Verifier(_BaseAgent):
         rr_id2rr_def = {}
         rr_id2rr = {}
         proof_ids = proof['identifiers']
-        for proof_id in proof_ids:
-            # schema
-            s_id = proof_id['schema_id']
-            if s_id not in s_id2schema:
-                s_key = schema_key(s_id)
-                schema = json.loads(await self.get_schema(s_key))  # add to cache en passant
-                if not schema:
-                    logger.debug(
-                        'Verifier.verify_proof: <!< absent schema {}, proof req may pertain to another ledger'.format(
-                            s_id))
-                    raise AbsentSchema(
-                        'Absent schema {}, proof req may pertain to another ledger'.format(s_id))
-                s_id2schema[s_id] = schema
+        with REVO_CACHE.lock:
+            for proof_id in proof_ids:
+                # schema
+                s_id = proof_id['schema_id']
+                if s_id not in s_id2schema:
+                    s_key = schema_key(s_id)
+                    schema = json.loads(await self.get_schema(s_key))  # add to cache en passant
+                    if not schema:
+                        logger.debug(
+                            'Verifier.verify_proof: <!< absent schema {}, proof req may be for another ledger'.format(
+                                s_id))
+                        raise AbsentSchema(
+                            'Absent schema {}, proof req may be for another ledger'.format(s_id))
+                    s_id2schema[s_id] = schema
 
-            # cred def
-            cd_id = proof_id['cred_def_id']
-            if cd_id not in cd_id2cred_def:
-                cred_def = json.loads(await self.get_cred_def(cd_id))  # add to cache en passant
-                if not cred_def:
-                    logger.debug('Verifier.verify_proof: <!< absent cred def for id {}'.format(cd_id))
-                    raise AbsentCredDef('Absent cred def for id {}'.format(cd_id))
-                cd_id2cred_def[cd_id] = cred_def
+                # cred def
+                cd_id = proof_id['cred_def_id']
+                if cd_id not in cd_id2cred_def:
+                    cred_def = json.loads(await self.get_cred_def(cd_id))  # add to cache en passant
+                    if not cred_def:
+                        logger.debug('Verifier.verify_proof: <!< absent cred def for id {}'.format(cd_id))
+                        raise AbsentCredDef('Absent cred def for id {}'.format(cd_id))
+                    cd_id2cred_def[cd_id] = cred_def
 
-            # rev reg def
-            rr_id = proof_id['rev_reg_id']
-            if not rr_id:
-                continue
+                # rev reg def
+                rr_id = proof_id['rev_reg_id']
+                if not rr_id:
+                    continue
 
-            rr_def_json = await self._get_rev_reg_def(rr_id)
-            rr_id2rr_def[rr_id] = json.loads(rr_def_json)
+                rr_def_json = await self._get_rev_reg_def(rr_id)
+                rr_id2rr_def[rr_id] = json.loads(rr_def_json)
 
-            # timestamp
-            timestamp = proof_id['timestamp']
-            get_rr_req_json = await ledger.build_get_revoc_reg_request(self.did, rr_id, timestamp)
-            resp_json = await self._submit(get_rr_req_json)
-            try:
-                (_, rr_json, _) = await ledger.parse_get_revoc_reg_response(resp_json)
+                # timestamp
+                timestamp = proof_id['timestamp']
+                revo_cache_entry = REVO_CACHE.get(rr_id, None)
+                (rr_json, _) = await revo_cache_entry.get_state_json(self._build_rr_state_json, timestamp)
                 if rr_id not in rr_id2rr:
                     rr_id2rr[rr_id] = {}
                 rr_id2rr[rr_id][timestamp] = json.loads(rr_json)
-            except IndyError:  # ledger replied, but there is no such rev reg
-                logger.debug('Verifier.verify_proof: <!< no rev reg exists on {}'.format(rr_id))
-                raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
 
         rv = json.dumps(await anoncreds.verifier_verify_proof(
             json.dumps(proof_req),

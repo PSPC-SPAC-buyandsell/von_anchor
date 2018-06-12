@@ -27,9 +27,13 @@ from von_agent.codec import decode
 SchemaKey = namedtuple('SchemaKey', 'origin_did name version')
 
 
-def ppjson(dumpit: Any, elide_to: int = None):
+def ppjson(dumpit: Any, elide_to: int = None) -> str:
     """
     JSON pretty printer, whether already json-encoded or not
+
+    :param dumpit: object to pretty-print
+    :param elide_to: optional maximum length including ellipses ('...')
+    :return: json pretty-print
     """
 
     if elide_to is not None:

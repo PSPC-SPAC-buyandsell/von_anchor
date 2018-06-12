@@ -24,16 +24,36 @@ from von_agent.codec import cred_attr_value, encode, decode
 
 #noinspection PyUnusedLocal
 @pytest.mark.asyncio
-async def test_codec():
-    for plen in range(0, 1025):
-        plain = ''.join(choice(printable) for _ in range(plen))
+async def test_enco_deco():
+    for printable_len in range(0, 1025):
+        plain = ''.join(choice(printable) for _ in range(printable_len))
         enc = encode(plain)
         dec = decode(enc)
         assert cred_attr_value(plain) == {'raw': str(plain), 'encoded': enc}
         assert plain == dec
 
-    for plain in (None, -5, 0, 1024, 2**32 - 1, 2**32, 2**32 + 1):
+    for plain in (
+            None,
+            True,
+            False,
+            -5,
+            0,
+            1024,
+            2**31 - 1,
+            2**31,
+            2**31 + 1,
+            -2**31 - 1,
+            -2**31,
+            -2**31 + 1,
+            0.0,
+            '0.0',
+            0.1,
+            -0.1,
+            -19234856120348165921835629183561023142.55,
+            19234856120348165921835629183561023142.55,
+            [],
+            [0,1,2,3]):
         enc = encode(plain)
         dec = decode(enc)
         assert cred_attr_value(plain) == {'raw': str(plain), 'encoded': enc}
-        assert str(plain) == dec if plain is not None else plain == dec
+        assert str(plain) == dec if isinstance(plain, list) else plain == dec  # decode(encode) retains scalar types

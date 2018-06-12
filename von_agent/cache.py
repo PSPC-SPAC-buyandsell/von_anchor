@@ -181,28 +181,30 @@ class SchemaCache:
         return 'SchemaCache({})'.format(self.dict())
 
 
-class RevRegDeltaFrame:
+class RevRegUpdateFrame:
     """
-    Revocation registry delta plus metadata in revocation cache (revocation cache indexes on rev reg id).
-    Keeps track of last query time, last-asked-for time, timestamp on distributed ledger, and rev reg delta.
+    Revocation registry delta or state update, plus metadata, in revocation cache (which indexes on rev reg id).
+    Keeps track of last query time, last-asked-for time, timestamp on distributed ledger, and rev reg update.
     The last query time is purely for cache management.
+
+    Holder-Prover agents use deltas to create proof; verifier agents use updates to verify them.
 
     Necessarily for each cached delta frame, timestamp <= ask_for <= qtime.
     """
 
-    def __init__(self, ask_for: int, timestamp: int, rr_delta: dict):
+    def __init__(self, ask_for: int, timestamp: int, rr_update: dict):
         """
-        Initialize a new revocation registry delta frame for revocation cache.
+        Initialize a new revocation registry update frame for revocation cache.
 
         :param ask_for: the time (epoch sec) of interest
         :param timestamp: the timestamp (epoch sec) corresponding to the revocation delta on the ledger
-        :param rr_delta: the indy-sdk revocation registry delta
+        :param rr_update: the indy-sdk revocation registry delta or state update
         """
 
         self._qtime = int(time())
         self._ask_for = ask_for
         self._timestamp = timestamp
-        self._rr_delta = rr_delta
+        self._rr_update = rr_update
 
     @property
     def qtime(self) -> int:
@@ -217,9 +219,9 @@ class RevRegDeltaFrame:
     @property
     def ask_for(self) -> int:
         """
-        Accessor for the latest cached time of interest associated with the rev reg delta.
+        Accessor for the latest cached time of interest associated with the rev reg update.
 
-        :return: latest time of interest requested regarding current frame's rev reg delta
+        :return: latest time of interest requested regarding current frame's rev reg update
         """
 
         return self._ask_for
@@ -227,40 +229,40 @@ class RevRegDeltaFrame:
     @property
     def timestamp(self) -> int:
         """
-        Accessor for timestamp on the distributed ledger for the rev reg delta.
+        Accessor for timestamp on the distributed ledger for the rev reg update.
 
-        :return: timestamp on distributed ledger for current frame's rev reg delta
+        :return: timestamp on distributed ledger for current frame's rev reg update
         """
 
         return self._timestamp
 
     @property
-    def rr_delta(self) -> dict:
+    def rr_update(self) -> dict:
         """
-        Accessor for rev reg delta.
+        Accessor for rev reg update.
 
-        :return: current frame's rev reg delta
+        :return: current frame's rev reg update
         """
 
-        return self._rr_delta
+        return self._rr_update
 
     def __repr__(self):
         """
         Return canonical representation of the item.
         """
 
-        return 'RevRegDeltaFrame({}, {}, {})'.format(self.ask_for, self.timestamp, self.rr_delta)
+        return 'RevRegUpdateFrame({}, {}, {})'.format(self.ask_for, self.timestamp, self.rr_update)
 
     def __str__(self):
         """
         Return representation of the item showing query time.
         """
 
-        return 'RevRegDeltaFrame<qtime={}, ask_for={}, timestamp={}, rr_delta={}>'.format(
+        return 'RevRegUpdateFrame<qtime={}, ask_for={}, timestamp={}, rr_update={}>'.format(
             self.qtime,
             self.ask_for,
             self.timestamp,
-            self.rr_delta)
+            self.rr_update)
 
 
 class RevoCacheEntry:
@@ -274,7 +276,7 @@ class RevoCacheEntry:
     def __init__(self, rev_reg_def: dict, tails: Tails = None):
         """
         Initialize with revocation registry definition, optional tails file.
-        Set revocation delta frames list empty.
+        Set revocation delta frames lists for rev reg deltas and rev reg states empty.
 
         :param rev_reg_def: revocation registry definition
         :param tails: current tails file object
@@ -285,7 +287,8 @@ class RevoCacheEntry:
 
         self._rev_reg_def = rev_reg_def or None
         self._tails = tails or None
-        self._rr_delta_frames = []
+        self._rr_delta_frames = []  # for holder-prover, creating proof
+        self._rr_state_frames = []  # for verifier, verifying proof
 
         logger.debug('RevoCacheEntry.__init__: <<<')
 
@@ -313,9 +316,91 @@ class RevoCacheEntry:
 
         return self._rr_delta_frames
 
+    @property
+    def rr_state_frames(self) -> list:
+        """
+        Return current revocation state frame list.
+        """
+
+        return self._rr_state_frames
+
+    async def _get_update(self, rr_builder: Callable, ask_for: int, delta: bool) -> (str, int):
+        """
+        Get rev reg delta/state json, and its timestamp on the distributed ledger,
+        from cached rev reg delta/state frames list or distributed ledger,
+        updating cache as necessary.
+
+        Raise BadRevStateTime if caller asks for a delta/state in the future.
+
+        Issuer agents cannot revoke retroactively.
+        Hence, for any new request against asked-for time ask_for:
+        * if the cache has a frame f on f.timestamp <= ask_for <= f.ask_for,
+          > return its rev reg delta/state
+        * if the cache has a frame f on f.timestamp < ask_for,
+          > check the distributed ledger for a delta to/state for the rev reg since e.timestamp;
+            - if there is one, merge it to a new delta/state and add new frame to cache; return rev reg delta/state
+            - otherwise, update the ask_for time in the frame and return the rev reg delta/state
+        * otherwise, there is no cache frame f on f.timestamp < ask_for:
+          > create new frame and add it to cache; return rev reg delta/state.
+
+        On return of any previously existing rev reg delta/state frame, always update its query time beforehand.
+
+        :param rr_builder: callback to build rev reg delta/state if need be (specify holder-prover agent's
+            _build_rr_delta_json() or verifier agent's _build_rr_state_json() as needed)
+        :param ask_for: time (epoch seconds) of interest; upper-bounds returned revocation delta/state timestamp
+        :param delta: true to operate on rev reg deltas, false for updates
+        :return: rev reg delta/state json and ledger timestamp (epoch seconds)
+        """
+
+        now = int(time())
+        if ask_for > now:
+            raise BadRevStateTime('Cannot query a rev reg {} in the future ({} > {})'.format(
+                'delta' if delta else 'state',
+                ask_for,
+                now))
+
+        cache_frame = None
+        rr_update_json = None
+        rr_frames = self._rr_delta_frames if delta else self._rr_state_frames
+
+        frames = [frame for frame in rr_frames if frame.timestamp <= ask_for <= frame.ask_for]
+        if frames:
+            assert len(frames) == 1
+            cache_frame = frames[0]
+        else:
+            frames = [frame for frame in rr_frames if frame.timestamp < ask_for]  # frame.ask_for < ask_for
+            if frames:
+                latest_cached = max(frames, key=lambda frame: frame.timestamp)
+                if delta:
+                    (rr_update_json, timestamp) = await rr_builder(
+                        self.rev_reg_def['id'],
+                        to=ask_for,
+                        fro=latest_cached.timestamp,
+                        fro_delta=latest_cached.rr_update)
+                else:
+                    (rr_update_json, timestamp) = await rr_builder(self.rev_reg_def['id'], ask_for)
+                if timestamp == latest_cached.timestamp:
+                    latest_cached._ask_for = ask_for  # this timestamp now known good through more recent ask_for
+                    cache_frame = latest_cached
+            else:
+                (rr_update_json, timestamp) = await rr_builder(self.rev_reg_def['id'], ask_for)
+
+        if cache_frame is None:
+            cache_frame = RevRegUpdateFrame(ask_for, timestamp, json.loads(rr_update_json))
+            rr_frames.append(cache_frame)
+
+            mark = 4096**0.5  # max rev reg size = 4096; heuristic: hover max around sqrt(4096) = 64
+            if len(rr_frames) > int(mark * 1.25):
+                rr_frames.sort(key=lambda x: -x.qtime)  # order by descending query time
+                del rr_frames[int(mark * 0.75):]  # retain most recent, grow again from here
+        else:
+            cache_frame._qtime = int(time())
+
+        return (json.dumps(cache_frame.rr_update), cache_frame.timestamp)
+
     async def get_delta_json(
             self,
-            rr_delta_builder: Callable[[str, int, int, dict], Awaitable[Tuple[str, int]]],
+            rr_delta_builder: Callable[['HolderProver', str, int, int, dict], Awaitable[Tuple[str, int]]],
             ask_for: int) -> (str, int):
         """
         Get rev reg delta json, and its timestamp on the distributed ledger,
@@ -345,49 +430,34 @@ class RevoCacheEntry:
         logger = logging.getLogger(__name__)
         logger.debug('RevoCacheEntry.get_delta_json: >>> rr_delta_builder: (method), ask_for: {}'.format(ask_for))
 
-        now = int(time())
-        if ask_for > now:
-            raise BadRevStateTime('Cannot query a rev reg delta in the future ({} > {})'.format(ask_for, now))
+        rv = await self._get_update(rr_delta_builder, ask_for, True)
+        logger.debug('RevoCacheEntry.get_delta_json: <<< {}'.format(rv))
+        return rv
 
-        cache_frame = None
-        rr_delta_json = None
+    async def get_state_json(
+            self,
+            rr_state_builder: Callable[['Verifier', str, int], Awaitable[Tuple[str, int]]],
+            ask_for: int) -> (str, int):
+        """
+        Get rev reg state json, and its timestamp on the distributed ledger,
+        from cached rev reg state frames list or distributed ledger,
+        updating cache as necessary.
 
-        frames = [frame for frame in self._rr_delta_frames if frame.timestamp <= ask_for <= frame.ask_for]
-        if frames:
-            assert len(frames) == 1
-            cache_frame = frames[0]
+        Raise BadRevStateTime if caller asks for a state in the future.
 
-        else:
-            frames = [frame for frame in self._rr_delta_frames if frame.timestamp < ask_for]  # frame.ask_for < ask_for
-            if frames:
-                latest_cached = max(frames, key=lambda frame: frame.timestamp)
-                (rr_delta_json, timestamp) = await rr_delta_builder(
-                    self.rev_reg_def['id'],
-                    to=ask_for,
-                    fro=latest_cached.timestamp,
-                    fro_delta=latest_cached.rr_delta)
-                if timestamp == latest_cached.timestamp:
-                    latest_cached._ask_for = ask_for  # this timestamp now known good through more recent ask_for
-                    cache_frame = latest_cached
-                else:
-                    pass
-            else:
-                (rr_delta_json, timestamp) = await rr_delta_builder(self.rev_reg_def['id'], ask_for)
+        On return of any previously existing rev reg state frame, always update its query time beforehand.
 
-        if cache_frame is None:
-            cache_frame = RevRegDeltaFrame(ask_for, timestamp, json.loads(rr_delta_json))
-            self._rr_delta_frames.append(cache_frame)
+        :param rr_state_builder: callback to build rev reg state if need be (specify agent instance's _build_rr_state())
+        :param ask_for: time (epoch seconds) of interest; upper-bounds returned revocation state timestamp
+        :return: rev reg state json and ledger timestamp (epoch seconds)
+        """
 
-            mark = 4096**0.5  # max rev reg size = 4096; heuristic: hover max around sqrt(4096) = 64
-            if len(self._rr_delta_frames) > int(mark * 1.25):
-                self._rr_delta_frames.sort(key=lambda x: -x.qtime)  # order by descending query time
-                del self._rr_delta_frames[int(mark * 0.75):]  # retain most recent, grow again from here
-        else:
-            cache_frame._qtime = int(time())
+        logger = logging.getLogger(__name__)
+        logger.debug('RevoCacheEntry.get_state_json: >>> rr_state_builder: (method), ask_for: {}'.format(ask_for))
 
-        rv_json = (json.dumps(cache_frame.rr_delta), cache_frame.timestamp)
-        logger.debug('RevoCacheEntry.get_delta_json: <<< {}'.format(rv_json))
-        return rv_json
+        rv = await self._get_update(rr_state_builder, ask_for, False)
+        logger.debug('RevoCacheEntry.get_state_json: <<< {}'.format(rv))
+        return rv
 
 
 SCHEMA_CACHE = SchemaCache()

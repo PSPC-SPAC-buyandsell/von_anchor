@@ -1542,7 +1542,7 @@ async def test_revo_cache_reg_delta_maintenance(pool_name, pool_genesis_txn_path
         assert len(REVO_CACHE[rr_id].rr_delta_frames) == 0  # no queries on it yet
 
         # PSPC Org Book agent finds each cred and creates a proof (which touches revo cache reg delta frames)
-        print('\n\n== 6 == Creating {} proofs'.format(RR_SIZE))
+        print('\n\n== 6 == Creating and verifying {} proofs'.format(RR_SIZE))
         cache_frames_size = {}
         i = 0
         for creation_epoch in creation2cred_data:
@@ -1561,8 +1561,12 @@ async def test_revo_cache_reg_delta_maintenance(pool_name, pool_genesis_txn_path
 
             requested_creds = json.loads(await pspcobag.build_req_creds_json(creds_found_filt))
             proof_json = await pspcobag.create_proof(proof_req, creds_found_filt, requested_creds)
-            cache_frames_size[creation_epoch] = len(REVO_CACHE[rr_id].rr_delta_frames)
-            print('  .. 6.{}: after proof for {}, {} revo cache reg delta frames'.format(
+            assert await sag.verify_proof(proof_req, json.loads(proof_json))
+
+            cache_frames_size[creation_epoch] = (
+                len(REVO_CACHE[rr_id].rr_delta_frames),
+                len(REVO_CACHE[rr_id].rr_state_frames))
+            print('  .. 6.{}: after proof for {}, {} revo cache reg (delta, state) frames'.format(
                 i,
                 creation_epoch,
                 cache_frames_size[creation_epoch]))
@@ -1570,10 +1574,12 @@ async def test_revo_cache_reg_delta_maintenance(pool_name, pool_genesis_txn_path
 
         MARK = 4096**0.5  # replicated from cache heuristic: if cache code changes, this test has to change with it
         assert int(MARK * 0.75) <= len(REVO_CACHE[rr_id].rr_delta_frames) <= int(MARK * 1.25)
+        assert int(MARK * 0.75) <= len(REVO_CACHE[rr_id].rr_state_frames) <= int(MARK * 1.25)
 
-        print('\n\n== 7 == Revocation cache {} reg delta frames cleaned, size now {}'.format(
+        print('\n\n== 7 == Revocation cache {} reg delta frames cleaned, now ({}, {}) (delta, state) frames'.format(
             rr_id,
-            len(REVO_CACHE[rr_id].rr_delta_frames)))
+            len(REVO_CACHE[rr_id].rr_delta_frames),
+            len(REVO_CACHE[rr_id].rr_state_frames)))
 
 
 def do(coro):

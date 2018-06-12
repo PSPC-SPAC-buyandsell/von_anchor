@@ -16,67 +16,88 @@ limitations under the License.
 
 
 from binascii import hexlify, unhexlify
+from enum import IntEnum
 from math import ceil, log
 from typing import Any, Union
 
 
+ENCODE_PREFIX = {
+    str: 1,
+    bool: 2,
+    int: 3,
+    float: 4,
+    None: 9
+}
+
+DECODE_PREFIX = {ENCODE_PREFIX[k]: k for k in ENCODE_PREFIX if k and k != str}
+
+
+I32_BOUND = 2**31
 def encode(raw: Any) -> str:
     """
     Encode credential attribute value, leaving any (stringified) int32 alone: indy-sdk predicates
     operate on int32 values properly only when their encoded values match their raw values.
 
-    To disambiguate for decoding, the function adds 2**32 to any non-trivial transform.
+    To disambiguate for decoding, the operation reserves a sentinel for the null value and otherwise adds
+    2**31 to any non-trivial transform of a non-int32 input, then prepends a digit marking the input type:
+    * 1: string
+    * 2: boolean
+    * 3: non-32-bit integer
+    * 4: floating point
+    * 9: other (stringifiable)
 
     :param raw: raw value to encode
     :return: encoded value
     """
 
     if raw is None:
-        return '4294967297'  # sentinel 2**32 + 1
+        return str(I32_BOUND)  # sentinel
 
     stringified = str(raw)
-    try:
-        i = int(raw)
-        if 0 <= i < 2**32:  # it's an i32, leave it (as numeric string)
-            return stringified
-    except (ValueError, TypeError):
-        pass
+    if isinstance(raw, bool):
+        return '{}{}'.format(
+            ENCODE_PREFIX[bool],
+            I32_BOUND + 2 if raw else I32_BOUND + 1)  # decode gotcha: python bool('False') = True; use 2 sentinels
+    if isinstance(raw, int) and -I32_BOUND <= raw < I32_BOUND:
+        return stringified  # it's an i32, leave it (as numeric string)
 
-    return str(int.from_bytes(hexlify(stringified.encode()), 'big') + 2**32)
+    hexed = '{}{}'.format(
+        ENCODE_PREFIX.get(type(raw), ENCODE_PREFIX[None]),
+        str(int.from_bytes(hexlify(stringified.encode()), 'big') + I32_BOUND))
+
+    return hexed
 
 
-def decode(value: str) -> Union[str, None]:
+def decode(value: str) -> Union[str, None, bool, int, float]:
     """
     Decode encoded credential attribute value.
 
     :param value: numeric string to decode
-    :return: decoded value
+    :return: decoded value, stringified if original was neither str, bool, int, nor float
     """
 
-    assert value.isdigit()
+    assert value.isdigit() or value[0] == '-' and value[1:].isdigit()
 
-    if 0 <= int(value) < 2**32:  # it's an i32, leave it (as numeric string)
-        return value
+    if -I32_BOUND <= int(value) < I32_BOUND:  # it's an i32: it is its own encoding
+        return int(value)
+    elif int(value) == I32_BOUND:
+        return None
 
-    i = int(value) - 2**32
-    if i == 0:
-        return ''  # special case: empty string encodes as 4294967296
-    elif i == 1:
-        return None  # sentinel 2**32 + 1
+    (prefix, value) = (int(value[0]), int(value[1:]))
+    ival = int(value) - I32_BOUND
+    if ival == 0:
+        return ''  # special case: empty string encodes as 2**31
+    elif ival == 1:
+        return False  # sentinel for bool False
+    elif ival == 2:
+        return True  # sentinel for bool True
 
-    blen = ceil(log(i, 16)/2)
-    ibytes = unhexlify(i.to_bytes(blen, 'big'))
-    return ibytes.decode()
+    blen = ceil(log(ival, 16)/2)
+    ibytes = unhexlify(ival.to_bytes(blen, 'big'))
+    return DECODE_PREFIX.get(prefix, str)(ibytes.decode())
 
 
 def cred_attr_value(raw: Any) -> dict:
-    """
-    Given a raw value, return its (dict) value for use within an indy-sdk credential attribute specification.
-
-    :param raw: raw value
-    :return: dict with attribute value for use within indy-sdk credential attribute specification
-    """
-
     return {'raw': str(raw), 'encoded': encode(raw)}
 
 
