@@ -447,7 +447,9 @@ class _BaseAgent:
         logger.debug('_BaseAgent.role: >>>')
 
         rv = None
-        if isinstance(self, (AgentRegistrar, Origin, Issuer)):
+        if isinstance(self, (AgentRegistrar)):
+            rv = 'TRUSTEE'
+        elif isinstance(self, (AgentRegistrar, Origin, Issuer)):
             rv = 'TRUST_ANCHOR'
 
         logger.debug('_BaseAgent.role: <<< {}'.format(rv))
@@ -643,6 +645,7 @@ class _BaseAgent:
                 req_json = await ledger.build_get_schema_request(self.did, s_id)
                 resp_json = await self._submit(req_json)
                 resp = json.loads(resp_json)
+
                 if not ('result' in resp and resp['result'].get('data', {}).get('attr_names', None)):
                     logger.debug('_BaseAgent.get_schema: <!< no schema exists on {}'.format(index))
                     raise AbsentSchema('No schema exists on {}'.format(index))
@@ -784,11 +787,11 @@ class Origin(_BaseAgent):
                 req_json = await ledger.build_schema_request(self.did, schema_json)
                 resp_json = await self._sign_submit(req_json)
                 resp = json.loads(resp_json)
-                resp_result = resp['result']
+                resp_result_txn = resp['result']['txn']
                 rv_json = await self.get_schema(schema_key(schema_id(
-                    resp_result['identifier'],
-                    resp_result['data']['name'],
-                    resp_result['data']['version'])))  # add to cache en passant
+                    resp_result_txn['metadata']['from'],
+                    resp_result_txn['data']['data']['name'],
+                    resp_result_txn['data']['data']['version'])))  # add to cache en passant
 
         logger.debug('Origin.send_schema: <<< {}'.format(rv_json))
         return rv_json
@@ -1121,7 +1124,7 @@ class Issuer(Origin):
                     await self._sign_submit(rre_req_json)
                     resp_json = await self._sign_submit(rre_req_json)
                     resp = json.loads(resp_json)
-                    rv = (cred_json, cred_revoc_id, resp['result']['txnTime'])
+                    rv = (cred_json, cred_revoc_id, resp['result']['txnMetadata']['txnTime'])
 
                 except IndyError as x_indy:
                     if x_indy.error_code == ErrorCode.AnoncredsRevocationRegistryFullError:
@@ -1196,7 +1199,7 @@ class Issuer(Origin):
         resp_json = await self._sign_submit(rre_req_json)
         resp = json.loads(resp_json)
 
-        rv = resp['result']['txnTime']
+        rv = resp['result']['txnMetadata']['txnTime']
         logger.debug('Issuer.revoke_cred: <<< {}'.format(rv))
         return rv
 

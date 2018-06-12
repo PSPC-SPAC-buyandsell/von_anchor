@@ -145,10 +145,6 @@ async def test_agents_low_level_api(
         did2ag[ag.did] = ag
         if not json.loads(await tag.get_nym(ag.did)):
             await tag.send_nym(ag.did, ag.verkey, ag.wallet.name, ag.role())
-        '''
-        if not json.loads(await tag.get_endpoint(ag.did)):
-            await ag.send_endpoint()
-        '''
 
     nyms = {
         'tag': json.loads(await tag.get_nym(tag.did)),
@@ -1437,9 +1433,9 @@ async def test_agents_on_nodepool_restart(pool_name, pool_genesis_txn_path, pool
 
 #noinspection PyUnusedLocal
 @pytest.mark.asyncio
-async def test_revo_cache_reg_delta_maintenance(pool_name, pool_genesis_txn_path, pool_genesis_txn_file):
+async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_path, pool_genesis_txn_file):
 
-    print('\n\n== Testing agent revocation cache reg delta maintenance ==')
+    print('\n\n== Testing agent revocation cache reg update maintenance ==')
 
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
         OrgBookAgent(await Wallet(
