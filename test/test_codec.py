@@ -35,7 +35,7 @@ async def test_enco_deco():
         assert raw == dec
     print('\n\n== 1 == Random printable string test passed')
 
-    print('\n\n== 2 == Edge cases')
+    print('\n\n== 2 == Edge cases - (type) raw -> encoded -> (type) decoded:')
     for raw in (
             None,
             True,
@@ -66,6 +66,6 @@ async def test_enco_deco():
             [0,1,2,3]):
         enc = encode(raw)
         dec = decode(enc)
-        print('  raw: {}, encode(raw): {}, decode(encode(raw)): {}'.format(raw, encode(raw), decode(encode(raw))))
+        print('  ({})({}) -> {} -> ({})({})'.format(type(raw).__name__, raw, enc, type(dec).__name__, dec))
         assert cred_attr_value(raw) == {'raw': str(raw), 'encoded': enc}
         assert str(raw) == dec if isinstance(raw, list) else raw == dec  # decode(encode) retains scalar types
