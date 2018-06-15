@@ -25,14 +25,18 @@ from von_agent.codec import cred_attr_value, encode, decode
 #noinspection PyUnusedLocal
 @pytest.mark.asyncio
 async def test_enco_deco():
+    print('\n\n== 0 == Starting encode/decode for string of length up to 1024')
     for printable_len in range(0, 1025):
-        plain = ''.join(choice(printable) for _ in range(printable_len))
-        enc = encode(plain)
+        raw = ''.join(choice(printable) for _ in range(printable_len))
+        print('.', end='' if (printable_len + 1) % 100 else '{}\n'.format(printable_len), flush=True)
+        enc = encode(raw)
         dec = decode(enc)
-        assert cred_attr_value(plain) == {'raw': str(plain), 'encoded': enc}
-        assert plain == dec
+        assert cred_attr_value(raw) == {'raw': str(raw), 'encoded': enc}
+        assert raw == dec
+    print('\n\n== 1 == Random printable string test passed')
 
-    for plain in (
+    print('\n\n== 2 == Edge cases')
+    for raw in (
             None,
             True,
             False,
@@ -60,7 +64,8 @@ async def test_enco_deco():
             '-12345',
             [],
             [0,1,2,3]):
-        enc = encode(plain)
+        enc = encode(raw)
         dec = decode(enc)
-        assert cred_attr_value(plain) == {'raw': str(plain), 'encoded': enc}
-        assert str(plain) == dec if isinstance(plain, list) else plain == dec  # decode(encode) retains scalar types
+        print('  raw: {}, encode(raw): {}, decode(encode(raw)): {}'.format(raw, encode(raw), decode(encode(raw))))
+        assert cred_attr_value(raw) == {'raw': str(raw), 'encoded': enc}
+        assert str(raw) == dec if isinstance(raw, list) else raw == dec  # decode(encode) retains scalar types
