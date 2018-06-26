@@ -14,6 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+
+import asyncio
+import json
+import pytest
+
+
 from math import ceil
 from random import shuffle
 from threading import Thread
@@ -22,14 +28,11 @@ from von_agent.cache import CRED_DEF_CACHE, SCHEMA_CACHE
 from von_agent.error import CacheIndex
 from von_agent.util import cred_def_id, ppjson, schema_id, SchemaKey
 
-import asyncio
-import pytest
-
 
 #noinspection PyUnusedLocal
 @pytest.mark.asyncio
 async def test_schema_cache():
-    N = 5 
+    N = 32
     s_key = []
     schema = []
     for i in range(N):
@@ -62,6 +65,15 @@ async def test_schema_cache():
         SCHEMA_CACHE[-1]
     except CacheIndex:
         pass
+
+    # Exercise cache clearing and feeding
+    cached = SCHEMA_CACHE.schemata()
+    assert SCHEMA_CACHE.schemata()
+    cached_json = json.dumps(cached)
+    SCHEMA_CACHE.clear()
+    assert not SCHEMA_CACHE.schemata()
+    SCHEMA_CACHE.feed(json.loads(cached_json))
+    assert len(SCHEMA_CACHE.schemata()) == len(cached)
 
 
 def get_loop():

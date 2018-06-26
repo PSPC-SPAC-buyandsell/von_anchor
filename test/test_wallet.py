@@ -20,7 +20,7 @@ from indy.error import ErrorCode
 from pathlib import Path
 from von_agent.nodepool import NodePool
 from von_agent.wallet import Wallet
-from von_agent.error import ClosedPool, JSONValidation
+from von_agent.error import JSONValidation
 
 import pytest
 
@@ -34,9 +34,6 @@ async def test_wallet(
     pool_genesis_txn_file):
 
     pool = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
-
-    await pool.open()
-    assert pool.handle is not None
 
     seed = '00000000000000000000000000000000'
     name = 'my-wallet'
@@ -93,19 +90,7 @@ async def test_wallet(
     assert not path.exists(), 'Wallet path {} still present'.format(path)
     assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
 
-    await pool.close()
-
-    # 5. Pool closed
-    try:
-        x = await Wallet(pool, seed, name, None, {'auto-remove': True}).create()
-        await x.open()
-        assert False
-    except ClosedPool:
-        pass
-    assert not path.exists(), 'Wallet path {} still present'.format(path)
-    assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
-
-    # 6. Bad config
+    # 5. Bad config
     try:
         Wallet(pool, seed, name, None, {'auto-remove': 'a suffusion of yellow'})
     except JSONValidation:

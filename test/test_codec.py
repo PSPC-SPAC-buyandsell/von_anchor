@@ -67,5 +67,5 @@ async def test_enco_deco():
         enc = encode(raw)
         dec = decode(enc)
         print('  ({})({}) -> {} -> ({})({})'.format(type(raw).__name__, raw, enc, type(dec).__name__, dec))
-        assert cred_attr_value(raw) == {'raw': str(raw), 'encoded': enc}
+        assert cred_attr_value(raw) == {'raw': '' if raw is None else str(raw), 'encoded': enc}
         assert str(raw) == dec if isinstance(raw, list) else raw == dec  # decode(encode) retains scalar types

@@ -23,6 +23,9 @@ from indy.error import IndyError, ErrorCode
 from von_agent.validate_config import validate_config
 
 
+LOGGER = logging.getLogger(__name__)
+
+
 class NodePool:
     """
     Class encapsulating indy-sdk node pool.
@@ -40,11 +43,7 @@ class NodePool:
             }
         """
 
-        logger = logging.getLogger(__name__)
-        logger.debug('NodePool.__init__: >>> name: {}, genesis_txn_path: {}, cfg: {}'.format(
-            name,
-            genesis_txn_path,
-            cfg))
+        LOGGER.debug('NodePool.__init__ >>> name: %s, genesis_txn_path: %s, cfg: %s', name, genesis_txn_path, cfg)
 
         self._cfg = cfg or {}
         validate_config('pool', self._cfg)
@@ -60,7 +59,7 @@ class NodePool:
         self._genesis_txn_path = genesis_txn_path
         self._handle = None
 
-        logger.debug('NodePool.__init__: <<<')
+        LOGGER.debug('NodePool.__init__ <<<')
 
     @property
     def name(self) -> str:
@@ -120,12 +119,11 @@ class NodePool:
         :return: current object
         """
 
-        logger = logging.getLogger(__name__)
-        logger.debug('NodePool.__aenter__: >>>')
+        LOGGER.debug('NodePool.__aenter__ >>>')
 
         rv = await self.open()
 
-        logger.debug('NodePool.__aenter__: <<<')
+        LOGGER.debug('NodePool.__aenter__ <<<')
         return rv
 
     async def open(self) -> 'NodePool':
@@ -138,21 +136,21 @@ class NodePool:
         :return: current object
         """
 
-        logger = logging.getLogger(__name__)
-        logger.debug('NodePool.open: >>>')
+        LOGGER.debug('NodePool.open >>>')
 
         try:
+            await pool.set_protocol_version(2)  # 1 for indy-node 1.3, 2 for indy-node 1.4
             await pool.create_pool_ledger_config(self.name, json.dumps({'genesis_txn': str(self.genesis_txn_path)}))
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.PoolLedgerConfigAlreadyExistsError:
-                logger.info('Pool ledger config for {} already exists'.format(self.name))
+                LOGGER.info('Pool ledger config for %s already exists', self.name)
             else:
-                logger.debug('NodePool.open: <!< indy error code {}'.format(x_indy.error_code))
+                LOGGER.debug('NodePool.open: <!< indy error code %s', x_indy.error_code)
                 raise x_indy
 
         self._handle = await pool.open_pool_ledger(self.name, json.dumps(self.cfg))
 
-        logger.debug('NodePool.open: <<<')
+        LOGGER.debug('NodePool.open <<<')
         return self
 
     async def __aexit__(self, exc_type, exc, traceback) -> None:
@@ -167,12 +165,11 @@ class NodePool:
         :param traceback:
         """
 
-        logger = logging.getLogger(__name__)
-        logger.debug('NodePool.__aexit__: >>>')
+        LOGGER.debug('NodePool.__aexit__ >>>')
 
         await self.close()
 
-        logger.debug('NodePool.__aexit__: <<<')
+        LOGGER.debug('NodePool.__aexit__ <<<')
 
     async def close(self) -> None:
         """
@@ -180,33 +177,31 @@ class NodePool:
         For use when keeping pool open across multiple calls.
         """
 
-        logger = logging.getLogger(__name__)
-        logger.debug('NodePool.close: >>>')
+        LOGGER.debug('NodePool.close >>>')
 
         if not self.handle:
-            logger.warning('Abstaining from closing pool {}: already closed'.format(self.name))
+            LOGGER.warning('Abstaining from closing pool %s: already closed', self.name)
         else:
             await pool.close_pool_ledger(self.handle)
             if self.auto_remove:
                 await self.remove()
         self._handle = None
 
-        logger.debug('NodePool.close: <<<')
+        LOGGER.debug('NodePool.close <<<')
 
     async def remove(self) -> None:
         """
         Remove serialized pool info if it exists.
         """
 
-        logger = logging.getLogger(__name__)
-        logger.debug('NodePool.remove: >>>')
+        LOGGER.debug('NodePool.remove >>>')
 
         try:
             await pool.delete_pool_ledger_config(self.name)
         except IndyError as x_indy:
-            logger.info('Abstaining from pool removal; indy-sdk error code {}'.format(x_indy.error_code))
+            LOGGER.info('Abstaining from pool removal; indy-sdk error code %s', x_indy.error_code)
 
-        logger.debug('NodePool.remove: <<<')
+        LOGGER.debug('NodePool.remove <<<')
 
     def __repr__(self) -> str:
         """

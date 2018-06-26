@@ -31,6 +31,55 @@ CONFIG_JSON_SCHEMA = {
         },
         'additionalProperties': True
     },
+    'holder-prover': {
+        '$schema': 'http://json-schema.org/draft-04/schema',
+        'type': 'object',
+        'properties': {
+            'parse-cache-on-open': {
+                'type': 'boolean'
+            },
+            'archive-cache-on-close': {
+                'type': 'boolean'
+            }
+        },
+        'additionalProperties': False
+    },
+    'verifier': {
+        '$schema': 'http://json-schema.org/draft-04/schema',
+        'type': 'object',
+        'properties': {
+            'parse-cache-on-open': {
+                'type': 'boolean'
+            },
+            'archive-on-close': {
+                'type': 'object',
+                'properties': {
+                    'schema-ids': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'string',
+                            'uniqueItems': True
+                        }
+                    },
+                    'cred-def-ids': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'string',
+                            'uniqueItems': True
+                        }
+                    },
+                    'rev-reg-ids': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'string',
+                            'uniqueItems': True
+                        }
+                    }
+                }
+            }
+        },
+        'additionalProperties': False
+    }
 }
 
 

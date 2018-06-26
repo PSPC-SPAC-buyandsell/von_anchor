@@ -27,6 +27,9 @@ from von_agent.codec import decode
 SchemaKey = namedtuple('SchemaKey', 'origin_did name version')
 
 
+CD_ID_TAG = 'tag0'
+
+
 def ppjson(dumpit: Any, elide_to: int = None) -> str:
     """
     JSON pretty printer, whether already json-encoded or not
@@ -37,12 +40,12 @@ def ppjson(dumpit: Any, elide_to: int = None) -> str:
     """
 
     if elide_to is not None:
-        elide_to = max(elide_to - 3, 0) # make room for ellipses '...'
+        elide_to = max(elide_to, 3) # make room for ellipses '...'
     try:
         rv = json.dumps(json.loads(dumpit) if isinstance(dumpit, str) else dumpit, indent=4)
     except TypeError:
         rv = '{}'.format(pformat(dumpit, indent=4, width=120))
-    return rv if elide_to is None else '{}...'.format(rv[0 : elide_to])
+    return rv if elide_to is None or len(rv) <= elide_to else '{}...'.format(rv[0 : elide_to - 3])
 
 
 def schema_id(origin_did: str, name: str, version: str) -> str:
@@ -81,7 +84,7 @@ def cred_def_id(issuer_did: str, schema_seq_no: int) -> str:
     :return: credential definition identifier
     """
 
-    return '{}:3:CL:{}'.format(issuer_did, schema_seq_no)  # 3 marks indy-sdk cred def id, CL denotes sig type
+    return '{}:3:CL:{}:{}'.format(issuer_did, schema_seq_no, CD_ID_TAG)  # 3 marks indy-sdk cred def id, CL is sig type
 
 
 def cred_def_id2seq_no(cd_id: str) -> int:
@@ -92,7 +95,7 @@ def cred_def_id2seq_no(cd_id: str) -> int:
     :return: sequence number
     """
 
-    return int(cd_id.split(':')[-1])  # sequence number is last token
+    return int(cd_id.split(':')[-2])  # sequence number is penultimate token
 
 
 def rev_reg_id(cd_id: str, tag: str) -> str:
@@ -140,11 +143,13 @@ def rev_reg_id2cred_def_id__tag(rr_id: str) -> (str, str):
     :return: credential definition identifier and tag
     """
 
-    return (':'.join(rr_id.split(':')[2:-2]),  # rev reg id comprises (prefixes):<cred_def_id>:(suffixes)
-        str(rr_id.split(':')[-1]))  # tag is last token
+    return (
+        ':'.join(rr_id.split(':')[2:-2]),  # rev reg id comprises (prefixes):<cred_def_id>:(suffixes)
+        str(rr_id.split(':')[-1])  # tag is last token
+    )
 
 
-def schema__cred_def__rev_reg_ids(creds: dict, cred_ids: list) -> dict:
+def cubby_ids(creds: dict, cred_ids: list) -> dict:
     """
     Given a credentials structure and a list of credential identifiers (aka wallet cred-ids, referents),
     return dict mapping each credential identifier to a triple (all strings) with its corresponding
@@ -158,7 +163,7 @@ def schema__cred_def__rev_reg_ids(creds: dict, cred_ids: list) -> dict:
     """
 
     rv = {}
-    for uuid, inner_creds in {**creds['attrs'], **creds['predicates']}.items():
+    for inner_creds in {**creds.get('attrs', {}), **creds.get('predicates', {})}.values():
         for cred in inner_creds:  # cred is a dict in a list of dicts
             cred_info = cred['cred_info']
             cred_id = cred_info['referent']
@@ -277,7 +282,7 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
 
         {
             'Q4zqM7aXqm7gDQkUVLng9h:3:CL:18': {
-                'attr0': '1',
+                'attr0': 1,  # operation stringifies en passant
                 'attr1': 'Nice'
             },
             ...
@@ -293,7 +298,7 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
     rv = {}
     if filt is None:
         filt = {}
-    for cred_uuid in creds['attrs']:
+    for cred_uuid in creds.get('attrs', {}):
         for cred in creds['attrs'][cred_uuid]:  # creds['attrs'][cred_uuid] is a list of dict
             cred_info = cred['cred_info']
             if cred_info['referent'] in rv:
@@ -332,7 +337,7 @@ def revoc_info(creds: dict, filt: dict = None) -> dict:
     """
 
     rv = {}
-    for uuid2creds in (creds['attrs'], creds['predicates']):
+    for uuid2creds in (creds.get('attrs', {}), creds.get('predicates', {})):
         for inner_creds in uuid2creds.values():
             for cred in inner_creds:
                 cred_info = cred['cred_info']

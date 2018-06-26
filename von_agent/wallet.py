@@ -20,9 +20,11 @@ import logging
 
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
-from von_agent.error import AbsentWallet, ClosedPool, CorruptWallet, JSONValidation
+from von_agent.error import AbsentWallet, CorruptWallet, JSONValidation
 from von_agent.nodepool import NodePool
 
+
+LOGGER = logging.getLogger(__name__)
 
 class Wallet:
     """
@@ -56,14 +58,13 @@ class Wallet:
         :param access_creds: wallet access credentials dict, None for default
         """
 
-        logger = logging.getLogger(__name__)
-        logger.debug(
-            'Wallet.__init__: >>> pool {}, seed [SEED], name {}, wallet_type {}, cfg {}, access_creds {}'.format(
-                pool,
-                name,
-                wallet_type,
-                cfg,
-                access_creds))
+        LOGGER.debug(
+            'Wallet.__init__ >>> pool %s, seed [SEED], name %s, wallet_type %s, cfg %s, access_creds %s',
+            pool,
+            name,
+            wallet_type,
+            cfg,
+            access_creds)
 
         self._pool = pool
         self._seed = seed
@@ -74,8 +75,8 @@ class Wallet:
         self._cfg = cfg or {}
         if not isinstance(self.cfg.get('auto-remove', False), bool):
             # enterprise wallet development was having trouble with validate_config.validate_config() - check manually
-            raise JSONValidation('JSON validation error on wallet configuration: {}'.format(
-                "'{}' is not of type 'boolean'".format(self.cfg['auto-remove'])))
+            LOGGER.debug('Wallet.__init__ <!< Error on wallet configuration: auto-remove value must be boolean')
+            raise JSONValidation('Error on wallet configuration: auto-remove value must be boolean')
 
         # pop and retain configuration specific to von_agent.Wallet, extrinsic to indy-sdk
         self._auto_remove = self._cfg.pop('auto-remove') if self._cfg and 'auto-remove' in self._cfg else False
@@ -87,7 +88,7 @@ class Wallet:
         self._verkey = None
         self._created = False
 
-        logger.debug('Wallet.__init__: <<<')
+        LOGGER.debug('Wallet.__init__ <<<')
 
     @property
     def pool(self) -> NodePool:
@@ -198,15 +199,30 @@ class Wallet:
         :return: DID
         """
 
-        temp_wallet = await Wallet(
-            self.pool,
-            self._seed,
-            '{}.seed2did'.format(self.name),
-            None,
-            {'auto-remove': True}).create()
+        rv = None
+        dids_with_meta = json.loads(await did.list_my_dids_with_meta(self.handle))  # list
 
-        rv = temp_wallet.did
-        await temp_wallet.remove()
+        if dids_with_meta:
+            for did_with_meta in dids_with_meta:  # dict
+                if 'metadata' in did_with_meta:
+                    try:
+                        meta = json.loads(did_with_meta['metadata'])
+                        if isinstance(meta, dict) and meta.get('seed', None) == self._seed:
+                            rv = did_with_meta.get('did')
+                    except json.decoder.JSONDecodeError:
+                        continue  # it's not one of ours, carry on
+
+        if not rv:  # seed not in metadata, generate did again on temp wallet
+            temp_wallet = await Wallet(
+                self.pool,
+                self._seed,
+                '{}.seed2did'.format(self.name),
+                None,
+                {'auto-remove': True}).create()
+
+            rv = temp_wallet.did
+            await temp_wallet.remove()
+
         return rv
 
     async def create(self) -> 'Wallet':
@@ -215,18 +231,10 @@ class Wallet:
         Operation sequence create/store-DID/close does not auto-remove the wallet on close,
         even if so configured.
 
-        Raise ClosedPool if pool is closed, or any IndyError causing failure to operate on
-        wallet (create, open, store DID, close).
-
         :return: current object
         """
 
-        logger = logging.getLogger(__name__)
-        logger.debug('Wallet.create: >>>')
-
-        if not self.pool.handle:
-            logger.debug('Wallet.create: <!< closed pool {} on creating wallet {}'.format(self.pool.name, self.name))
-            raise ClosedPool('Open pool {} before creating wallet {}'.format(self.pool.name, self.name))
+        LOGGER.debug('Wallet.create >>>')
 
         try:
             await wallet.create_wallet(
@@ -236,46 +244,47 @@ class Wallet:
                 config=json.dumps(self.cfg),
                 credentials=json.dumps(self.access_creds))
             self._created = True
-            logger.info('Created wallet {} on pool {}:{}'.format(self.name, self.pool.handle, self.pool.name))
+            LOGGER.info('Created wallet %s on pool %s:%s', self.name, self.pool.handle, self.pool.name)
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.WalletAlreadyExistsError:
-                logger.info('Wallet already exists: {}'.format(self.name))
+                LOGGER.info('Wallet already exists: %s', self.name)
             else:
-                logger.debug('Wallet.create: <!< indy error code {}'.format(x_indy.error_code))
+                LOGGER.debug('Wallet.create: <!< indy error code %s', x_indy.error_code)
                 raise
 
-        logger.debug('Attempting to open wallet {}'.format(self.name))
+        LOGGER.debug('Attempting to open wallet %s', self.name)
         self._handle = await wallet.open_wallet(
             self.name,
             json.dumps(self.cfg),
             json.dumps(self.access_creds))
-        logger.info('Opened wallet {} on handle {}'.format(self.name, self.handle))
+        LOGGER.info('Opened wallet %s on handle %s', self.name, self.handle)
 
         if self._created:
             (self._did, self._verkey) = await did.create_and_store_my_did(
                 self.handle,
                 json.dumps({'seed': self._seed}))
-            logger.debug('Wallet {} stored new DID {}, verkey {} from seed'.format(self.name, self.did, self.verkey))
+            LOGGER.debug('Wallet %s stored new DID %s, verkey %s from seed', self.name, self.did, self.verkey)
+            await did.set_did_metadata(self.handle, self.did, json.dumps({'seed': self._seed}))
         else:
             self._created = True
-            logger.debug('Attempting to derive seed to did for wallet {}'.format(self.name))
+            LOGGER.debug('Attempting to derive seed to did for wallet %s', self.name)
             self._did = await self._seed2did()
             try:
-                self._verkey = await did.key_for_did(self.pool.handle, self.handle, self.did)
+                self._verkey = await did.key_for_local_did(self.handle, self.did)
             except IndyError:
-                logger.debug(
-                    'Wallet.create: <!< no verkey for DID {} on ledger, wallet {} may pertain to another'.format(
-                        self.did,
-                        self.name))
+                LOGGER.debug(
+                    'Wallet.create: <!< no verkey for DID %s on ledger, wallet %s may pertain to another',
+                    self.did,
+                    self.name)
                 raise CorruptWallet(
                     'No verkey for DID {} on ledger, wallet {} may pertain to another'.format(
                         self.did,
                         self.name))
-            logger.info('Wallet {} got verkey {} for existing DID {}'.format(self.name, self.verkey, self.did))
+            LOGGER.info('Wallet %s got verkey %s for existing DID %s', self.name, self.verkey, self.did)
 
         await wallet.close_wallet(self.handle)
 
-        logger.debug('Wallet.create: <<<')
+        LOGGER.debug('Wallet.create <<<')
         return self
 
     async def __aenter__(self) -> 'Wallet':
@@ -289,11 +298,10 @@ class Wallet:
         :return: current object
         """
 
-        logger = logging.getLogger(__name__)
-        logger.debug('Wallet.__aenter__: >>>')
+        LOGGER.debug('Wallet.__aenter__ >>>')
 
         rv = await self.open()
-        logger.debug('Wallet.__aenter__: <<<')
+        LOGGER.debug('Wallet.__aenter__ <<<')
         return rv
 
     async def open(self) -> 'Wallet':
@@ -301,34 +309,26 @@ class Wallet:
         Explicit entry. Open wallet as configured, for later closure via close().
         For use when keeping wallet open across multiple calls.
 
-        Raise ClosedPool if pool is closed, or any IndyError causing failure to open
-        wallet (create, open, store DID, close).
-
         :return: current object
         """
 
-        logger = logging.getLogger(__name__)
-        logger.debug('Wallet.open: >>>')
-
-        if not self.pool.handle:
-            logger.debug('Wallet.open: <!< closed pool {} on opening wallet {}'.format(self.pool.name, self.name))
-            raise ClosedPool('Open pool {} before opening wallet {}'.format(self.pool.name, self.name))
+        LOGGER.debug('Wallet.open >>>')
 
         if not self.created:
-            logger.debug('Wallet.open: <!< absent wallet {}'.format(self.name))
+            LOGGER.debug('Wallet.open: <!< absent wallet %s', self.name)
             raise AbsentWallet('Cannot open wallet {}: not created'.format(self.name))
 
         self._handle = await wallet.open_wallet(
             self.name,
             json.dumps(self.cfg),
             json.dumps(self.access_creds))
-        logger.info('Opened wallet {} on handle {}'.format(self.name, self.handle))
+        LOGGER.info('Opened wallet %s on handle %s', self.name, self.handle)
 
         self._did = await self._seed2did()
-        self._verkey = await did.key_for_did(self.pool.handle, self.handle, self.did)
-        logger.info('Wallet {} got verkey {} for existing DID {}'.format(self.name, self.verkey, self.did))
+        self._verkey = await did.key_for_local_did(self.handle, self.did)
+        LOGGER.info('Wallet %s got verkey %s for existing DID %s', self.name, self.verkey, self.did)
 
-        logger.debug('Wallet.open: <<<')
+        LOGGER.debug('Wallet.open <<<')
         return self
 
     async def __aexit__(self, exc_type, exc, traceback) -> None:
@@ -341,12 +341,11 @@ class Wallet:
         :param traceback:
         """
 
-        logger = logging.getLogger(__name__)
-        logger.debug('Wallet.__aexit__: >>>')
+        LOGGER.debug('Wallet.__aexit__ >>>')
 
         await self.close()
 
-        logger.debug('Wallet.__aexit__: <<<')
+        LOGGER.debug('Wallet.__aexit__ <<<')
 
     async def close(self) -> None:
         """
@@ -354,36 +353,34 @@ class Wallet:
         For use when keeping wallet open across multiple calls.
         """
 
-        logger = logging.getLogger(__name__)
-        logger.debug('Wallet.close: >>>')
+        LOGGER.debug('Wallet.close >>>')
 
         if not self.handle:
-            logger.warning('Abstaining from closing wallet {}: already closed'.format(self.name))
+            LOGGER.warning('Abstaining from closing wallet %s: already closed', self.name)
         else:
-            logger.debug('Closing wallet {}'.format(self.name))
+            LOGGER.debug('Closing wallet %s', self.name)
             await wallet.close_wallet(self.handle)
             if self.auto_remove:
-                logger.info('Auto-removing wallet {}'.format(self.name))
+                LOGGER.info('Auto-removing wallet %s', self.name)
                 await self.remove()
         self._handle = None
 
-        logger.debug('Wallet.close: <<<')
+        LOGGER.debug('Wallet.close <<<')
 
     async def remove(self) -> None:
         """
         Remove serialized wallet if it exists.
         """
 
-        logger = logging.getLogger(__name__)
-        logger.debug('Wallet.remove: >>>')
+        LOGGER.debug('Wallet.remove >>>')
 
         try:
-            logger.info('Removing wallet: {}'.format(self.name))
+            LOGGER.info('Removing wallet: %s', self.name)
             await wallet.delete_wallet(self.name, json.dumps(self.access_creds))
         except IndyError as x_indy:
-            logger.info('Abstaining from wallet removal; indy-sdk error code {}'.format(x_indy.error_code))
+            LOGGER.info('Abstaining from wallet removal; indy-sdk error code %s', x_indy.error_code)
 
-        logger.debug('Wallet.remove: <<<')
+        LOGGER.debug('Wallet.remove <<<')
 
     def __repr__(self) -> str:
         """

@@ -16,7 +16,6 @@ limitations under the License.
 
 
 from binascii import hexlify, unhexlify
-from enum import IntEnum
 from math import ceil, log
 from typing import Any, Union
 
@@ -98,7 +97,13 @@ def decode(value: str) -> Union[str, None, bool, int, float]:
 
 
 def cred_attr_value(raw: Any) -> dict:
-    return {'raw': str(raw), 'encoded': encode(raw)}
+    """
+    Given a value, return corresponding credential attribute value dict for indy-sdk processing.
+
+    :param raw: raw attribute value of any stringifiable type
+    :return: dict on 'raw' and 'encoded' keys for indy-sdk processing
+    """
+    return {'raw': '' if raw is None else str(raw), 'encoded': encode(raw)}
 
 
 def canon(raw_attr_name: str) -> str:

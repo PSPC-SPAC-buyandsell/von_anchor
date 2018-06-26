@@ -15,7 +15,10 @@ limitations under the License.
 """
 
 
-from von_agent.agents import AgentRegistrar, Verifier, Issuer, HolderProver
+from von_agent.agent.holder_prover import HolderProver
+from von_agent.agent.issuer import Issuer
+from von_agent.agent.registrar import AgentRegistrar
+from von_agent.agent.verifier import Verifier
 
 
 TrustAnchorAgent = type('TrustAnchorAgent', (AgentRegistrar,), {})
