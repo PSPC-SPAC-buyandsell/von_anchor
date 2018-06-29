@@ -15,20 +15,16 @@ limitations under the License.
 """
 
 import os
-from setuptools import setup
+from setuptools import setup, find_packages
 
 
 pkg_name = 'von_agent'
-version = '1.5.0'
-
+version = '1.5.1'
 
 setup(
     name=pkg_name,
-    packages=[
-        pkg_name,
-        # '{}.proto'.format(pkg_name)
-    ],
     version=version,
+    packages=find_packages(),
     description='VON agents',
     license='Apache Software License',
     author='PSPS-SPAC',
