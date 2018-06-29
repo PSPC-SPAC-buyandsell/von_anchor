@@ -294,7 +294,7 @@ class _BaseAgent:
         cache it en passant if it does not (and such a revocation registry definition exists on the ledger).
 
         :param rr_id: (revocation registry) identifier string, of the format
-            '<issuer-did>:4:<issuer-did>:3:CL:<schema-seq-no>:CL_ACCUM:<tag>'
+            '<issuer-did>:4:<issuer-did>:3:CL:<schema-seq-no>:<tag>:CL_ACCUM:<tag>'
         :return: revocation registry definition json as retrieved from ledger
         """
 
@@ -336,7 +336,7 @@ class _BaseAgent:
         Retrieve the credential definition from the agent's credential definition cache if it has it; cache it
         en passant if it does not (and if there is a corresponding credential definition on the ledger).
 
-        :param cd_id: (credential definition) identifier string ('<issuer-did>:3:CL:<schema-seq-no>')
+        :param cd_id: (credential definition) identifier string ('<issuer-did>:3:CL:<schema-seq-no>:<tag>')
         :return: credential definition json as retrieved from ledger, empty production for no such cred def
         """
 
@@ -373,7 +373,7 @@ class _BaseAgent:
         Get schema from ledger by SchemaKey namedtuple (origin DID, name, version),
         sequence number, or schema identifier.
 
-        Raise AbsentSchema for no such credential definition, logging any error condition and raising
+        Raise AbsentSchema for no such schema, logging any error condition and raising
         BadLedgerTxn on bad request.
 
         Retrieve the schema from the agent's schema cache if it has it; cache it

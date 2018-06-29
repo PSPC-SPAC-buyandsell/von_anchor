@@ -23,6 +23,7 @@ from von_agent.agent.base import _BaseAgent
 
 LOGGER = logging.getLogger(__name__)
 
+
 class AgentRegistrar(_BaseAgent):
     """
     Mixin for (trust anchor) agent to register agents onto the distributed ledger

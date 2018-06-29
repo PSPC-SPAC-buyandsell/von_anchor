@@ -47,6 +47,7 @@ from von_agent.error import (
 from von_agent.nodepool import NodePool
 from von_agent.tails import Tails
 from von_agent.util import (
+    box_ids,
     cred_def_id,
     cred_def_id2seq_no,
     creds_display,
@@ -124,7 +125,7 @@ def _download_tails(rr_id):
     assert len(Tails.unlinked(DIR_TAILS)) == 1
 
 
-#noinspection PyUnusedLocal
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_agents_low_level_api(
         pool_name,
@@ -376,7 +377,8 @@ async def test_agents_low_level_api(
         cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
 
         assert (s_id == S_ID['NON-REVO']) or (
-            [f for f in Tails.links(str(ag._dir_tails)) if cd_id[s_id] in f] and not Tails.unlinked(str(ag._dir_tails)))
+            [f for f in Tails.links(str(ag._dir_tails), ag.did)
+                if cd_id[s_id] in f] and not Tails.unlinked(str(ag._dir_tails)))
 
         cred_def_json[s_id] = await holder_prover[s_key.origin_did].get_cred_def(cd_id[s_id])  # ought to exist now
         cred_def[s_id] = json.loads(cred_def_json[s_id])
@@ -609,6 +611,8 @@ async def test_agents_low_level_api(
         ppjson(bc_creds_found_filt)))
     assert set([*bc_display_pruned_filt_post_hoc]) == bc_cred_ids_filt
     assert len(bc_display_pruned_filt_post_hoc) == 1
+    bc_box_ids_filt = box_ids(bc_creds_found_filt, bc_cred_ids_filt)  # exercise box_ids
+    assert bc_box_ids_filt.items() == box_ids(bc_creds_found_filt).items() and len(bc_box_ids_filt) == 1
 
     bc_cred_id = bc_cred_ids_filt.pop()  # Tart City
 
@@ -1413,6 +1417,13 @@ async def test_agents_low_level_api(
     txn_json = await sag.get_txn(99999)  # ought not exist
     assert not json.loads(txn_json)
 
+    bc_box_ids = json.loads(await bcrag.get_box_ids_json())
+    print('\n\n== 59 == Box identifiers at BC registrar (issuer): {}'.format(ppjson(bc_box_ids)))
+    assert all(box_id.startswith(bcrag.did) for ids in bc_box_ids.values() for box_id in ids)
+    assert len(bc_box_ids['schema_id']) > 1  # bc-reg, non-revo
+    assert len(bc_box_ids['cred_def_id']) > 1  # bc-reg, non-revo
+    assert len(bc_box_ids['rev_reg_id']) > 1  # bc-reg on initial short rev reg and second longer one
+
     # Exercise cache serialization, clearing, parsing, purging
     tstamp = Caches.archive(pspcobag.dir_cache)
     timestamps = listdir(pspcobag.dir_cache)
@@ -1436,7 +1447,8 @@ async def test_agents_low_level_api(
     remaining = listdir(pspcobag.dir_cache)
     assert len(remaining) == 0
 
-    sleep(2)
+    print('\n\n== 60 == Caches archive, parse, load, purge OK')
+
     await bcrag.close()
     await bcobag.close()
     await pspcobag.close()
@@ -1445,7 +1457,7 @@ async def test_agents_low_level_api(
     await p.close()
 
 
-#noinspection PyUnusedLocal
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_home):
 
@@ -1521,7 +1533,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     # SRI agent (as Verifier) attempts to verify multi-cred proof with specification of one by pred, offline
     sag_cfg = {
         'parse-cache-on-open': True,
-        'archive-on-close': json.loads(await pspcobag.get_cubby_ids())
+        'archive-on-close': json.loads(await pspcobag.get_box_ids_json())
     }
     sag = SRIAgent(await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create(), sag_cfg)
 
@@ -1552,7 +1564,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     assert len(remaining) == 0
 
 
-#noinspection PyUnusedLocal
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_agents_on_nodepool_restart(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_home):
 
@@ -1587,8 +1599,8 @@ async def test_agents_on_nodepool_restart(pool_name, pool_genesis_txn_path, pool
         # Get cred def (should re-use existing), create cred offer
         await sag.send_cred_def(schema_id(*s_key))
         cd_id = cred_def_id(s_key.origin_did, schema['seqNo'])
-        assert ([f for f in Tails.links(str(sag._dir_tails)) if cd_id in f] and
-            not Tails.unlinked(str(sag._dir_tails)))
+        assert ([f for f in Tails.links(str(sag._dir_tails), sag.did)
+            if cd_id in f] and not Tails.unlinked(str(sag._dir_tails)))
 
         cred_def_json = await pspcobag.get_cred_def(cred_def_id(sag.did, schema['seqNo']))
         cred_def = json.loads(cred_def_json)
@@ -1605,7 +1617,7 @@ async def test_agents_on_nodepool_restart(pool_name, pool_genesis_txn_path, pool
             ppjson(cred_offer_json)))
 
 
-#noinspection PyUnusedLocal
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_path, pool_genesis_txn_file):
 
@@ -1659,7 +1671,8 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
         cd_id = cred_def_id(s_key.origin_did, seq_no)
         rr_id = Tails.current_rev_reg_id(sag._dir_tails, cd_id)
 
-        assert [f for f in Tails.links(str(sag._dir_tails)) if cd_id in f] and not Tails.unlinked(str(sag._dir_tails))
+        assert [f for f in Tails.links(str(sag._dir_tails), sag.did)
+            if cd_id in f] and not Tails.unlinked(str(sag._dir_tails))
 
         cred_def_json = await pspcobag.get_cred_def(cd_id)  # ought to exist now
         cred_def = json.loads(cred_def_json)
@@ -1786,7 +1799,7 @@ def _get_cacheable(agent, schema_key, seq_no, issuer_did):
         print('.. Thread {} got rev reg def {}'.format(current_thread().name, rr_id))
 
 
-#noinspection PyUnusedLocal
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_file):
     THREADS = 256
@@ -1861,7 +1874,7 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
         print('\n\n== 1 == Exercised cache locks, elapsed time: {} sec'.format(elapsed))
 
 
-#noinspection PyUnusedLocal
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_agents_cache_only(
         pool_name,
@@ -2000,8 +2013,8 @@ async def test_agents_cache_only(
         cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
 
         assert (s_id == S_ID['IDENT']) or (
-            [f for f in Tails.links(str(sag._dir_tails)) if cd_id[s_id] in f]
-                and not Tails.unlinked(str(sag._dir_tails)))
+            [f for f in Tails.links(str(sag._dir_tails), sag.did)
+                if cd_id[s_id] in f] and not Tails.unlinked(str(sag._dir_tails)))
 
         cred_def_json[s_id] = await pspcobag.get_cred_def(cd_id[s_id])  # ought to exist now
         cred_def[s_id] = json.loads(cred_def_json[s_id])
@@ -2094,7 +2107,7 @@ async def test_agents_cache_only(
     await pspcobag.load_cache(False)
     sag_cfg = {
         'parse-cache-on-open': True,
-        'archive-on-close': json.loads(await pspcobag.get_cubby_ids())
+        'archive-on-close': json.loads(await pspcobag.get_box_ids_json())
     }
     sag.cfg = sag_cfg
     await sag.load_cache(False)

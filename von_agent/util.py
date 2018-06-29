@@ -27,7 +27,7 @@ from von_agent.codec import decode
 SchemaKey = namedtuple('SchemaKey', 'origin_did name version')
 
 
-CD_ID_TAG = 'tag0'
+CD_ID_TAG = '0'
 
 
 def ppjson(dumpit: Any, elide_to: int = None) -> str:
@@ -149,17 +149,18 @@ def rev_reg_id2cred_def_id__tag(rr_id: str) -> (str, str):
     )
 
 
-def cubby_ids(creds: dict, cred_ids: list) -> dict:
+def box_ids(creds: dict, cred_ids: list = None) -> dict:
     """
-    Given a credentials structure and a list of credential identifiers (aka wallet cred-ids, referents),
-    return dict mapping each credential identifier to a triple (all strings) with its corresponding
-    schema identifier, credential definition identifier, and revocation registry identifier (None if
-    cred def does not support revocation).
+    Given a credentials structure and an optional list of credential identifiers
+    (aka wallet cred-ids, referents; specify None to include all), return dict mapping each
+    credential identifier to a box ids structure (i.e., a dict specifying its corresponding
+    schema identifier, credential definition identifier, and revocation registry identifier,
+    the latter being None if cred def does not support revocation).
 
     :param creds: creds structure returned by (HolderProver agent) get_creds()
-    :param cred_ids: list of credential identifiers for which to find corresponding schema identifiers
-    :return: dict mapping each credential identifier to its corresponding schema id, cred def id, rev reg id
-        (empty dict if no such credential identifiers present)
+    :param cred_ids: list of credential identifiers for which to find corresponding schema identifiers, None for all
+    :return: dict mapping each credential identifier to its corresponding box ids (empty dict if
+        no matching credential identifiers present)
     """
 
     rv = {}
@@ -167,8 +168,12 @@ def cubby_ids(creds: dict, cred_ids: list) -> dict:
         for cred in inner_creds:  # cred is a dict in a list of dicts
             cred_info = cred['cred_info']
             cred_id = cred_info['referent']
-            if (cred_id not in rv) and (cred_id in cred_ids):
-                rv[cred_id] = (cred_info['schema_id'], cred_info['cred_def_id'], cred_info['rev_reg_id'])
+            if (cred_id not in rv) and (not cred_ids or cred_id in cred_ids):
+                rv[cred_id] = {
+                    'schema_id': cred_info['schema_id'],
+                    'cred_def_id': cred_info['cred_def_id'],
+                    'rev_reg_id': cred_info['rev_reg_id']
+                }
 
     return rv
 
@@ -216,7 +221,7 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
                             },
                             "referent": "00000000-0000-0000-0000-000000000000",
                             "schema_id": "Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0",
-                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18",
+                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:0",
                             "cred_rev_id": null,
                             "rev_reg_id": null
                         }
@@ -231,7 +236,7 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
                             },
                             "referent": "00000000-0000-0000-0000-111111111111",
                             "schema_id": "Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0",
-                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18",
+                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:0",
                             "cred_rev_id": null,
                             "rev_reg_id": null
                         }
@@ -248,7 +253,7 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
                             },
                             "referent": "00000000-0000-0000-0000-000000000000",
                             "schema_id": "Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0",
-                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18",
+                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:0",
                             "cred_rev_id": null,
                             "rev_reg_id": null
                         }
@@ -263,7 +268,7 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
                             },
                             "referent": "00000000-0000-0000-0000-111111111111",
                             "schema_id": "Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0",
-                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18",
+                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:0",
                             "cred_rev_id": null,
                             "rev_reg_id": null
                         }
@@ -281,7 +286,7 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
     ::
 
         {
-            'Q4zqM7aXqm7gDQkUVLng9h:3:CL:18': {
+            'Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:0': {
                 'attr0': 1,  # operation stringifies en passant
                 'attr1': 'Nice'
             },

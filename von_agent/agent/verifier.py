@@ -54,19 +54,21 @@ class Verifier(_BaseAgent):
                     'schema_id': [
                         'R17v42T4pk...:2:tombstone:1.2',
                         '9cHbp54C8n...:2:business:2.0',
+                        'Pcq76cx6jE...:2:birth_cert:1.0',
                         ...
                     ],
                     'cred_def_id': [
-                        'R17v42T4pk...:3:CL:19',
-                        '9cHbp54C8n...:3:CL:37',
+                        'R17v42T4pk...:3:CL:19:0',
+                        '9cHbp54C8n...:3:CL:37:0',
+                        'Pcq76cx6jE...:3:CL:51:0',
                         ...
                     ]
                     'rev_reg_id': [
-                        'R17v42T4pk...:4:R17v42T4pk...:3:CL:19:CL_ACCUM:0',
-                        'R17v42T4pk...:4:R17v42T4pk...:3:CL:19:CL_ACCUM:1',
-                        '9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:CL_ACCUM:0',
-                        '9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:CL_ACCUM:1',
-                        '9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:CL_ACCUM:2',
+                        'R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:0',
+                        'R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:1',
+                        '9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:0',
+                        '9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:1',
+                        '9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:2',
                         ...
                     ]
                 }
@@ -104,7 +106,8 @@ class Verifier(_BaseAgent):
         :param value: configuration dict
         """
 
-        self._cfg = value
+        self._cfg = value or {}
+        validate_config('verifier', self._cfg)
 
     @property
     def dir_cache(self) -> str:
@@ -139,7 +142,7 @@ class Verifier(_BaseAgent):
         get_rr_req_json = await ledger.build_get_revoc_reg_request(self.did, rr_id, timestamp)
         resp_json = await self._submit(get_rr_req_json)
         resp = json.loads(resp_json)
-        if 'result' in resp and 'data' in resp['result'] and 'value' in resp['result']['data']:
+        if resp.get('result', {}).get('data', None) and resp['result']['data'].get('value', None):
             # timestamp at or beyond rev reg creation, carry on
             try:
                 (_, rr_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_response(resp_json)

@@ -57,6 +57,36 @@ class SchemaCache:
 
         LOGGER.debug('SchemaCache.__init__ <<<')
 
+    def __getitem__(self, index: Union[SchemaKey, int, str]) -> dict:
+        """
+        Get schema by schema key, sequence number, or schema identifier. Raise CacheIndex for no such schema.
+
+        Raise CacheIndex for no such index in schema store.
+
+        :param index: schema key, sequence number, or schema identifier
+        :return: corresponding schema or None
+        """
+
+        LOGGER.debug('SchemaCache.__getitem__ >>> index: %s', index)
+
+        rv = None
+        if isinstance(index, SchemaKey):
+            rv = self._schema_key2schema[index]
+        elif isinstance(index, int) or (isinstance(index, str) and ':2:' not in index):
+            try:
+                rv = self._schema_key2schema[self._seq_no2schema_key[int(index)]]
+            except KeyError:
+                LOGGER.debug('SchemaCache.__getitem__: <!< index %s not present', index)
+                raise CacheIndex('{}'.format(index))
+        elif isinstance(index, str):
+            rv = self._schema_key2schema[schema_key(index)]
+        else:
+            LOGGER.debug('SchemaCache.__getitem__: <!< index %s must be int SchemaKey, or schema id', index)
+            raise CacheIndex('{} must be int, SchemaKey, or schema id'.format(index))
+
+        LOGGER.debug('SchemaCache.__getitem__ <<< %s', rv)
+        return rv
+
     def __setitem__(self, index: Union[SchemaKey, int], schema: dict) -> dict:
         """
         Put schema into cache and return it.
@@ -118,36 +148,6 @@ class SchemaCache:
         LOGGER.debug('SchemaCache.index <<< %s', rv)
         return rv
 
-    def __getitem__(self, index: Union[SchemaKey, int, str]) -> dict:
-        """
-        Get schema by schema key, sequence number, or schema identifier. Raise CacheIndex for no such schema.
-
-        Raise CacheIndex for no such index in schema store.
-
-        :param index: schema key, sequence number, or schema identifier
-        :return: corresponding schema or None
-        """
-
-        LOGGER.debug('SchemaCache.__getitem__ >>> index: %s', index)
-
-        rv = None
-        if isinstance(index, SchemaKey):
-            rv = self._schema_key2schema[index]
-        elif isinstance(index, int) or (isinstance(index, str) and ':2:' not in index):
-            try:
-                rv = self._schema_key2schema[self._seq_no2schema_key[int(index)]]
-            except KeyError:
-                LOGGER.debug('SchemaCache.__getitem__: <!< index %s not present', index)
-                raise CacheIndex('{}'.format(index))
-        elif isinstance(index, str):
-            rv = self._schema_key2schema[schema_key(index)]
-        else:
-            LOGGER.debug('SchemaCache.__getitem__: <!< index %s must be int SchemaKey, or schema id', index)
-            raise CacheIndex('{} must be int, SchemaKey, or schema id'.format(index))
-
-        LOGGER.debug('SchemaCache.__getitem__ <<< %s', rv)
-        return rv
-
     def schema_key_for(self, seq_no: int) -> SchemaKey:
         """
         Get schema key for schema by sequence number if known, None for no such schema in cache.
@@ -175,7 +175,7 @@ class SchemaCache:
         LOGGER.debug('SchemaCache.schemata <<<')
         return [self._schema_key2schema[seq_no] for seq_no in self._schema_key2schema]
 
-    def feed(self, schemata) -> None:
+    def feed(self, schemata: list) -> None:
         """
         Take schemata from incoming list representation as schemata() returns, unless
         cache already has schema for an incoming schema sequence number.
@@ -229,8 +229,8 @@ class RevRegUpdateFrame:
         """
 
         self._qtime = int(time())
-        self._to = to
         self._timestamp = timestamp
+        self._to = to
         self._rr_update = rr_update
 
     @property
@@ -254,6 +254,16 @@ class RevRegUpdateFrame:
         self._qtime = value
 
     @property
+    def timestamp(self) -> int:
+        """
+        Accessor for timestamp on the distributed ledger for the rev reg update.
+
+        :return: timestamp on distributed ledger for current frame's rev reg update
+        """
+
+        return self._timestamp
+
+    @property
     def to(self) -> int:
         """
         Accessor for the latest cached time of interest associated with the rev reg update.
@@ -272,16 +282,6 @@ class RevRegUpdateFrame:
         """
 
         self._to = value
-
-    @property
-    def timestamp(self) -> int:
-        """
-        Accessor for timestamp on the distributed ledger for the rev reg update.
-
-        :return: timestamp on distributed ledger for current frame's rev reg update
-        """
-
-        return self._timestamp
 
     @property
     def rr_update(self) -> dict:
@@ -446,7 +446,7 @@ class RevoCacheEntry:
         * if the cache has a frame f on f.timestamp <= to <= f.to,
           > return its rev reg delta/state; e.g., starred frame below:
 
-          Frames: --------[xxxxx]----[xx]-----[*********]-----[*]-----------[xx]---------> time
+          Frames: --------[xxxxx]----[xx]-----[*********]-----[x]-----------[xx]---------> time
           Fro-to:                                ^----^
 
         * otherwise, if there is a maximum frame f with fro <= f.to and f.timestamp <= to
@@ -479,7 +479,7 @@ class RevoCacheEntry:
           Frames: --------[xxxxx]----[xx]-----[xxxxxxxxx]-----[*]-----------[xx]-----> time
           Fro-to:   ^--^
           Ledger: -!------[xxxxx]----[xx]-----[xxxxxxxxx]-----[x]-----------[xx]---------> time
-          Update: -[***]--[xxxxx]----[xx]-----[xxxxxxxxx]-----[**********]--[xx]---------> time
+          Update: -[***]--[xxxxx]----[xx]-----[xxxxxxxxx]-----[x]-----------[xx]---------> time
 
         On return of any previously existing rev reg delta/state frame, always update its query time beforehand.
 

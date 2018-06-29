@@ -54,21 +54,21 @@ CONFIG_JSON_SCHEMA = {
             'archive-on-close': {
                 'type': 'object',
                 'properties': {
-                    'schema-ids': {
+                    'schema_id': {
                         'type': 'array',
                         'items': {
                             'type': 'string',
                             'uniqueItems': True
                         }
                     },
-                    'cred-def-ids': {
+                    'cred_def_id': {
                         'type': 'array',
                         'items': {
                             'type': 'string',
                             'uniqueItems': True
                         }
                     },
-                    'rev-reg-ids': {
+                    'rev_reg_id': {
                         'type': 'array',
                         'items': {
                             'type': 'string',

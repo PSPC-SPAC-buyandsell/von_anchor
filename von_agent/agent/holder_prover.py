@@ -85,6 +85,17 @@ class HolderProver(_BaseAgent):
 
         LOGGER.debug('HolderProver.__init__ <<<')
 
+    def _assert_link_secret(self, action: str):
+        """
+        Raise AbsentLinkSecret if link secret is not set.
+
+        :param action: action requiring link secret
+        """
+
+        if self._link_secret is None:
+            LOGGER.debug('HolderProver._assert_link_secret: action %s requires link secret but it is not set', action)
+            raise AbsentLinkSecret('Action {} requires link secret but it is not set'.format(action))
+
     @property
     def cfg(self) -> dict:
         """
@@ -103,7 +114,8 @@ class HolderProver(_BaseAgent):
         :param value: configuration dict
         """
 
-        self._cfg = value
+        self._cfg = value or {}
+        validate_config('holder-prover', self._cfg)
 
     @property
     def dir_cache(self) -> str:
@@ -191,7 +203,7 @@ class HolderProver(_BaseAgent):
         get_rr_delta_req_json = await ledger.build_get_revoc_reg_delta_request(self.did, rr_id, fro, to)
         resp_json = await self._submit(get_rr_delta_req_json)
         resp = json.loads(resp_json)
-        if 'result' in resp and 'data' in resp['result'] and 'value' in resp['result']['data']:
+        if resp.get('result', {}).get('data', None) and resp['result']['data'].get('value', None):
             # delta is to some time at or beyond rev reg creation, carry on
             try:
                 (_, rr_delta_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_delta_response(resp_json)
@@ -232,7 +244,7 @@ class HolderProver(_BaseAgent):
         ::
 
             {
-                'Vx4E82R17q...:3:CL:16': {
+                'Vx4E82R17q...:3:CL:16:0': {
                     'attrs': [  # request attrs 'name' and 'favouriteDrink' from this cred def's schema
                         'name',
                         'favouriteDrink'
@@ -242,19 +254,19 @@ class HolderProver(_BaseAgent):
                     }
                     'interval': 1528116008  # same instant for all attrs and preds of corresponding schema
                 },
-                'R17v42T4pk...:3:CL:19': None,  # request all attrs, no preds, default intervals on all attrs
-                'e3vc5K168n...:3:CL:23': {},  # request all attrs, no preds, default intervals on all attrs
-                'Z9ccax812j...:3:CL:27': {  # request all attrs, no preds, this interval on all attrs
+                'R17v42T4pk...:3:CL:19:0': None,  # request all attrs, no preds, default intervals on all attrs
+                'e3vc5K168n...:3:CL:23:0': {},  # request all attrs, no preds, default intervals on all attrs
+                'Z9ccax812j...:3:CL:27:0': {  # request all attrs, no preds, this interval on all attrs
                     'interval': (1528112408, 1528116008)
                 },
-                '9cHbp54C8n...:3:CL:37': {  # request no attrs, one pred, specify interval on pred
+                '9cHbp54C8n...:3:CL:37:0': {  # request no attrs, one pred, specify interval on pred
                     'attrs': [],  # or equivalently, 'attrs': None
                     'minima': {
                         'employees': '50'  # nicety: implementation converts to int for caller
                     },
                     'interval': (1528029608, 1528116008)
                 },
-                '6caBcmLi33...:3:CL:41': {  # all attrs, one pred, default intervals to now on attrs & pred
+                '6caBcmLi33...:3:CL:41:0': {  # all attrs, one pred, default intervals to now on attrs & pred
                     'minima': {
                         'regEpoch': 1514782800
                     }
@@ -355,7 +367,7 @@ class HolderProver(_BaseAgent):
         ::
 
             {
-                'Vx4E82R17q...:3:CL:16': {
+                'Vx4E82R17q...:3:CL:16:0': {
                     'attr-match': {
                         'name': 'Alex',
                         'sex': 'M',
@@ -366,16 +378,16 @@ class HolderProver(_BaseAgent):
                         'score': 100  # if more than one minimum present, combined conjunctively (i.e., via AND)
                     }
                 },
-                'R17v42T4pk...:3:CL:19': {
+                'R17v42T4pk...:3:CL:19:0': {
                     'attr-match': {
                         'height': 175,
                         'birthdate': '1975-11-15'  # combined conjunctively (i.e., via AND)
                     }
                 },
-                'Z9ccax812j...:3:CL:27': {
+                'Z9ccax812j...:3:CL:27:0': {
                     'attr-match': {}  # match all attributes on this cred def
                 },
-                '9cHbp54C8n...:3:CL:37': {
+                '9cHbp54C8n...:3:CL:37:0': {
                     'minima': {  # request all attributes on this cred def, request preds specifying employees>=50
                         'employees' : 50,
                     }
@@ -574,9 +586,7 @@ class HolderProver(_BaseAgent):
 
         LOGGER.debug('HolderProver.create_cred_req >>> cred_offer_json: %s, cd_id: %s', cred_offer_json, cd_id)
 
-        if self._link_secret is None:
-            LOGGER.debug('HolderProver.create_cred_req: <!< link secret not set')
-            raise AbsentLinkSecret('Link secret is not set')
+        self._assert_link_secret('create_cred_req')
 
         # Check that ledger has schema on ledger where cred def expects - in case of pool reset with extant wallet
         cred_def_json = await self.get_cred_def(cd_id)
@@ -648,14 +658,14 @@ class HolderProver(_BaseAgent):
         LOGGER.debug('HolderProver.load_cache >>> archive: %s', archive)
 
         rv = int(time())
-        cubby_ids = json.loads(await self.get_cubby_ids())
-        for s_id in cubby_ids['schema_id']:
+        box_ids = json.loads(await self.get_box_ids_json())
+        for s_id in box_ids['schema_id']:
             with SCHEMA_CACHE.lock:
                 await self.get_schema(s_id)
-        for cd_id in cubby_ids['cred_def_id']:
+        for cd_id in box_ids['cred_def_id']:
             with CRED_DEF_CACHE.lock:
                 await self.get_cred_def(cd_id)
-        for rr_id in cubby_ids['rev_reg_id']:
+        for rr_id in box_ids['rev_reg_id']:
             await self._get_rev_reg_def(rr_id)
             with REVO_CACHE.lock:
                 revo_cache_entry = REVO_CACHE.get(rr_id, None)
@@ -675,9 +685,9 @@ class HolderProver(_BaseAgent):
         LOGGER.debug('HolderProver.load_cache <<< %s', rv)
         return rv
 
-    async def get_cubby_ids(self) -> str:
+    async def get_box_ids_json(self) -> str:
         """
-        Return json object on lists of all unique cubbyhole identifiers for credentials in wallet:
+        Return json object on lists of all unique box identifiers for credentials in wallet:
         schema identifiers, credential definition identifiers, and revocation registry identifiers; e.g.,
 
         ::
@@ -689,16 +699,16 @@ class HolderProver(_BaseAgent):
                 ...
             ],
             "cred_def_id": [
-                "R17v42T4pk...:3:CL:19",
-                "9cHbp54C8n...:3:CL:37",
+                "R17v42T4pk...:3:CL:19:0",
+                "9cHbp54C8n...:3:CL:37:0",
                 ...
             ]
             "rev_reg_id": [
-                "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:CL_ACCUM:0",
-                "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:CL_ACCUM:1",
-                "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:CL_ACCUM:0",
-                "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:CL_ACCUM:1",
-                "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:CL_ACCUM:2",
+                "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:0",
+                "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:1",
+                "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:0",
+                "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:1",
+                "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:2",
                 ...
             ]
         }
@@ -706,23 +716,23 @@ class HolderProver(_BaseAgent):
         :return: tuple of sets for schema ids, cred def ids, rev reg ids
         """
 
-        LOGGER.debug('HolderProver.get_cubby_ids >>>')
+        LOGGER.debug('HolderProver.get_box_ids_json >>>')
 
-        schema_ids = set()
-        cred_def_ids = set()
-        rev_reg_ids = set()
+        s_ids = set()
+        cd_ids = set()
+        rr_ids = set()
         for cred in json.loads(await self.get_creds_display_coarse()):
-            schema_ids.add(cred['schema_id'])
-            cred_def_ids.add(cred['cred_def_id'])
+            s_ids.add(cred['schema_id'])
+            cd_ids.add(cred['cred_def_id'])
             if cred['rev_reg_id']:
-                rev_reg_ids.add(cred['rev_reg_id'])
+                rr_ids.add(cred['rev_reg_id'])
 
         rv = json.dumps({
-            'schema_id': list(schema_ids),
-            'cred_def_id': list(cred_def_ids),
-            'rev_reg_id': list(rev_reg_ids)
+            'schema_id': list(s_ids),
+            'cred_def_id': list(cd_ids),
+            'rev_reg_id': list(rr_ids)
         })
-        LOGGER.debug('HolderProver.get_cubby_ids <<< %s', rv)
+        LOGGER.debug('HolderProver.get_box_ids_json <<< %s', rv)
         return rv
 
     async def get_creds_display_coarse(self, filt: dict = None) -> str:
@@ -845,7 +855,7 @@ class HolderProver(_BaseAgent):
         ::
 
             {
-                'Vx4E82R17q...:3:CL:16': {
+                'Vx4E82R17q...:3:CL:16:0': {
                     'attr-match': {
                         'name': 'Alex',
                         'sex': 'M',
@@ -856,13 +866,13 @@ class HolderProver(_BaseAgent):
                         'score': '100'  # nicety: implementation converts to int for caller
                     },
                 },
-                'R17v42T4pk...:3:CL:19': {
+                'R17v42T4pk...:3:CL:19:0': {
                     'attr-match': {
                         'height': 175,
                         'birthdate': '1975-11-15'  # combined conjunctively (i.e., via AND)
                     }
                 },
-                'Z9ccax812j...:3:CL:27': {
+                'Z9ccax812j...:3:CL:27:0': {
                     'attr-match': {}  # match all attributes on this cred def
                 }
                 ...
@@ -989,9 +999,7 @@ class HolderProver(_BaseAgent):
             creds,
             requested_creds)
 
-        if self._link_secret is None:
-            LOGGER.debug('HolderProver.create_proof: <!< link secret not set')
-            raise AbsentLinkSecret('Link secret is not set')
+        self._assert_link_secret('create_proof')
 
         x_uuids = [attr_uuid for attr_uuid in creds['attrs'] if len(creds['attrs'][attr_uuid]) != 1]
         if x_uuids:
@@ -1091,9 +1099,7 @@ class HolderProver(_BaseAgent):
 
         LOGGER.debug('HolderProver.reset_wallet >>>')
 
-        if self._link_secret is None:
-            LOGGER.debug('HolderProver.reset_wallet: <!< link secret not set')
-            raise AbsentLinkSecret('Link secret is not set')
+        self._assert_link_secret('reset_wallet')
 
         seed = self.wallet._seed
         wallet_name = self.wallet.name

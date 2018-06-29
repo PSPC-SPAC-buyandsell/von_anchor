@@ -18,17 +18,23 @@ limitations under the License.
 import json
 import logging
 
-from os import makedirs
-from os.path import basename, expanduser, join
+from os import listdir, makedirs
+from os.path import basename, expanduser, isdir, join
 
 from indy import anoncreds, blob_storage, ledger
 from indy.error import IndyError, ErrorCode
 from von_agent.agent.origin import Origin
 from von_agent.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE
 from von_agent.codec import cred_attr_value
-from von_agent.error import AbsentCredDef, AbsentTails, BadRevocation, CorruptTails, CorruptWallet
+from von_agent.error import AbsentCredDef, AbsentSchema, AbsentTails, BadRevocation, CorruptTails, CorruptWallet
 from von_agent.tails import Tails
-from von_agent.util import CD_ID_TAG, cred_def_id, rev_reg_id, rev_reg_id2cred_def_id__tag, schema_key
+from von_agent.util import (
+    CD_ID_TAG,
+    cred_def_id,
+    cred_def_id2seq_no,
+    rev_reg_id,
+    rev_reg_id2cred_def_id__tag,
+    schema_key)
 from von_agent.wallet import Wallet
 
 
@@ -70,7 +76,7 @@ class Issuer(Origin):
         LOGGER.debug('Issuer.open >>>')
 
         await super().open()
-        for path_rr_id in Tails.links(self._dir_tails):
+        for path_rr_id in Tails.links(self._dir_tails, self.did):
             await self._sync_revoc(basename(path_rr_id))
 
         LOGGER.debug('Issuer.open <<<')
@@ -259,6 +265,10 @@ class Issuer(Origin):
             for tag in [str(t) for t in range(int(Tails.next_tag(self._dir_tails, cd_id)[0]))]:  # '0' to str(next-1)
                 await self._sync_revoc(rev_reg_id(cd_id, tag), rr_size if tag == 0 else None)
 
+        dir_cred_def = join(self._dir_tails, cd_id)
+        if not isdir(dir_cred_def):  # make sure a directory exists for box id collection when required, revo or not
+            makedirs(dir_cred_def, exist_ok=True)
+
         LOGGER.debug('Issuer.send_cred_def <<< %s', rv_json)
         return rv_json
 
@@ -440,4 +450,61 @@ class Issuer(Origin):
 
         rv = resp['result']['txnMetadata']['txnTime']
         LOGGER.debug('Issuer.revoke_cred <<< %s', rv)
+        return rv
+
+    async def get_box_ids_json(self) -> str:
+        """
+        Return json object on lists of all unique box identifiers (schema identifiers,
+        credential definition identifiers, and revocation registry identifiers) for
+        all credential definitions and credentials issued; e.g.,
+
+        ::
+
+        {
+            "schema_id": [
+                "R17v42T4pk...:2:tombstone:1.2",
+                ...
+            ],
+            "cred_def_id": [
+                "R17v42T4pk...:3:CL:19:0",
+                ...
+            ]
+            "rev_reg_id": [
+                "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:0",
+                "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:1",
+                ...
+            ]
+        }
+
+        An issuer must issue a credential definition to include its schema identifier
+        in the returned values; the schema identifier in isolation belongs properly
+        to an Origin, not necessarily to an Issuer.
+
+        The operation may be useful for a Verifier agent going off-line to seed its
+        cache before doing so.
+
+        :return: tuple of sets for schema ids, cred def ids, rev reg ids
+        """
+
+        LOGGER.debug('Issuer.get_box_ids_json >>>')
+
+        cd_ids = [d for d in listdir(self._dir_tails)
+            if isdir(join(self._dir_tails, d)) and d.startswith('{}:3:'.format(self.did))]
+        s_ids = []
+        for cd_id in cd_ids:
+            try:
+                s_ids.append(json.loads(await self.get_schema(cred_def_id2seq_no(cd_id)))['id'])
+            except AbsentSchema:
+                LOGGER.error(
+                    'Issuer %s has issued cred def %s but no corresponding schema on ledger',
+                    self.wallet.name,
+                    cd_id)
+        rr_ids = [basename(link) for link in Tails.links(self._dir_tails, self.did)]
+
+        rv = json.dumps({
+            'schema_id': s_ids,
+            'cred_def_id': cd_ids,
+            'rev_reg_id': rr_ids
+        })
+        LOGGER.debug('Issuer.get_box_ids_json <<< %s', rv)
         return rv

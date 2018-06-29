@@ -122,16 +122,19 @@ class Tails:
         return join(base_dir, cd_id, readlink(link)) if islink(link) else None
 
     @staticmethod
-    def links(base_dir: str) -> set:
+    def links(base_dir: str, issuer_did: str = None) -> set:
         """
         Return set of all paths to symbolic links (rev reg ids) associating
-        their respective tails files, in specified base tails directory.
+        their respective tails files, in specified base tails directory, on
+        input issuer DID if specified.
 
         :param base_dir: base directory for tails files, thereafter split by cred def id
+        :param issuer_did: issuer DID of interest
         :return: set of paths to symbolic links associating tails files
         """
 
-        return {join(dp, f) for dp, dn, fn in walk(base_dir) for f in fn if islink(join(dp, f))}
+        return {join(dp, f) for dp, dn, fn in walk(base_dir) for f in fn
+            if islink(join(dp, f)) and (not issuer_did or f.startswith('{}:4:'.format(issuer_did)))}
 
     @staticmethod
     def unlinked(base_dir: str) -> set:
