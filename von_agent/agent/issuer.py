@@ -27,6 +27,7 @@ from von_agent.agent.origin import Origin
 from von_agent.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE
 from von_agent.codec import cred_attr_value
 from von_agent.error import AbsentCredDef, AbsentSchema, AbsentTails, BadRevocation, CorruptTails, CorruptWallet
+from von_agent.nodepool import NodePool
 from von_agent.tails import Tails
 from von_agent.util import (
     CD_ID_TAG,
@@ -50,16 +51,17 @@ class Issuer(Origin):
     For simplicity, the current design calls to make any issuer agent an origin agent.
     """
 
-    def __init__(self, wallet: Wallet) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool) -> None:
         """
         Initializer for Issuer agent. Retain input parameters; do not open wallet nor tails writer.
 
         :param wallet: wallet for agent use
+        :param pool: pool for agent use
         """
 
-        LOGGER.debug('Issuer.__init__ >>> wallet: %s', wallet)
+        LOGGER.debug('Issuer.__init__ >>> wallet: %s, pool: %s', wallet, pool)
 
-        super().__init__(wallet)
+        super().__init__(wallet, pool)
         self._dir_tails = join(expanduser('~'), '.indy_client', 'tails')
         makedirs(self._dir_tails, exist_ok=True)
 

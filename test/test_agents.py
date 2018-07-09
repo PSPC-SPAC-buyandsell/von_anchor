@@ -141,20 +141,21 @@ async def test_agents_low_level_api(
     p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
 
     try:
-        xag = SRIAgent(Wallet(p, 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', 'xxx', None, {'auto-remove': True}))
+        xag = SRIAgent(Wallet('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', 'xxx', None, {'auto-remove': True}), p)
     except AbsentWallet:
         pass
 
-    tag = TrustAnchorAgent(await Wallet(p, seed_trustee1, 'trust-anchor').create())
-    sag = SRIAgent(await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create())
+    tag = TrustAnchorAgent(await Wallet(seed_trustee1, 'trust-anchor').create(), p)
+    sag = SRIAgent(await Wallet('SRI-Agent-0000000000000000000000', 'sri').create(), p)
     pspcobag = OrgBookAgent(
-        await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create(),
+        await Wallet('PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create(),
+        p,
         {
             'parse-cache-on-open': True,
             'archive-cache-on-close': True
         })
-    bcobag = OrgBookAgent(await Wallet(p, 'BC-Org-Book-Agent-00000000000000', 'bc-org-book').create())
-    bcrag = BCRegistrarAgent(await Wallet(p, 'BC-Registrar-Agent-0000000000000', 'bc-registrar').create())
+    bcobag = OrgBookAgent(await Wallet('BC-Org-Book-Agent-00000000000000', 'bc-org-book').create(), p)
+    bcrag = BCRegistrarAgent(await Wallet('BC-Registrar-Agent-0000000000000', 'bc-registrar').create(), p)
 
     await tag.open()
 
@@ -334,6 +335,7 @@ async def test_agents_low_level_api(
         pass
 
     i = 0
+    seq_no = None
     for s_id in schema_data:
         s_key = schema_key(s_id)
         try:
@@ -346,17 +348,24 @@ async def test_agents_low_level_api(
         schema_by_id_json = await did2ag[s_key.origin_did].get_schema(s_id)  # exercise get_schema on schema_id
         schema[s_id] = json.loads(schema_json[s_id])
         assert json.loads(schema_by_id_json)['seqNo'] == schema[s_id]['seqNo']
+        seq_no = schema[s_id]['seqNo']  # retain the last one for post-loop get_schema() by seq num
 
         seq_no2schema_id[schema[s_id]['seqNo']] = s_id
         seq_no2schema[schema[s_id]['seqNo']] = schema[s_id]
         print('\n\n== 2.{} == SCHEMA [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
         assert schema[s_id]
         i += 1
+
     try:
         json.loads(await did2ag[schema_key(S_ID['BC']).origin_did].send_schema(
             json.dumps(schema_data[S_ID['BC']])))  # check idempotence
-    except Exception:
-        assert False
+
+        _set_cache_state(False)
+        s = json.loads(await tag.get_schema(seq_no))  # exercise get_schema() by seq num if not cached
+        assert s['seqNo'] == seq_no
+        _set_cache_state(True)
+    except Exception as x:
+        assert False, x
 
     # BC Registrar and SRI agents (Issuers) create, store, publish cred definitions to ledger; create cred offers
     try:
@@ -1467,7 +1476,8 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     path = Path(path_home, 'pool', pool_name)
     p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
     pspcobag = OrgBookAgent(
-        await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create(),
+        await Wallet('PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create(),
+        p,
         {
             'parse-cache-on-open': True,
             'archive-cache-on-close': False
@@ -1478,7 +1488,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     # PSPC Org Book agent (as HolderProver) creates multi-cred proof with specification of one by pred
     cd_id = {}
     schema = {}
-    sag = SRIAgent(await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create())
+    sag = SRIAgent(await Wallet('SRI-Agent-0000000000000000000000', 'sri').create(), p)
     async with sag:
         S_ID = {
             'SRI-1.0': schema_id(sag.did, 'sri', '1.0'),
@@ -1535,7 +1545,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
         'parse-cache-on-open': True,
         'archive-on-close': json.loads(await pspcobag.get_box_ids_json())
     }
-    sag = SRIAgent(await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create(), sag_cfg)
+    sag = SRIAgent(await Wallet('SRI-Agent-0000000000000000000000', 'sri').create(), p, sag_cfg)
 
     _set_tails_state(False)  # simulate not having tails file & cache
     _set_cache_state(False)
@@ -1580,9 +1590,10 @@ async def test_agents_on_nodepool_restart(pool_name, pool_genesis_txn_path, pool
 
     # Open pool, SRI + PSPC Org Book agents (the tests above should obviate its need for trust-anchor)
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-        SRIAgent(await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create())) as sag, (
+        SRIAgent(await Wallet('SRI-Agent-0000000000000000000000', 'sri').create(), p)) as sag, (
         OrgBookAgent(
-            await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create(),
+            await Wallet('PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create(),
+            p,
             {
                 'parse-cache-on-open': True,
                 'archive-cache-on-close': True
@@ -1624,14 +1635,16 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
     print('\n\n== Testing agent revocation cache reg update maintenance ==')
 
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-        OrgBookAgent(await Wallet(
-            p,
-            'PSPC-Org-Book-Agent-000000000000',
-            'pspc-org-book').create())) as pspcobag, (
-        SRIAgent(await Wallet(
-            p,
-            'SRI-Agent-0000000000000000000000',
-            'sri-0').create())) as sag:
+        OrgBookAgent(
+            await Wallet(
+                'PSPC-Org-Book-Agent-000000000000',
+                'pspc-org-book').create(),
+            p)) as pspcobag, (
+        SRIAgent(
+            await Wallet(
+                'SRI-Agent-0000000000000000000000',
+                'sri-0').create(),
+            p)) as sag:
 
         nyms = {
             'pspcobag': json.loads(await sag.get_nym(pspcobag.did)),
@@ -1808,30 +1821,34 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
     print('\n\n== Testing agent cache locking ==')
 
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-        OrgBookAgent(await Wallet(
-            p,
-            'PSPC-Org-Book-Agent-000000000000',
-            'pspc-org-book',
-            None,
-            {'auto-remove': True}).create())) as pspcobag, (
-        SRIAgent(await Wallet(
-            p,
-            'SRI-Agent-0000000000000000000000',
-            'sri-0',
-            None,
-            {'auto-remove': True}).create())) as sag0, (
-        SRIAgent(await Wallet(
-            p,
-            'SRI-Agent-1111111111111111111111',
-            'sri-1',
-            None,
-            {'auto-remove': True}).create())) as sag1, (
-        SRIAgent(await Wallet(
-            p,
-            'SRI-Agent-2222222222222222222222',
-            'sri-2',
-            None,
-            {'auto-remove': True}).create())) as sag2:
+        OrgBookAgent(
+            await Wallet(
+                'PSPC-Org-Book-Agent-000000000000',
+                'pspc-org-book',
+                None,
+                {'auto-remove': True}).create(),
+            p)) as pspcobag, (
+        SRIAgent(
+            await Wallet(
+                'SRI-Agent-0000000000000000000000',
+                'sri-0',
+                None,
+                {'auto-remove': True}).create(),
+            p)) as sag0, (
+        SRIAgent(
+            await Wallet(
+                'SRI-Agent-1111111111111111111111',
+                'sri-1',
+                None,
+                {'auto-remove': True}).create(),
+            p)) as sag1, (
+        SRIAgent(
+            await Wallet(
+                'SRI-Agent-2222222222222222222222',
+                'sri-2',
+                None,
+                {'auto-remove': True}).create(),
+            p)) as sag2:
 
         sri_did = sag0.did
         schema_key2seq_no = {
@@ -1889,9 +1906,10 @@ async def test_agents_cache_only(
     # Open pool, init agents
     p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
 
-    sag = SRIAgent(await Wallet(p, 'SRI-Agent-0000000000000000000000', 'sri').create())
+    sag = SRIAgent(await Wallet('SRI-Agent-0000000000000000000000', 'sri').create(), p)
     pspcobag = OrgBookAgent(
-        await Wallet(p, 'PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create(),
+        await Wallet('PSPC-Org-Book-Agent-000000000000', 'pspc-org-book').create(),
+        p,
         {
             'parse-cache-on-open': True,
             'archive-cache-on-close': True
@@ -2136,7 +2154,7 @@ async def test_agents_cache_only(
     requested_creds = json.loads(await pspcobag.build_req_creds_json(creds_pruned))
     print('\n\n== 8 == Requested credentials: {}'.format(ppjson(requested_creds)))
     proof_json = await pspcobag.create_proof(proof_req, creds_pruned, requested_creds)
-    print('\n\n== 9 == PSPC Org Book proof: {}'.format(ppjson(proof_json), 1000))
+    print('\n\n== 9 == PSPC Org Book proof: {}'.format(ppjson(proof_json, 1000)))
     proof = json.loads(proof_json)
 
     rc_json = await sag.verify_proof(proof_req, proof)

@@ -37,6 +37,7 @@ from von_agent.error import (
     BadRevStateTime,
     ClosedPool,
     CredentialFocus)
+from von_agent.nodepool import NodePool
 from von_agent.tails import Tails
 from von_agent.util import cred_def_id2seq_no, prune_creds_json, rev_reg_id2cred_def_id__tag
 from von_agent.validate_config import validate_config
@@ -53,11 +54,12 @@ class HolderProver(_BaseAgent):
     the holder-prover agent to manage tails files.
     """
 
-    def __init__(self, wallet: Wallet, cfg: dict = None) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool, cfg: dict = None) -> None:
         """
         Initializer for HolderProver agent. Retain input parameters; do not open wallet nor tails writer.
 
         :param wallet: wallet for agent use
+        :param pool: pool for agent use
         :param cfg: configuration dict for cache archive behaviour; e.g.,
 
         ::
@@ -69,9 +71,9 @@ class HolderProver(_BaseAgent):
 
         """
 
-        LOGGER.debug('HolderProver.__init__ >>> wallet: %s, cfg: %s', wallet, cfg)
+        LOGGER.debug('HolderProver.__init__ >>> wallet: %s, pool: %s, cfg: %s', wallet, pool, cfg)
 
-        super().__init__(wallet)
+        super().__init__(wallet, pool)
         self._link_secret = None
 
         self._dir_tails = join(expanduser('~'), '.indy_client', 'tails')
@@ -1110,7 +1112,6 @@ class HolderProver(_BaseAgent):
         await self.wallet.close()
         await self.wallet.remove()
         self.wallet = await Wallet(
-            self.pool,
             seed,
             wallet_name,
             wallet_xtype,

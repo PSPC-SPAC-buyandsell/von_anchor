@@ -22,7 +22,6 @@ from string import printable
 from von_agent.codec import cred_attr_value, encode, decode
 
 
-#noinspection PyUnusedLocal
 @pytest.mark.asyncio
 async def test_enco_deco():
     print('\n\n== 0 == Starting encode/decode for string of length up to 1024')

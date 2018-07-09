@@ -29,7 +29,6 @@ from von_agent.error import CacheIndex
 from von_agent.util import cred_def_id, ppjson, schema_id, SchemaKey
 
 
-#noinspection PyUnusedLocal
 @pytest.mark.asyncio
 async def test_schema_cache():
     N = 32
@@ -122,7 +121,6 @@ def _dot():
         do(asyncio.sleep(1))
 
 
-#noinspection PyUnusedLocal
 @pytest.mark.asyncio
 async def test_cache_multithread():
     global cache_test_done

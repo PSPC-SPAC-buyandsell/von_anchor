@@ -18,22 +18,14 @@ limitations under the License.
 from indy import IndyError
 from indy.error import ErrorCode
 from pathlib import Path
-from von_agent.nodepool import NodePool
 from von_agent.wallet import Wallet
 from von_agent.error import JSONValidation
 
 import pytest
 
 
-#noinspection PyUnusedLocal
 @pytest.mark.asyncio
-async def test_wallet(
-    path_home,
-    pool_name,
-    pool_genesis_txn_path,
-    pool_genesis_txn_file):
-
-    pool = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
+async def test_wallet(path_home):
 
     seed = '00000000000000000000000000000000'
     name = 'my-wallet'
@@ -41,7 +33,7 @@ async def test_wallet(
     path_seed2did = path.with_name('{}.seed2did'.format(path.name))
 
     # 1. Configuration with auto-remove set
-    w = Wallet(pool, seed, name, None, {'auto-remove': True})
+    w = Wallet(seed, name, None, {'auto-remove': True})
     await w.create()
     assert path.exists(), 'Wallet path {} not present'.format(path)
     await w.open()
@@ -53,7 +45,7 @@ async def test_wallet(
     print('\n\n== 1 == New wallet with auto-remove OK')
 
     # 2. Default configuration (auto-remove=False)
-    w = Wallet(pool, seed, name)
+    w = Wallet(seed, name)
     await w.create()
     assert path.exists(), 'Wallet path {} not present'.format(path)
     assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
@@ -68,7 +60,7 @@ async def test_wallet(
     print('\n\n== 2 == New wallet with default config (no auto-remove) OK')
 
     # 3. Make sure wallet opens from extant file
-    x = Wallet(pool, seed, name, None, {'auto-remove': True})
+    x = Wallet(seed, name, None, {'auto-remove': True})
     await x.create()
 
     async with x:
@@ -81,7 +73,7 @@ async def test_wallet(
 
     # 4. Double-open
     try:
-        async with await Wallet(pool, seed, name, None, {'auto-remove': True}).create() as w:
+        async with await Wallet(seed, name, None, {'auto-remove': True}).create() as w:
             async with w:
                 assert False
     except IndyError as e:
@@ -92,7 +84,7 @@ async def test_wallet(
 
     # 5. Bad config
     try:
-        Wallet(pool, seed, name, None, {'auto-remove': 'a suffusion of yellow'})
+        Wallet(seed, name, None, {'auto-remove': 'a suffusion of yellow'})
     except JSONValidation:
         pass
     print('\n\n== 4 == Error cases error as expected')

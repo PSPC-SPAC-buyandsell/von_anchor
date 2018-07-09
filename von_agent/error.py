@@ -64,7 +64,7 @@ class VonAgentError(Exception):
         :param message: error message
         """
 
-        super().__init__()
+        super().__init__(message)
         self.error_code = error_code
         self.message = message
 

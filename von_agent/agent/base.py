@@ -46,18 +46,18 @@ class _BaseAgent:
     with the distributed ledger that its node pool operates.
     """
 
-    def __init__(self, wallet: Wallet) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool) -> None:
         """
-        Initializer for agent. Retain wallet.
-
-        Raise AbsentWallet if wallet is not yet created.
+        Initializer for agent. Retain wallet and node pool.
 
         :param wallet: wallet for agent use
+        :param pool: node pool for agent use
         """
 
-        LOGGER.debug('_BaseAgent.__init__ >>> wallet: %s', wallet)
+        LOGGER.debug('_BaseAgent.__init__ >>> wallet: %s, pool: %s', wallet, pool)
 
         self._wallet = wallet
+        self._pool = pool
 
         LOGGER.debug('_BaseAgent.__init__ <<<')
 
@@ -69,7 +69,7 @@ class _BaseAgent:
         :return: node pool
         """
 
-        return self.wallet.pool
+        return self._pool
 
     @property
     def wallet(self) -> Wallet:
@@ -136,6 +136,7 @@ class _BaseAgent:
 
         LOGGER.debug('_BaseAgent.open >>>')
 
+        # Do not open pool independently: let relying party decide when to go on-line and off-line
         await self.wallet.open()
 
         LOGGER.debug('_BaseAgent.open <<<')
@@ -165,6 +166,7 @@ class _BaseAgent:
         LOGGER.debug('_BaseAgent.close >>>')
 
         await self.wallet.close()
+        # Do not close pool independently: let relying party decide when to go on-line and off-line
 
         LOGGER.debug('_BaseAgent.close <<<')
 
@@ -411,14 +413,14 @@ class _BaseAgent:
                 SCHEMA_CACHE[s_key] = json.loads(rv_json)  # cache indexes by both txn# and schema key en passant
                 LOGGER.info('_BaseAgent.get_schema: got schema %s from ledger', index)
 
-            elif isinstance(index, (int, str)):  # :2: not in index - it's a stringified int txn no
+            elif isinstance(index, (int, str)):  # ':2:' not in index - it's a stringified int txn num if it's a str
                 txn_json = await self.get_txn(int(index))
                 txn = json.loads(txn_json)
                 if txn.get('type', None) == '101':  # {} for no such txn; 101 marks indy-sdk schema txn type
                     rv_json = await self.get_schema(SchemaKey(
-                        txn['identifier'],
-                        txn['data']['name'],
-                        txn['data']['version']))
+                        txn['metadata']['from'],
+                        txn['data']['data']['name'],
+                        txn['data']['data']['version']))
                 else:
                     LOGGER.info('_BaseAgent.get_schema: no schema at seq #%s on ledger', index)
 
@@ -445,7 +447,7 @@ class _BaseAgent:
         req_json = await ledger.build_get_txn_request(self.did, None, txn)
         resp = json.loads(await self._submit(req_json))
 
-        rv_json = json.dumps(resp['result'].get('data', {}))
+        rv_json = json.dumps((resp['result'].get('data', {}) or {}).get('txn', {}))  # "data": null for no such txn
         LOGGER.debug('_BaseAgent.get_txn <<< %s', rv_json)
         return rv_json
 

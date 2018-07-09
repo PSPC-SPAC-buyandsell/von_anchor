@@ -22,7 +22,6 @@ import pytest
 import json
 
 
-#noinspection PyUnusedLocal
 @pytest.mark.asyncio
 async def test_pool_open(
     path_home,

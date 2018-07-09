@@ -27,6 +27,7 @@ from indy.error import IndyError
 from von_agent.agent.base import _BaseAgent
 from von_agent.cache import Caches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_agent.error import AbsentRevReg, AbsentSchema, BadRevStateTime, ClosedPool
+from von_agent.nodepool import NodePool
 from von_agent.validate_config import validate_config
 from von_agent.wallet import Wallet
 
@@ -39,11 +40,12 @@ class Verifier(_BaseAgent):
     Mixin for agent acting in the role of Verifier. Verifier agents verify proofs.
     """
 
-    def __init__(self, wallet: Wallet, cfg: dict = None) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool, cfg: dict = None) -> None:
         """
         Initializer for Verifier agent. Retain input parameters; do not open wallet.
 
         :param wallet: wallet for agent use
+        :param pool: pool for agent use
         :param cfg: configuration dict for cache archive behaviour; e.g.,
 
         ::
@@ -76,9 +78,9 @@ class Verifier(_BaseAgent):
 
         """
 
-        LOGGER.debug('Verifier.__init__ >>> wallet: %s, cfg: %s', wallet, cfg)
+        LOGGER.debug('Verifier.__init__ >>> wallet: %s, pool: %s, cfg: %s', wallet, pool, cfg)
 
-        super().__init__(wallet)
+        super().__init__(wallet, pool)
 
         self._cfg = cfg or {}
         validate_config('verifier', self._cfg)

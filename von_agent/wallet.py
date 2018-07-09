@@ -21,7 +21,6 @@ import logging
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
 from von_agent.error import AbsentWallet, CorruptWallet, JSONValidation
-from von_agent.nodepool import NodePool
 
 
 LOGGER = logging.getLogger(__name__)
@@ -35,17 +34,16 @@ class Wallet:
 
     def __init__(
             self,
-            pool: NodePool,
             seed: str,
             name: str,
             wallet_type: str = None,
             cfg: dict = None,
             access_creds: dict = None) -> None:
         """
-        Initializer for wallet. Store input parameters and create wallet.
-        Does not open until open() or __aenter__().
+        Initializer for wallet. Store input parameters, packing name and wallet_type into cfg (the
+        signature retains them independently as a convenience and to retain compatibility with prior releases).
+        Do not create wallet until call to create(). Do not open until call to open() or __aenter__().
 
-        :param pool: node pool on which wallet operates
         :param seed: seed for wallet user
         :param name: name of the wallet
         :param wallet_type: wallet type str, None for default
@@ -59,24 +57,22 @@ class Wallet:
         """
 
         LOGGER.debug(
-            'Wallet.__init__ >>> pool %s, seed [SEED], name %s, wallet_type %s, cfg %s, access_creds %s',
-            pool,
+            'Wallet.__init__ >>> seed [SEED], name %s, wallet_type %s, cfg %s, access_creds %s',
             name,
             wallet_type,
             cfg,
             access_creds)
 
-        self._pool = pool
         self._seed = seed
-        self._name = name
         self._handle = None
-        self._xtype = wallet_type
 
         self._cfg = cfg or {}
         if not isinstance(self.cfg.get('auto-remove', False), bool):
             # enterprise wallet development was having trouble with validate_config.validate_config() - check manually
             LOGGER.debug('Wallet.__init__ <!< Error on wallet configuration: auto-remove value must be boolean')
             raise JSONValidation('Error on wallet configuration: auto-remove value must be boolean')
+        self._cfg['id'] = name
+        self._cfg['storage_type'] = wallet_type or 'default'
 
         # pop and retain configuration specific to von_agent.Wallet, extrinsic to indy-sdk
         self._auto_remove = self._cfg.pop('auto-remove') if self._cfg and 'auto-remove' in self._cfg else False
@@ -91,24 +87,14 @@ class Wallet:
         LOGGER.debug('Wallet.__init__ <<<')
 
     @property
-    def pool(self) -> NodePool:
-        """
-        Accessor for pool.
-
-        :return: pool
-        """
-
-        return self._pool
-
-    @property
     def name(self) -> str:
         """
-        Accessor for wallet name.
+        Accessor for wallet name, as configuration retains at key 'id'.
 
         :return: wallet name
         """
 
-        return self._name
+        return self.cfg['id']
 
     @property
     def handle(self) -> int:
@@ -153,12 +139,12 @@ class Wallet:
     @property
     def xtype(self) -> str:
         """
-        Accessor for wallet type.
+        Accessor for wallet type, as configuration retains at key 'storage_type'.
 
         :return: wallet type
         """
 
-        return self._xtype
+        return self.cfg['storage_type']
 
     @property
     def did(self) -> str:
@@ -214,7 +200,6 @@ class Wallet:
 
         if not rv:  # seed not in metadata, generate did again on temp wallet
             temp_wallet = await Wallet(
-                self.pool,
                 self._seed,
                 '{}.seed2did'.format(self.name),
                 None,
@@ -238,23 +223,22 @@ class Wallet:
 
         try:
             await wallet.create_wallet(
-                pool_name=self.pool.name,
-                name=self.name,
-                xtype=self.xtype,
                 config=json.dumps(self.cfg),
                 credentials=json.dumps(self.access_creds))
             self._created = True
-            LOGGER.info('Created wallet %s on pool %s:%s', self.name, self.pool.handle, self.pool.name)
+            LOGGER.info('Created wallet %s', self.name)
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.WalletAlreadyExistsError:
                 LOGGER.info('Wallet already exists: %s', self.name)
             else:
-                LOGGER.debug('Wallet.create: <!< indy error code %s', x_indy.error_code)
+                LOGGER.debug(
+                    'Wallet.create: <!< indy error code %s on creation of wallet %s',
+                    x_indy.error_code,
+                    self.name)
                 raise
 
         LOGGER.debug('Attempting to open wallet %s', self.name)
         self._handle = await wallet.open_wallet(
-            self.name,
             json.dumps(self.cfg),
             json.dumps(self.access_creds))
         LOGGER.info('Opened wallet %s on handle %s', self.name, self.handle)
@@ -319,7 +303,6 @@ class Wallet:
             raise AbsentWallet('Cannot open wallet {}: not created'.format(self.name))
 
         self._handle = await wallet.open_wallet(
-            self.name,
             json.dumps(self.cfg),
             json.dumps(self.access_creds))
         LOGGER.info('Opened wallet %s on handle %s', self.name, self.handle)
@@ -376,7 +359,7 @@ class Wallet:
 
         try:
             LOGGER.info('Removing wallet: %s', self.name)
-            await wallet.delete_wallet(self.name, json.dumps(self.access_creds))
+            await wallet.delete_wallet(json.dumps(self.cfg), json.dumps(self.access_creds))
         except IndyError as x_indy:
             LOGGER.info('Abstaining from wallet removal; indy-sdk error code %s', x_indy.error_code)
 
@@ -389,8 +372,8 @@ class Wallet:
         :return: representation for current object
         """
 
-        return '{}({}, [SEED], {}, {})'.format(
+        return '{}([SEED], {}, {}, {}, [ACCESS_CREDS])'.format(
             self.__class__.__name__,
-            self.pool,
             self.name,
+            self.xtype,
             self.cfg)
