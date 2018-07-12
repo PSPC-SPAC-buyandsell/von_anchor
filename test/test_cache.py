@@ -24,9 +24,9 @@ from math import ceil
 from random import shuffle
 from threading import Thread
 from time import time as epoch
-from von_agent.cache import CRED_DEF_CACHE, SCHEMA_CACHE
-from von_agent.error import CacheIndex
-from von_agent.util import cred_def_id, ppjson, schema_id, SchemaKey
+from von_anchor.cache import CRED_DEF_CACHE, SCHEMA_CACHE
+from von_anchor.error import CacheIndex
+from von_anchor.util import cred_def_id, ppjson, schema_id, SchemaKey
 
 
 @pytest.mark.asyncio

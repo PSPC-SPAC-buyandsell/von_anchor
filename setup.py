@@ -18,20 +18,20 @@ import os
 from setuptools import setup, find_packages
 
 
-pkg_name = 'von_agent'
-version = '1.5.2'
+pkg_name = 'von_anchor'
+version = '1.6.0'
 
 setup(
     name=pkg_name,
     version=version,
     packages=find_packages(),
-    description='VON agents',
+    description='VON anchors',
     license='Apache Software License',
     author='PSPS-SPAC',
     author_email='stephen.klump@becker-carroll.com',
     url='https://github.com/PSPC-SPAC-buyandsell/{}'.format(pkg_name),
     download_url='https://github.com/PSPC-SPAC-buyandsell/{}/archive/{}.tar.gz'.format(pkg_name, version),
-    keywords=['VON', 'SRI', 'agent', 'The Org Book', 'indy'],
+    keywords=['VON', 'SRI', 'anchor', 'The Org Book', 'indy'],
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',

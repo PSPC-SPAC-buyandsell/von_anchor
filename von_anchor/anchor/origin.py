@@ -19,18 +19,18 @@ import json
 import logging
 
 from indy import anoncreds, ledger
-from von_agent.agent.base import _BaseAgent
-from von_agent.cache import SCHEMA_CACHE
-from von_agent.error import AbsentSchema
-from von_agent.util import schema_id, schema_key
+from von_anchor.anchor.base import _BaseAnchor
+from von_anchor.cache import SCHEMA_CACHE
+from von_anchor.error import AbsentSchema
+from von_anchor.util import schema_id, schema_key
 
 
 LOGGER = logging.getLogger(__name__)
 
 
-class Origin(_BaseAgent):
+class Origin(_BaseAnchor):
     """
-    Mixin for agent to send schemata to the distributed ledger
+    Mixin for anchor to send schemata to the distributed ledger.
     """
 
     async def send_schema(self, schema_data_json: str) -> str:

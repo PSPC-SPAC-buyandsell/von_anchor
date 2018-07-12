@@ -21,8 +21,8 @@ from os import chdir, getcwd, makedirs, readlink, symlink, walk
 from os.path import basename, dirname, isfile, islink, join
 
 from indy import blob_storage
-from von_agent.error import AbsentTails
-from von_agent.util import rev_reg_id, rev_reg_id2cred_def_id, rev_reg_id2tag
+from von_anchor.error import AbsentTails
+from von_anchor.util import rev_reg_id, rev_reg_id2cred_def_id, rev_reg_id2tag
 
 
 class Tails:
@@ -144,8 +144,8 @@ class Tails:
 
         At an Issuer, tails files should not persist long without revocation registry identifier
         association via symbolic link. At a HolderProver, a newly downloaded tails file stays
-        unlinked until the agent stores a credential or creates a proof needing it, or else the
-        agent restarts.
+        unlinked until the anchor stores a credential or creates a proof needing it, or else the
+        anchor restarts.
 
         :param base_dir: base directory for tails files, thereafter split by cred def id
         :return: set of paths to tails files with no local symbolic links to them

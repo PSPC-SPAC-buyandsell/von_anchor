@@ -15,13 +15,13 @@ limitations under the License.
 """
 
 
-from von_agent.agent.holder_prover import HolderProver
-from von_agent.agent.issuer import Issuer
-from von_agent.agent.registrar import AgentRegistrar
-from von_agent.agent.verifier import Verifier
+from von_anchor.anchor.holder_prover import HolderProver
+from von_anchor.anchor.issuer import Issuer
+from von_anchor.anchor.smith import AnchorSmith
+from von_anchor.anchor.verifier import Verifier
 
 
-TrustAnchorAgent = type('TrustAnchorAgent', (AgentRegistrar,), {})
-SRIAgent = type('SRIAgent', (Verifier, Issuer), {})
-BCRegistrarAgent = type('BCRegistrarAgent', (Issuer,), {})
-OrgBookAgent = type('OrgBookAgent', (HolderProver,), {})
+TrusteeAnchor = type('TrusteeAnchor', (AnchorSmith,), {})
+SRIAnchor = type('SRIAnchor', (Verifier, Issuer), {})
+BCRegistrarAnchor = type('BCRegistrarAnchor', (Issuer,), {})
+OrgBookAnchor = type('OrgBookAnchor', (HolderProver,), {})

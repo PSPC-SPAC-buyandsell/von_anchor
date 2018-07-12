@@ -24,9 +24,9 @@ from shutil import rmtree
 from threading import RLock
 from time import time
 from typing import Awaitable, Callable, Tuple, Union
-from von_agent.error import BadRevStateTime, CacheIndex
-from von_agent.tails import Tails
-from von_agent.util import rev_reg_id2cred_def_id, SchemaKey, schema_key
+from von_anchor.error import BadRevStateTime, CacheIndex
+from von_anchor.tails import Tails
+from von_anchor.util import rev_reg_id2cred_def_id, SchemaKey, schema_key
 
 
 LOGGER = logging.getLogger(__name__)
@@ -214,7 +214,7 @@ class RevRegUpdateFrame:
     Keeps track of last query time, asked-for ('to') time, timestamp on distributed ledger, and rev reg update.
     The last query time is purely for cache management.
 
-    Holder-Prover agents use deltas to create proof; verifier agents use states to verify them.
+    Holder-Prover anchors use deltas to create proof; verifier anchors use states to verify them.
 
     Necessarily for each cached update frame, timestamp <= frame.to <= qtime.
     """
@@ -441,7 +441,7 @@ class RevoCacheEntry:
         Raise BadRevStateTime if caller asks for a delta/state in the future. Raise ClosedPool
         if an update requires the ledger but the node pool is closed.
 
-        Issuer agents cannot revoke retroactively.
+        Issuer anchors cannot revoke retroactively.
         Hence, for any new request against asked-for interval (fro, to):
         * if the cache has a frame f on f.timestamp <= to <= f.to,
           > return its rev reg delta/state; e.g., starred frame below:
@@ -483,8 +483,8 @@ class RevoCacheEntry:
 
         On return of any previously existing rev reg delta/state frame, always update its query time beforehand.
 
-        :param rr_builder: callback to build rev reg delta/state if need be (specify holder-prover agent's
-            _build_rr_delta_json() or verifier agent's _build_rr_state_json() as needed)
+        :param rr_builder: callback to build rev reg delta/state if need be (specify holder-prover anchor's
+            _build_rr_delta_json() or verifier anchor's _build_rr_state_json() as needed)
         :param fro: least time (epoch seconds) of interest; lower-bounds 'to' on frame housing return data
         :param to: greatest time (epoch seconds) of interest; upper-bounds returned revocation delta/state timestamp
         :param delta: True to operate on rev reg deltas, False for states
@@ -569,7 +569,8 @@ class RevoCacheEntry:
 
         On return of any previously existing rev reg delta frame, always update its query time beforehand.
 
-        :param rr_delta_builder: callback to build rev reg delta if need be (specify agent instance's _build_rr_delta())
+        :param rr_delta_builder: callback to build rev reg delta if need be (specify anchor instance's
+            _build_rr_delta())
         :param fro: least time (epoch seconds) of interest; lower-bounds 'to' on frame housing return data
         :param to: greatest time (epoch seconds) of interest; upper-bounds returned revocation delta timestamp
         :return: rev reg delta json and ledger timestamp (epoch seconds)
@@ -599,7 +600,8 @@ class RevoCacheEntry:
 
         On return of any previously existing rev reg state frame, always update its query time beforehand.
 
-        :param rr_state_builder: callback to build rev reg state if need be (specify agent instance's _build_rr_state())
+        :param rr_state_builder: callback to build rev reg state if need be (specify anchor instance's
+            _build_rr_state())
         :param fro: least time (epoch seconds) of interest; lower-bounds 'to' on frame housing return data
         :param to: greatest time (epoch seconds) of interest; upper-bounds returned revocation state timestamp
         :return: rev reg state json and ledger timestamp (epoch seconds)

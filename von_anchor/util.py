@@ -21,7 +21,7 @@ from collections import namedtuple
 from copy import deepcopy
 from pprint import pformat
 from typing import Any
-from von_agent.codec import decode
+from von_anchor.codec import decode
 
 
 SchemaKey = namedtuple('SchemaKey', 'origin_did name version')
@@ -157,7 +157,7 @@ def box_ids(creds: dict, cred_ids: list = None) -> dict:
     schema identifier, credential definition identifier, and revocation registry identifier,
     the latter being None if cred def does not support revocation).
 
-    :param creds: creds structure returned by (HolderProver agent) get_creds()
+    :param creds: creds structure returned by (HolderProver anchor) get_creds()
     :param cred_ids: list of credential identifiers for which to find corresponding schema identifiers, None for all
     :return: dict mapping each credential identifier to its corresponding box ids (empty dict if
         no matching credential identifiers present)
@@ -182,7 +182,7 @@ def prune_creds_json(creds: dict, cred_ids: set) -> str:
     """
     Strip all creds out of the input json structure that do not match any of the input credential identifiers.
 
-    :param creds: creds structure returned by (HolderProver agent) get_creds()
+    :param creds: creds structure returned by (HolderProver anchor) get_creds()
     :param cred_ids: the set of credential identifiers of interest
     :return: the reduced creds json
     """

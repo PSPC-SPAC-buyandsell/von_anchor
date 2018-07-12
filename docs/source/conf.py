@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-# VON Agent documentation build configuration file, created by
+# VON Anchor documentation build configuration file, created by
 # sphinx-quickstart on Wed May 16 00:36:06 2018.
 #
 # This file is execfile()d with the current directory set to its
@@ -55,7 +55,7 @@ source_suffix = ['.rst', '.md']
 master_doc = 'index'
 
 # General information about the project.
-project = 'VON Agent'
+project = 'VON Anchor'
 copyright = '2018, Stephen Klump'
 author = 'Stephen Klump'
 
@@ -123,7 +123,7 @@ html_sidebars = {
 # -- Options for HTMLHelp output ------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'VONAgentdoc'
+htmlhelp_basename = 'VONAnchordoc'
 
 
 # -- Options for LaTeX output ---------------------------------------------
@@ -150,7 +150,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'VONAgent.tex', 'VON Agent Documentation',
+    (master_doc, 'VON_Anchor.tex', 'VON Anchor Documentation',
      'Stephen Klump', 'manual'),
 ]
 
@@ -160,7 +160,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'vonagent', 'VON Agent Documentation',
+    (master_doc, 'von_anchor', 'VON Anchor Documentation',
      [author], 1)
 ]
 
@@ -171,8 +171,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'VONAgent', 'VON Agent Documentation',
-     author, 'VONAgent', 'One line description of project.',
+    (master_doc, 'VON_Anchor', 'VON Anchor Documentation',
+     author, 'VON_Anchor', 'One line description of project.',
      'Miscellaneous'),
 ]
 

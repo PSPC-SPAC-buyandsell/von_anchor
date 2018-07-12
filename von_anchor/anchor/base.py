@@ -23,43 +23,43 @@ from typing import Union
 
 from indy import ledger
 from indy.error import IndyError, ErrorCode
-from von_agent.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
-from von_agent.error import (
+from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
+from von_anchor.error import (
     AbsentCredDef,
     AbsentRevReg,
     AbsentSchema,
     BadLedgerTxn,
     ClosedPool,
     CorruptWallet)
-from von_agent.nodepool import NodePool
-from von_agent.util import schema_id, SchemaKey, schema_key
-from von_agent.wallet import Wallet
+from von_anchor.nodepool import NodePool
+from von_anchor.util import schema_id, SchemaKey, schema_key
+from von_anchor.wallet import Wallet
 
 
 LOGGER = logging.getLogger(__name__)
 
 
-class _BaseAgent:
+class _BaseAnchor:
     """
-    Base class for common agent functionality. A VON agent has a wallet and a
+    Base class for common anchor functionality. A VON anchor has a wallet and a
     node pool.  It has a role and a cryptonym, and can interact via indy-sdk
     with the distributed ledger that its node pool operates.
     """
 
     def __init__(self, wallet: Wallet, pool: NodePool) -> None:
         """
-        Initializer for agent. Retain wallet and node pool.
+        Initializer for anchor. Retain wallet and node pool.
 
-        :param wallet: wallet for agent use
-        :param pool: node pool for agent use
+        :param wallet: wallet for anchor use
+        :param pool: node pool for anchor use
         """
 
-        LOGGER.debug('_BaseAgent.__init__ >>> wallet: %s, pool: %s', wallet, pool)
+        LOGGER.debug('_BaseAnchor.__init__ >>> wallet: %s, pool: %s', wallet, pool)
 
         self._wallet = wallet
         self._pool = pool
 
-        LOGGER.debug('_BaseAgent.__init__ <<<')
+        LOGGER.debug('_BaseAnchor.__init__ <<<')
 
     @property
     def pool(self) -> NodePool:
@@ -94,9 +94,9 @@ class _BaseAgent:
     @property
     def did(self) -> str:
         """
-        Accessor for agent DID.
+        Accessor for anchor DID.
 
-        :return: agent DID
+        :return: anchor DID
         """
 
         return self.wallet.did
@@ -104,75 +104,75 @@ class _BaseAgent:
     @property
     def verkey(self) -> str:
         """
-        Accessor for agent verification key.
+        Accessor for anchor verification key.
 
-        :return: agent verification key
+        :return: anchor verification key
         """
 
         return self.wallet.verkey
 
-    async def __aenter__(self) -> '_BaseAgent':
+    async def __aenter__(self) -> '_BaseAnchor':
         """
         Context manager entry; open wallet.
-        For use in monolithic call opening, using, and closing the agent.
+        For use in monolithic call opening, using, and closing the anchor.
 
         :return: current object
         """
 
-        LOGGER.debug('_BaseAgent.__aenter__ >>>')
+        LOGGER.debug('_BaseAnchor.__aenter__ >>>')
 
         rv = await self.open()
 
-        LOGGER.debug('_BaseAgent.__aenter__ <<<')
+        LOGGER.debug('_BaseAnchor.__aenter__ <<<')
         return rv
 
-    async def open(self) -> '_BaseAgent':
+    async def open(self) -> '_BaseAnchor':
         """
         Context manager entry; open wallet.
-        For use when keeping agent open across multiple calls.
+        For use when keeping anchor open across multiple calls.
 
         :return: current object
         """
 
-        LOGGER.debug('_BaseAgent.open >>>')
+        LOGGER.debug('_BaseAnchor.open >>>')
 
         # Do not open pool independently: let relying party decide when to go on-line and off-line
         await self.wallet.open()
 
-        LOGGER.debug('_BaseAgent.open <<<')
+        LOGGER.debug('_BaseAnchor.open <<<')
         return self
 
     async def __aexit__(self, exc_type, exc, traceback) -> None:
         """
         Context manager exit. Close wallet.
-        For use in monolithic call opening, using, and closing the agent.
+        For use in monolithic call opening, using, and closing the anchor.
 
         :param exc_type:
         :param exc:
         :param traceback:
         """
 
-        LOGGER.debug('_BaseAgent.__aexit__ >>> exc_type: %s, exc: %s, traceback: %s', exc_type, exc, traceback)
+        LOGGER.debug('_BaseAnchor.__aexit__ >>> exc_type: %s, exc: %s, traceback: %s', exc_type, exc, traceback)
 
         await self.close()
-        LOGGER.debug('_BaseAgent.__exit__ <<<')
+        LOGGER.debug('_BaseAnchor.__exit__ <<<')
 
     async def close(self) -> None:
         """
         Explicit exit. Close wallet.
-        For use when keeping agent open across multiple calls.
+        For use when keeping anchor open across multiple calls.
         """
 
-        LOGGER.debug('_BaseAgent.close >>>')
+        LOGGER.debug('_BaseAnchor.close >>>')
 
         await self.wallet.close()
         # Do not close pool independently: let relying party decide when to go on-line and off-line
 
-        LOGGER.debug('_BaseAgent.close <<<')
+        LOGGER.debug('_BaseAnchor.close <<<')
 
     async def get_nym(self, did: str) -> str:
         """
-        Get json cryptonym (including current verification key) for input (agent) DID from ledger.
+        Get json cryptonym (including current verification key) for input (anchor) DID from ledger.
 
         Raise BadLedgerTxn on failure.
 
@@ -180,7 +180,7 @@ class _BaseAgent:
         :return: cryptonym json
         """
 
-        LOGGER.debug('_BaseAgent.get_nym >>> did: %s', did)
+        LOGGER.debug('_BaseAnchor.get_nym >>> did: %s', did)
 
         rv = json.dumps({})
         get_nym_req = await ledger.build_get_nym_request(self.did, did)
@@ -190,22 +190,21 @@ class _BaseAgent:
         if data_json:
             rv = data_json
 
-        LOGGER.debug('_BaseAgent.get_nym <<< %s', rv)
+        LOGGER.debug('_BaseAnchor.get_nym <<< %s', rv)
         return rv
 
     @staticmethod
     def role() -> str:
         """
-        Return the indy-sdk role for an agent in building its nym for the trust anchor to send to the ledger.
+        Return the indy-sdk role for an anchor in building its nym for the trust anchor to send to the ledger.
 
-        :param agent: agent instance
         :return: role string
         """
 
-        LOGGER.debug('_BaseAgent.role >>>')
+        LOGGER.debug('_BaseAnchor.role >>>')
 
         rv = 'TRUST_ANCHOR'
-        LOGGER.debug('_BaseAgent.role <<< %s', rv)
+        LOGGER.debug('_BaseAnchor.role <<< %s', rv)
         return rv
 
     async def _submit(self, req_json: str) -> str:
@@ -218,10 +217,10 @@ class _BaseAgent:
         :return: json response
         """
 
-        LOGGER.debug('_BaseAgent._submit >>> json: %s', req_json)
+        LOGGER.debug('_BaseAnchor._submit >>> json: %s', req_json)
 
         if not self.pool.handle:
-            LOGGER.debug('_BaseAgent._submit <!< closed pool %s', self.pool.name)
+            LOGGER.debug('_BaseAnchor._submit <!< closed pool %s', self.pool.name)
             raise ClosedPool('Cannot submit request to closed pool {}'.format(self.pool.name))
 
         rv_json = await ledger.submit_request(self.pool.handle, req_json)
@@ -229,14 +228,14 @@ class _BaseAgent:
 
         resp = json.loads(rv_json)
         if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
-            LOGGER.debug('_BaseAgent._submit: <!< ledger rejected request: %s', resp['reason'])
+            LOGGER.debug('_BaseAnchor._submit: <!< ledger rejected request: %s', resp['reason'])
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
 
         if 'reason' in resp and 'result' in resp and resp['result'].get('seqNo', None) is None:
-            LOGGER.debug('_BaseAgent._submit: <!< response indicates no transaction: %s', resp['reason'])
+            LOGGER.debug('_BaseAnchor._submit: <!< response indicates no transaction: %s', resp['reason'])
             raise BadLedgerTxn('Response indicates no transaction: {}'.format(resp['reason']))
 
-        LOGGER.debug('_BaseAgent._submit <<< %s', rv_json)
+        LOGGER.debug('_BaseAnchor._submit <<< %s', rv_json)
         return rv_json
 
     async def _sign_submit(self, req_json: str) -> str:
@@ -250,10 +249,10 @@ class _BaseAgent:
         :return: json response
         """
 
-        LOGGER.debug('_BaseAgent._sign_submit >>> json: %s', req_json)
+        LOGGER.debug('_BaseAnchor._sign_submit >>> json: %s', req_json)
 
         if not self.pool.handle:
-            LOGGER.debug('_BaseAgent._submit <!< closed pool %s', self.pool.name)
+            LOGGER.debug('_BaseAnchor._submit <!< closed pool %s', self.pool.name)
             raise ClosedPool('Cannot submit request to closed pool {}'.format(self.pool.name))
 
         try:
@@ -262,28 +261,28 @@ class _BaseAgent:
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.WalletIncompatiblePoolError:
                 LOGGER.debug(
-                    '_BaseAgent._sign_submit: <!< Corrupt wallet %s is not compatible with pool %s',
+                    '_BaseAnchor._sign_submit: <!< Corrupt wallet %s is not compatible with pool %s',
                     self.wallet.name,
                     self.pool.name)
                 raise CorruptWallet(
                     'Corrupt wallet {} is not compatible with pool {}'.format(self.wallet.name, self.pool.name))
             else:
                 LOGGER.debug(
-                    '_BaseAgent._sign_submit: <!<  cannot sign/submit request for ledger: indy error code %s',
+                    '_BaseAnchor._sign_submit: <!<  cannot sign/submit request for ledger: indy error code %s',
                     self.wallet.name)
                 raise BadLedgerTxn('Cannot sign/submit request for ledger: indy error code {}'.format(
                     x_indy.error_code))
 
         resp = json.loads(rv_json)
         if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
-            LOGGER.debug('_BaseAgent._sign_submit: ledger rejected request: %s', resp['reason'])
+            LOGGER.debug('_BaseAnchor._sign_submit: ledger rejected request: %s', resp['reason'])
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
 
         if 'reason' in resp and 'result' in resp and resp['result'].get('seqNo', None) is None:
-            LOGGER.debug('_BaseAgent._sign_submit: <!< response indicates no transaction: %s', resp['reason'])
+            LOGGER.debug('_BaseAnchor._sign_submit: <!< response indicates no transaction: %s', resp['reason'])
             raise BadLedgerTxn('Response indicates no transaction: {}'.format(resp['reason']))
 
-        LOGGER.debug('_BaseAgent._sign_submit <<< %s', rv_json)
+        LOGGER.debug('_BaseAnchor._sign_submit <<< %s', rv_json)
         return rv_json
 
     async def _get_rev_reg_def(self, rr_id: str) -> str:
@@ -292,7 +291,7 @@ class _BaseAgent:
         for no such revocation registry, logging any error condition and raising BadLedgerTxn
         on bad request.
 
-        Retrieve the revocation registry definition from the agent's revocation cache if it has it;
+        Retrieve the revocation registry definition from the anchor's revocation cache if it has it;
         cache it en passant if it does not (and such a revocation registry definition exists on the ledger).
 
         :param rr_id: (revocation registry) identifier string, of the format
@@ -300,7 +299,7 @@ class _BaseAgent:
         :return: revocation registry definition json as retrieved from ledger
         """
 
-        LOGGER.debug('_BaseAgent._get_rev_reg_def >>> rr_id: %s', rr_id)
+        LOGGER.debug('_BaseAnchor._get_rev_reg_def >>> rr_id: %s', rr_id)
 
         rv_json = json.dumps({})
 
@@ -308,7 +307,7 @@ class _BaseAgent:
             revo_cache_entry = REVO_CACHE.get(rr_id, None)
             rr_def = revo_cache_entry.rev_reg_def if revo_cache_entry else None
             if rr_def:
-                LOGGER.info('_BaseAgent._get_rev_reg_def: rev reg def for %s from cache', rr_id)
+                LOGGER.info('_BaseAnchor._get_rev_reg_def: rev reg def for %s from cache', rr_id)
                 rv_json = json.dumps(rr_def)
             else:
                 get_rrd_req_json = await ledger.build_get_revoc_reg_def_request(self.did, rr_id)
@@ -317,7 +316,7 @@ class _BaseAgent:
                     (_, rv_json) = await ledger.parse_get_revoc_reg_def_response(resp_json)
                     rr_def = json.loads(rv_json)
                 except IndyError:  # ledger replied, but there is no such rev reg
-                    LOGGER.debug('_BaseAgent._get_rev_reg_def: <!< no rev reg exists on %s', rr_id)
+                    LOGGER.debug('_BaseAnchor._get_rev_reg_def: <!< no rev reg exists on %s', rr_id)
                     raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
 
                 if revo_cache_entry is None:
@@ -325,7 +324,7 @@ class _BaseAgent:
                 else:
                     REVO_CACHE[rr_id].rev_reg_def = rr_def
 
-        LOGGER.debug('_BaseAgent._get_rev_reg_def <<< %s', rv_json)
+        LOGGER.debug('_BaseAnchor._get_rev_reg_def <<< %s', rv_json)
         return rv_json
 
     async def get_cred_def(self, cd_id: str) -> str:
@@ -335,39 +334,39 @@ class _BaseAgent:
         Raise AbsentCredDef for no such credential definition, logging any error condition and raising
         BadLedgerTxn on bad request. Raise ClosedPool if cred def not in cache and pool is closed.
 
-        Retrieve the credential definition from the agent's credential definition cache if it has it; cache it
+        Retrieve the credential definition from the anchor's credential definition cache if it has it; cache it
         en passant if it does not (and if there is a corresponding credential definition on the ledger).
 
         :param cd_id: (credential definition) identifier string ('<issuer-did>:3:CL:<schema-seq-no>:<tag>')
         :return: credential definition json as retrieved from ledger, empty production for no such cred def
         """
 
-        LOGGER.debug('_BaseAgent.get_cred_def >>> cd_id: %s', cd_id)
+        LOGGER.debug('_BaseAnchor.get_cred_def >>> cd_id: %s', cd_id)
 
         rv_json = json.dumps({})
 
         with CRED_DEF_CACHE.lock:
             if cd_id in CRED_DEF_CACHE:
-                LOGGER.info('_BaseAgent.get_cred_def: got cred def for %s from cache', cd_id)
+                LOGGER.info('_BaseAnchor.get_cred_def: got cred def for %s from cache', cd_id)
                 rv_json = json.dumps(CRED_DEF_CACHE[cd_id])
-                LOGGER.debug('_BaseAgent.get_cred_def <<< %s', rv_json)
+                LOGGER.debug('_BaseAnchor.get_cred_def <<< %s', rv_json)
                 return rv_json
 
             req_json = await ledger.build_get_cred_def_request(self.did, cd_id)
             resp_json = await self._submit(req_json)
             resp = json.loads(resp_json)
             if not ('result' in resp and resp['result'].get('data', None)):
-                LOGGER.debug('_BaseAgent.get_cred_def: <!< no cred def exists on %s', cd_id)
+                LOGGER.debug('_BaseAnchor.get_cred_def: <!< no cred def exists on %s', cd_id)
                 raise AbsentCredDef('No cred def exists on {}'.format(cd_id))
             try:
                 (_, rv_json) = await ledger.parse_get_cred_def_response(resp_json)
             except IndyError:  # ledger replied, but there is no such cred def
-                LOGGER.debug('_BaseAgent.get_cred_def: <!< no cred def exists on %s', cd_id)
+                LOGGER.debug('_BaseAnchor.get_cred_def: <!< no cred def exists on %s', cd_id)
                 raise AbsentCredDef('No cred def exists on {}'.format(cd_id))
             CRED_DEF_CACHE[cd_id] = json.loads(rv_json)
-            LOGGER.info('_BaseAgent.get_cred_def: got cred def %s from ledger', cd_id)
+            LOGGER.info('_BaseAnchor.get_cred_def: got cred def %s from ledger', cd_id)
 
-        LOGGER.debug('_BaseAgent.get_cred_def <<< %s', rv_json)
+        LOGGER.debug('_BaseAnchor.get_cred_def <<< %s', rv_json)
         return rv_json
 
     async def get_schema(self, index: Union[SchemaKey, int, str]) -> str:
@@ -378,21 +377,21 @@ class _BaseAgent:
         Raise AbsentSchema for no such schema, logging any error condition and raising
         BadLedgerTxn on bad request.
 
-        Retrieve the schema from the agent's schema cache if it has it; cache it
+        Retrieve the schema from the anchor's schema cache if it has it; cache it
         en passant if it does not (and there is a corresponding schema on the ledger).
 
         :param index: schema key (origin DID, name, version), sequence number, or schema identifier
         :return: schema json, parsed from ledger
         """
 
-        LOGGER.debug('_BaseAgent.get_schema >>> index: %s', index)
+        LOGGER.debug('_BaseAnchor.get_schema >>> index: %s', index)
 
         rv_json = json.dumps({})
         with SCHEMA_CACHE.lock:
             if SCHEMA_CACHE.contains(index):
-                LOGGER.info('_BaseAgent.get_schema: got schema %s from schema cache', index)
+                LOGGER.info('_BaseAnchor.get_schema: got schema %s from schema cache', index)
                 rv_json = SCHEMA_CACHE[index]
-                LOGGER.debug('_BaseAgent.get_schema <<< %s', rv_json)
+                LOGGER.debug('_BaseAnchor.get_schema <<< %s', rv_json)
                 return json.dumps(rv_json)
 
             if isinstance(index, SchemaKey) or (isinstance(index, str) and ':2:' in index):
@@ -403,15 +402,15 @@ class _BaseAgent:
                 resp = json.loads(resp_json)
 
                 if not ('result' in resp and resp['result'].get('data', {}).get('attr_names', None)):
-                    LOGGER.debug('_BaseAgent.get_schema: <!< no schema exists on %s', index)
+                    LOGGER.debug('_BaseAnchor.get_schema: <!< no schema exists on %s', index)
                     raise AbsentSchema('No schema exists on {}'.format(index))
                 try:
                     (_, rv_json) = await ledger.parse_get_schema_response(resp_json)
                 except IndyError:  # ledger replied, but there is no such schema
-                    LOGGER.debug('_BaseAgent.get_schema: <!< no schema exists on %s', index)
+                    LOGGER.debug('_BaseAnchor.get_schema: <!< no schema exists on %s', index)
                     raise AbsentSchema('No schema exists on {}'.format(index))
                 SCHEMA_CACHE[s_key] = json.loads(rv_json)  # cache indexes by both txn# and schema key en passant
-                LOGGER.info('_BaseAgent.get_schema: got schema %s from ledger', index)
+                LOGGER.info('_BaseAnchor.get_schema: got schema %s from ledger', index)
 
             elif isinstance(index, (int, str)):  # ':2:' not in index - it's a stringified int txn num if it's a str
                 txn_json = await self.get_txn(int(index))
@@ -422,15 +421,15 @@ class _BaseAgent:
                         txn['data']['data']['name'],
                         txn['data']['data']['version']))
                 else:
-                    LOGGER.info('_BaseAgent.get_schema: no schema at seq #%s on ledger', index)
+                    LOGGER.info('_BaseAnchor.get_schema: no schema at seq #%s on ledger', index)
 
             else:
-                LOGGER.debug('_BaseAgent.get_schema: <!< bad schema index type')
+                LOGGER.debug('_BaseAnchor.get_schema: <!< bad schema index type')
                 raise AbsentSchema('Attempt to get schema on ({}) {} , must use schema key or an int'.format(
                     type(index),
                     index))
 
-        LOGGER.debug('_BaseAgent.get_schema <<< %s', rv_json)
+        LOGGER.debug('_BaseAnchor.get_schema <<< %s', rv_json)
         return rv_json
 
     async def get_txn(self, txn: int) -> str:
@@ -441,14 +440,14 @@ class _BaseAgent:
         :return: json sequence number of transaction, null for no match
         """
 
-        LOGGER.debug('_BaseAgent.get_txn >>> txn: %s', txn)
+        LOGGER.debug('_BaseAnchor.get_txn >>> txn: %s', txn)
 
         rv_json = json.dumps({})
         req_json = await ledger.build_get_txn_request(self.did, None, txn)
         resp = json.loads(await self._submit(req_json))
 
         rv_json = json.dumps((resp['result'].get('data', {}) or {}).get('txn', {}))  # "data": null for no such txn
-        LOGGER.debug('_BaseAgent.get_txn <<< %s', rv_json)
+        LOGGER.debug('_BaseAnchor.get_txn <<< %s', rv_json)
         return rv_json
 
     def __repr__(self) -> str:

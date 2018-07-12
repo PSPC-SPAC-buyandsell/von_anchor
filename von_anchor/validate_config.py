@@ -17,7 +17,7 @@ limitations under the License.
 
 import jsonschema
 
-from von_agent.error import JSONValidation
+from von_anchor.error import JSONValidation
 
 
 CONFIG_JSON_SCHEMA = {

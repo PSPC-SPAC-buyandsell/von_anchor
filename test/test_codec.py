@@ -19,7 +19,7 @@ import pytest
 
 from random import choice
 from string import printable
-from von_agent.codec import cred_attr_value, encode, decode
+from von_anchor.codec import cred_attr_value, encode, decode
 
 
 @pytest.mark.asyncio

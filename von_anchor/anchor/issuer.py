@@ -23,20 +23,20 @@ from os.path import basename, expanduser, isdir, join
 
 from indy import anoncreds, blob_storage, ledger
 from indy.error import IndyError, ErrorCode
-from von_agent.agent.origin import Origin
-from von_agent.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE
-from von_agent.codec import cred_attr_value
-from von_agent.error import AbsentCredDef, AbsentSchema, AbsentTails, BadRevocation, CorruptTails, CorruptWallet
-from von_agent.nodepool import NodePool
-from von_agent.tails import Tails
-from von_agent.util import (
+from von_anchor.anchor.origin import Origin
+from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE
+from von_anchor.codec import cred_attr_value
+from von_anchor.error import AbsentCredDef, AbsentSchema, AbsentTails, BadRevocation, CorruptTails, CorruptWallet
+from von_anchor.nodepool import NodePool
+from von_anchor.tails import Tails
+from von_anchor.util import (
     CD_ID_TAG,
     cred_def_id,
     cred_def_id2seq_no,
     rev_reg_id,
     rev_reg_id2cred_def_id__tag,
     schema_key)
-from von_agent.wallet import Wallet
+from von_anchor.wallet import Wallet
 
 
 LOGGER = logging.getLogger(__name__)
@@ -44,19 +44,19 @@ LOGGER = logging.getLogger(__name__)
 
 class Issuer(Origin):
     """
-    Mixin for agent acting in role of Issuer. An Issuer creates credential definitions and
+    Mixin for anchor acting in role of Issuer. An Issuer creates credential definitions and
     sends them to the ledger, issues credentials, and revokes credentials. Revocation support
     involves the management of tails files and revocation registries.
 
-    For simplicity, the current design calls to make any issuer agent an origin agent.
+    For simplicity, the current design calls to make any issuer anchor an origin anchor.
     """
 
     def __init__(self, wallet: Wallet, pool: NodePool) -> None:
         """
-        Initializer for Issuer agent. Retain input parameters; do not open wallet nor tails writer.
+        Initializer for Issuer anchor. Retain input parameters; do not open wallet nor tails writer.
 
-        :param wallet: wallet for agent use
-        :param pool: pool for agent use
+        :param wallet: wallet for anchor use
+        :param pool: pool for anchor use
         """
 
         LOGGER.debug('Issuer.__init__ >>> wallet: %s, pool: %s', wallet, pool)
@@ -232,7 +232,7 @@ class Issuer(Origin):
                     private_key_ok = False
                     LOGGER.warning(
                         'New cred def on %s in wallet shadows existing one on ledger: private key not usable', cd_id)
-                        # carry on though, this agent may have other roles so public key may be good enough
+                        # carry on though, this anchor may have other roles so public key may be good enough
             except IndyError as x_indy:
                 if x_indy.error_code == ErrorCode.AnoncredsCredDefAlreadyExistsError:
                     if json.loads(rv_json):
@@ -482,7 +482,7 @@ class Issuer(Origin):
         in the returned values; the schema identifier in isolation belongs properly
         to an Origin, not necessarily to an Issuer.
 
-        The operation may be useful for a Verifier agent going off-line to seed its
+        The operation may be useful for a Verifier anchor going off-line to seed its
         cache before doing so.
 
         :return: tuple of sets for schema ids, cred def ids, rev reg ids

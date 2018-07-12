@@ -24,28 +24,28 @@ from time import time
 
 from indy import anoncreds, ledger
 from indy.error import IndyError
-from von_agent.agent.base import _BaseAgent
-from von_agent.cache import Caches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
-from von_agent.error import AbsentRevReg, AbsentSchema, BadRevStateTime, ClosedPool
-from von_agent.nodepool import NodePool
-from von_agent.validate_config import validate_config
-from von_agent.wallet import Wallet
+from von_anchor.anchor.base import _BaseAnchor
+from von_anchor.cache import Caches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
+from von_anchor.error import AbsentRevReg, AbsentSchema, BadRevStateTime, ClosedPool
+from von_anchor.nodepool import NodePool
+from von_anchor.validate_config import validate_config
+from von_anchor.wallet import Wallet
 
 
 LOGGER = logging.getLogger(__name__)
 
 
-class Verifier(_BaseAgent):
+class Verifier(_BaseAnchor):
     """
-    Mixin for agent acting in the role of Verifier. Verifier agents verify proofs.
+    Mixin for anchor acting in the role of Verifier. Verifier anchors verify proofs.
     """
 
     def __init__(self, wallet: Wallet, pool: NodePool, cfg: dict = None) -> None:
         """
-        Initializer for Verifier agent. Retain input parameters; do not open wallet.
+        Initializer for Verifier anchor. Retain input parameters; do not open wallet.
 
-        :param wallet: wallet for agent use
-        :param pool: pool for agent use
+        :param wallet: wallet for anchor use
+        :param pool: pool for anchor use
         :param cfg: configuration dict for cache archive behaviour; e.g.,
 
         ::

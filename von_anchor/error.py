@@ -20,12 +20,12 @@ from enum import IntEnum
 
 class ErrorCode(IntEnum):
     """
-    Error codes particular to von_agent operation. Start at 1000 to avoid collisions with HTTP error codes.
+    Error codes particular to von_anchor operation. Start at 1000 to avoid collisions with HTTP error codes.
     """
 
     Success = 0
 
-    # Errors to do with von_agent operation
+    # Errors to do with von_anchor operation
     CredentialFocus = 1003
     AbsentLinkSecret = 1005
     CorruptWallet = 1006
@@ -51,9 +51,9 @@ class ErrorCode(IntEnum):
     # JSON validation
     JSONValidation = 9000
 
-class VonAgentError(Exception):
+class VonAnchorError(Exception):
     """
-    Error class for von_agent operation.
+    Error class for von_anchor operation.
     """
 
     def __init__(self, error_code: ErrorCode, message: str):
@@ -69,7 +69,7 @@ class VonAgentError(Exception):
         self.message = message
 
 
-class CredentialFocus(VonAgentError):
+class CredentialFocus(VonAnchorError):
     """
     Attempt to prove credential in specification that resolve to no claims,
     or to multiple claims for any single claim definition.
@@ -85,9 +85,9 @@ class CredentialFocus(VonAgentError):
         super().__init__(ErrorCode.CredentialFocus, message)
 
 
-class CorruptWallet(VonAgentError):
+class CorruptWallet(VonAnchorError):
     """
-    Agent wallet is inconsistent with ledger.
+    Anchor wallet is inconsistent with ledger.
     """
 
     def __init__(self, message: str):
@@ -100,9 +100,9 @@ class CorruptWallet(VonAgentError):
         super().__init__(ErrorCode.CorruptWallet, message)
 
 
-class AbsentSchema(VonAgentError):
+class AbsentSchema(VonAnchorError):
     """
-    (HolderProver) agent attempting operation requiring unavailable schema.
+    (HolderProver) anchor attempting operation requiring unavailable schema.
     """
 
     def __init__(self, message: str):
@@ -115,9 +115,9 @@ class AbsentSchema(VonAgentError):
         super().__init__(ErrorCode.AbsentSchema, message)
 
 
-class AbsentCredDef(VonAgentError):
+class AbsentCredDef(VonAnchorError):
     """
-    (Issuer or HolderProver) agent attempting operation requiring unavailable claim definition.
+    (Issuer or HolderProver) anchor attempting operation requiring unavailable claim definition.
     """
 
     def __init__(self, message: str):
@@ -130,9 +130,9 @@ class AbsentCredDef(VonAgentError):
         super().__init__(ErrorCode.AbsentCredDef, message)
 
 
-class AbsentTails(VonAgentError):
+class AbsentTails(VonAnchorError):
     """
-    (Issuer or HolderProver) agent attempting to open nonexistent tails file.
+    (Issuer or HolderProver) anchor attempting to open nonexistent tails file.
     """
 
     def __init__(self, message: str):
@@ -145,9 +145,9 @@ class AbsentTails(VonAgentError):
         super().__init__(ErrorCode.AbsentTails, message)
 
 
-class CorruptTails(VonAgentError):
+class CorruptTails(VonAnchorError):
     """
-    (Issuer or HolderProver) agent attempting to sync tails dir from distributed ledger not having
+    (Issuer or HolderProver) anchor attempting to sync tails dir from distributed ledger not having
     corresponding revocation registry.
     """
 
@@ -161,9 +161,9 @@ class CorruptTails(VonAgentError):
         super().__init__(ErrorCode.CorruptTails, message)
 
 
-class BadRevocation(VonAgentError):
+class BadRevocation(VonAnchorError):
     """
-    Issuer agent attempting to perform illegitimate revocation
+    Issuer anchor attempting to perform illegitimate revocation
     (another issuer issued credential, credential revoked already, etc.).
     """
 
@@ -177,7 +177,7 @@ class BadRevocation(VonAgentError):
         super().__init__(ErrorCode.BadRevocation, message)
 
 
-class BadLedgerTxn(VonAgentError):
+class BadLedgerTxn(VonAnchorError):
     """
     Ledger rejected transaction.
     """
@@ -192,7 +192,7 @@ class BadLedgerTxn(VonAgentError):
         super().__init__(ErrorCode.BadLedgerTxn, message)
 
 
-class BadRevStateTime(VonAgentError):
+class BadRevStateTime(VonAnchorError):
     """
     Proof request includes revocation state timestamp for credential before its revocation registry creation,
     or in the future.
@@ -208,9 +208,9 @@ class BadRevStateTime(VonAgentError):
         super().__init__(ErrorCode.BadRevStateTime, message)
 
 
-class AbsentLinkSecret(VonAgentError):
+class AbsentLinkSecret(VonAnchorError):
     """
-    (HolderProver) agent attempting operation requiring absent link secret.
+    (HolderProver) anchor attempting operation requiring absent link secret.
     """
 
     def __init__(self, message: str):
@@ -223,9 +223,9 @@ class AbsentLinkSecret(VonAgentError):
         super().__init__(ErrorCode.AbsentLinkSecret, message)
 
 
-class AbsentInterval(VonAgentError):
+class AbsentInterval(VonAnchorError):
     """
-    (HolderProver) agent attempting to create proof on credentials missing
+    (HolderProver) anchor attempting to create proof on credentials missing
     a non-revocation interval for credential definition that supports revocation.
     """
 
@@ -239,9 +239,9 @@ class AbsentInterval(VonAgentError):
         super().__init__(ErrorCode.AbsentInterval, message)
 
 
-class AbsentRevReg(VonAgentError):
+class AbsentRevReg(VonAnchorError):
     """
-    Agent attempting to create revocation registry state but
+    Anchor attempting to create revocation registry state but
     revocation registry is not present on the ledger.
     """
 
@@ -255,7 +255,7 @@ class AbsentRevReg(VonAgentError):
         super().__init__(ErrorCode.AbsentRevReg, message)
 
 
-class AbsentWallet(VonAgentError):
+class AbsentWallet(VonAnchorError):
     """
     Wallet has not been created (within indy-sdk).
     """
@@ -270,7 +270,7 @@ class AbsentWallet(VonAgentError):
         super().__init__(ErrorCode.AbsentWallet, message)
 
 
-class ClosedPool(VonAgentError):
+class ClosedPool(VonAnchorError):
     """
     Pool needs to be open.
     """
@@ -285,7 +285,7 @@ class ClosedPool(VonAgentError):
         super().__init__(ErrorCode.ClosedPool, message)
 
 
-class CacheIndex(VonAgentError):
+class CacheIndex(VonAnchorError):
     """
     Indexation error on a cache.
     """
@@ -300,7 +300,7 @@ class CacheIndex(VonAgentError):
         super().__init__(ErrorCode.CacheIndex, message)
 
 
-class JSONValidation(VonAgentError):
+class JSONValidation(VonAnchorError):
     """
     Exception in JSON validation.
     """

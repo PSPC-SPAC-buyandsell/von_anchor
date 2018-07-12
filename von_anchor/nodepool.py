@@ -20,7 +20,7 @@ import logging
 
 from indy import pool
 from indy.error import IndyError, ErrorCode
-from von_agent.validate_config import validate_config
+from von_anchor.validate_config import validate_config
 
 
 LOGGER = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ class NodePool:
         self._cfg = cfg or {}
         validate_config('pool', self._cfg)
 
-        # pop and retain configuration specific to von_agent.NodePool, extrinsic to indy-sdk
+        # pop and retain configuration specific to von_anchor.NodePool, extrinsic to indy-sdk
         self._auto_remove = self._cfg.pop('auto-remove') if self._cfg and 'auto-remove' in self._cfg else False
         if 'refresh_on_open' not in self._cfg:
             self._cfg['refresh_on_open'] = True

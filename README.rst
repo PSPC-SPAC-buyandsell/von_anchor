@@ -1,31 +1,30 @@
-von_agent
-=========
-As part of the technology demonstrator project using Hyperledger indy to explore, among other VON network facilities, the use of the distributed ledger with PSPC Supplier Registration Information (SRI), the design specifies agents to interact with the sovrin distributed ledger as realized through indy-sdk.
+von_anchor
+==========
+As part of the technology demonstrator project using Hyperledger indy to explore, among other VON network facilities, the use of the distributed ledger with PSPC Supplier Registration Information (SRI), the design specifies anchors to interact with the sovrin distributed ledger as realized through indy-sdk.
 
-The demonstration defines the following agents:
+The demonstration defines the following anchors:
 
-- the Trust Anchor agent as:
+- the Trustee anchor as:
 
-  - the agent registrar on the distributed ledger
-  - a schema originator (purely academically, for the demonstration)
-- the BC Registrar agent as:
+  - the anchor writing further anchors onto the distributed ledger
+- the BC Registrar anchor as:
 
-  - a schema originator for its own claims
-  - an issuer of claims
-- the BC Org Book agent as, for claims that the BC Registrar issues:
+  - a schema originator for its own credentials
+  - an issuer of credentials
+- the BC Org Book anchor as, for credentials that the BC Registrar issues:
 
-  - a W3C claims holder
+  - a W3C credentials holder
   - an indy-sdk prover
-- the SRI agent as:
+- the SRI anchor as:
 
-  - a schema originator for its own claims
-  - an issuer of claims
-  - a verifier of claims, whether itself or the BC Registrar agent issued them
-- the PSPC Org Book as, for claims that the SRI agent issues:
+  - a schema originator for its own credentials
+  - an issuer of credentials
+  - a verifier of credentials, whether itself or the BC Registrar anchor issued them
+- the PSPC Org Book as, for credentials that the SRI anchor issues:
 
-  - a W3C claims holder
+  - a W3C credentials holder
   - an indy-sdk prover.
 
 Documentation
 =============
-The design document is available from the ``von_base`` repository (<https://github.com/PSPC-SPAC-buyandsell/von_base.git>) at ``doc/agent-design.doc``.  The design document includes instructions for installation, configuration, and operation of ``von_agent``.
+The design document is available from the ``von_base`` repository (<https://github.com/PSPC-SPAC-buyandsell/von_base.git>) at ``doc/anchor-design.doc``.  The design document includes instructions for installation, configuration, and operation of ``von_anchor``.

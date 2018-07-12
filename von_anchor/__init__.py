@@ -15,9 +15,9 @@ limitations under the License.
 """
 
 
-from .agent.registrar import AgentRegistrar
-from .agent.origin import Origin
-from .agent.issuer import Issuer
-from .agent.holder_prover import HolderProver
-from .agent.verifier import Verifier
-from .agent.demo import TrustAnchorAgent, SRIAgent, BCRegistrarAgent, OrgBookAgent
+from .anchor.smith import AnchorSmith
+from .anchor.origin import Origin
+from .anchor.issuer import Issuer
+from .anchor.holder_prover import HolderProver
+from .anchor.verifier import Verifier
+from .anchor.demo import TrusteeAnchor, SRIAnchor, BCRegistrarAnchor, OrgBookAnchor

@@ -20,7 +20,7 @@ import logging
 
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
-from von_agent.error import AbsentWallet, CorruptWallet, JSONValidation
+from von_anchor.error import AbsentWallet, CorruptWallet, JSONValidation
 
 
 LOGGER = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ class Wallet:
         self._cfg['id'] = name
         self._cfg['storage_type'] = wallet_type or 'default'
 
-        # pop and retain configuration specific to von_agent.Wallet, extrinsic to indy-sdk
+        # pop and retain configuration specific to von_anchor.Wallet, extrinsic to indy-sdk
         self._auto_remove = self._cfg.pop('auto-remove') if self._cfg and 'auto-remove' in self._cfg else False
         if 'freshness_time' not in self._cfg:
             self._cfg['freshness_time'] = 0

@@ -18,50 +18,49 @@ limitations under the License.
 import logging
 
 from indy import ledger
-from von_agent.agent.base import _BaseAgent
+from von_anchor.anchor.base import _BaseAnchor
 
 
 LOGGER = logging.getLogger(__name__)
 
 
-class AgentRegistrar(_BaseAgent):
+class AnchorSmith(_BaseAnchor):
     """
-    Mixin for (trust anchor) agent to register agents onto the distributed ledger
+    Mixin for (trustee) anchor to write anchors onto the distributed ledger
     """
 
     @staticmethod
     def role() -> str:
         """
-        Return the indy-sdk role for an agent in building its nym for the trust anchor to send to the ledger.
+        Return the indy-sdk role for an anchor in building its nym for the trust anchor to send to the ledger.
 
-        :param agent: agent instance
         :return: role string
         """
 
-        LOGGER.debug('AgentRegistrar.role >>>')
+        LOGGER.debug('AnchorSmith.role >>>')
 
         rv = 'TRUSTEE'
-        LOGGER.debug('AgentRegistrar.role <<< %s', rv)
+        LOGGER.debug('AnchorSmith.role <<< %s', rv)
         return rv
 
     async def send_nym(self, did: str, verkey: str, alias: str = None, role: str = None) -> None:
         """
-        Send input agent's cryptonym (including DID, verification key, plus optional alias and role)
+        Send input anchor's cryptonym (including DID, verification key, plus optional alias and role)
         to the distributed ledger.
 
         Raise BadLedgerTxn on failure.
 
-        :param did: agent DID to send to ledger
-        :param verkey: agent verification key
+        :param did: anchor DID to send to ledger
+        :param verkey: anchor verification key
         :param alias: optional alias
-        :param role: agent role on the ledger; specify one of 'TRUSTEE', 'STEWARD', 'TRUST_ANCHOR',
+        :param role: anchor role on the ledger; specify one of 'TRUSTEE', 'STEWARD', 'TRUST_ANCHOR',
             or else '' to reset role
         """
 
         LOGGER.debug(
-            'AgentRegistrar.send_nym >>> did: %s, verkey: %s, alias: %s, role: %s', did, verkey, alias, role or '')
+            'AnchorSmith.send_nym >>> did: %s, verkey: %s, alias: %s, role: %s', did, verkey, alias, role or '')
 
         req_json = await ledger.build_nym_request(self.did, did, verkey, alias, role or '')
         await self._sign_submit(req_json)
 
-        LOGGER.debug('AgentRegistrar.send_nym <<<')
+        LOGGER.debug('AnchorSmith.send_nym <<<')

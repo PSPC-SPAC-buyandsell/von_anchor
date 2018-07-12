@@ -25,9 +25,9 @@ from typing import Set
 
 from indy import anoncreds, ledger
 from indy.error import IndyError, ErrorCode
-from von_agent.agent.base import _BaseAgent
-from von_agent.cache import Caches, RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
-from von_agent.error import (
+from von_anchor.anchor.base import _BaseAnchor
+from von_anchor.cache import Caches, RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
+from von_anchor.error import (
     AbsentCredDef,
     AbsentInterval,
     AbsentLinkSecret,
@@ -37,29 +37,29 @@ from von_agent.error import (
     BadRevStateTime,
     ClosedPool,
     CredentialFocus)
-from von_agent.nodepool import NodePool
-from von_agent.tails import Tails
-from von_agent.util import cred_def_id2seq_no, prune_creds_json, rev_reg_id2cred_def_id__tag
-from von_agent.validate_config import validate_config
-from von_agent.wallet import Wallet
+from von_anchor.nodepool import NodePool
+from von_anchor.tails import Tails
+from von_anchor.util import cred_def_id2seq_no, prune_creds_json, rev_reg_id2cred_def_id__tag
+from von_anchor.validate_config import validate_config
+from von_anchor.wallet import Wallet
 
 
 LOGGER = logging.getLogger(__name__)
 
 
-class HolderProver(_BaseAgent):
+class HolderProver(_BaseAnchor):
     """
-    Mixin for agent acting in the role of w3c Holder and indy-sdk Prover.  A Holder holds
+    Mixin for anchor acting in the role of w3c Holder and indy-sdk Prover.  A Holder holds
     credentials; a Prover produces proof of credentials. Revocation support requires
-    the holder-prover agent to manage tails files.
+    the holder-prover anchor to manage tails files.
     """
 
     def __init__(self, wallet: Wallet, pool: NodePool, cfg: dict = None) -> None:
         """
-        Initializer for HolderProver agent. Retain input parameters; do not open wallet nor tails writer.
+        Initializer for HolderProver anchor. Retain input parameters; do not open wallet nor tails writer.
 
-        :param wallet: wallet for agent use
-        :param pool: pool for agent use
+        :param wallet: wallet for anchor use
+        :param pool: pool for anchor use
         :param cfg: configuration dict for cache archive behaviour; e.g.,
 
         ::

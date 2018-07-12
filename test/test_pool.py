@@ -15,8 +15,8 @@ limitations under the License.
 """
 
 from pathlib import Path
-from von_agent.error import JSONValidation
-from von_agent.nodepool import NodePool
+from von_anchor.error import JSONValidation
+from von_anchor.nodepool import NodePool
 
 import pytest
 import json
