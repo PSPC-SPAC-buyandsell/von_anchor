@@ -16,6 +16,7 @@ limitations under the License.
 
 
 import json
+import re
 
 from collections import namedtuple
 from copy import deepcopy
@@ -28,6 +29,7 @@ SchemaKey = namedtuple('SchemaKey', 'origin_did name version')
 
 
 CD_ID_TAG = '0'
+B58 = '1-9A-HJ-NP-Za-km-z'
 
 
 def ppjson(dumpit: Any, elide_to: int = None) -> str:
@@ -61,6 +63,28 @@ def schema_id(origin_did: str, name: str, version: str) -> str:
     return '{}:2:{}:{}'.format(origin_did, name, version)  # 2 marks indy-sdk schema id
 
 
+def ok_did(token: str) -> bool:
+    """
+    Whether input token looks like a valid distributed identifier.
+
+    :param token: candidate string
+    :return: whether input token looks like a valid schema identifier
+    """
+
+    return (re.match('[{}]{{21,22}}$'.format(B58), token) is not None)
+
+
+def ok_schema_id(token: str) -> bool:
+    """
+    Whether input token looks like a valid schema identifier.
+
+    :param token: candidate string
+    :return: whether input token looks like a valid schema identifier
+    """
+
+    return (re.match('[{}]{{21,22}}:2:.+:[0-9.]+$'.format(B58), token) is not None)
+
+
 def schema_key(s_id: str) -> SchemaKey:
     """
     Return schema key (namedtuple) convenience for schema identifier components.
@@ -87,6 +111,17 @@ def cred_def_id(issuer_did: str, schema_seq_no: int) -> str:
     return '{}:3:CL:{}:{}'.format(issuer_did, schema_seq_no, CD_ID_TAG)  # 3 marks indy-sdk cred def id, CL is sig type
 
 
+def ok_cred_def_id(token: str) -> bool:
+    """
+    Whether input token looks like a valid credential definition identifier.
+
+    :param token: candidate string
+    :return: whether input token looks like a valid credential definition identifier
+    """
+
+    return (re.match('[{}]{{21,22}}:3:CL:[1-9][0-9]*:.+$'.format(B58), token) is not None)
+
+
 def cred_def_id2seq_no(cd_id: str) -> int:
     """
     Given a credential definition identifier, return its schema sequence number.
@@ -110,6 +145,17 @@ def rev_reg_id(cd_id: str, tag: str) -> str:
     """
 
     return '{}:4:{}:CL_ACCUM:{}'.format(cd_id.split(':', 1)[0], cd_id, tag)  # 4 marks rev reg def id
+
+
+def ok_rev_reg_id(token: str) -> bool:
+    """
+    Whether input token looks like a valid revocation registry identifier.
+
+    :param token: candidate string
+    :return: whether input token looks like a valid revocation registry identifier
+    """
+
+    return (re.match('[{}]{{21,22}}:4:[{}]{{21,22}}:3:CL:[1-9][0-9]*:.+:CL_ACCUM:.+$'.format(B58, B58), token) is not None)
 
 
 def rev_reg_id2cred_def_id(rr_id: str) -> str:

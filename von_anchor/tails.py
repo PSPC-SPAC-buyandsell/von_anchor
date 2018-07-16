@@ -16,13 +16,14 @@ limitations under the License.
 
 
 import json
+import re
 
 from os import chdir, getcwd, makedirs, readlink, symlink, walk
 from os.path import basename, dirname, isfile, islink, join
 
 from indy import blob_storage
 from von_anchor.error import AbsentTails
-from von_anchor.util import rev_reg_id, rev_reg_id2cred_def_id, rev_reg_id2tag
+from von_anchor.util import B58, rev_reg_id, rev_reg_id2cred_def_id, rev_reg_id2tag
 
 
 class Tails:
@@ -77,6 +78,17 @@ class Tails:
         self._reader_handle = await blob_storage.open_reader('default', self._tails_cfg_json)
 
         return self
+
+    @staticmethod
+    def ok_hash(token: str) -> bool:
+        """
+        Whether input token looks like a valid tails hash.
+
+        :param token: candidate string
+        :return: whether input token looks like a valid tails hash
+        """
+
+        return (re.match('[{}]{{42,44}}$'.format(B58), token) is not None)
 
     @staticmethod
     def associate(base_dir: str, rr_id: str, tails_hash: str) -> None:
