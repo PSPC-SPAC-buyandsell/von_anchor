@@ -24,9 +24,9 @@ from shutil import rmtree
 from threading import RLock
 from time import time
 from typing import Awaitable, Callable, Tuple, Union
-from von_anchor.error import BadRevStateTime, CacheIndex
+from von_anchor.error import BadIdentifier, BadRevStateTime, CacheIndex
 from von_anchor.tails import Tails
-from von_anchor.util import rev_reg_id2cred_def_id, SchemaKey, schema_key
+from von_anchor.util import ok_cred_def_id, ok_rev_reg_id, ok_schema_id, rev_reg_id2cred_def_id, SchemaKey, schema_key
 
 
 LOGGER = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ class SchemaCache:
         rv = None
         if isinstance(index, SchemaKey):
             rv = self._schema_key2schema[index]
-        elif isinstance(index, int) or (isinstance(index, str) and ':2:' not in index):
+        elif isinstance(index, int) or (isinstance(index, str) and not ok_schema_id(index)):
             try:
                 rv = self._schema_key2schema[self._seq_no2schema_key[int(index)]]
             except KeyError:
@@ -125,7 +125,7 @@ class SchemaCache:
         rv = None
         if isinstance(index, SchemaKey):
             rv = (index in self._schema_key2schema)
-        elif isinstance(index, int) or (isinstance(index, str) and ':2:' not in index):
+        elif isinstance(index, int) or (isinstance(index, str) and not ok_schema_id(index)):
             rv = (int(index) in self._seq_no2schema_key)
         elif isinstance(index, str):
             rv = (schema_key(index) in self._schema_key2schema)
@@ -187,11 +187,14 @@ class SchemaCache:
 
         for schema in schemata:
             seq_no = schema['seqNo']
-            if self.contains(seq_no):
+            s_id = schema['id']
+            if not ok_schema_id(s_id):
+                LOGGER.warning('Abstaining from feeding schema cache from bad id %s', s_id)
+            elif self.contains(seq_no):
                 LOGGER.warning('Schema cache already has schema at seq no %s: skipping', seq_no)
             else:
                 self[seq_no] = schema
-                LOGGER.info('Schema cache imported schema on id %s at seq no %s', schema['id'], seq_no)
+                LOGGER.info('Schema cache imported schema on id %s at seq no %s', s_id, seq_no)
 
         LOGGER.debug('SchemaCache.feed <<<')
 
@@ -686,6 +689,10 @@ class RevocationCache(dict):
 
         LOGGER.debug('RevocationCache.dflt_interval >>>')
 
+        if not ok_cred_def_id(cd_id):
+            LOGGER.debug('RevocationCache.dflt_interval <!< Bad cred def id %s', cd_id)
+            raise BadIdentifier('Bad cred def id {}'.format(cd_id))
+
         fro = None
         to = None
 
@@ -814,7 +821,9 @@ class Caches:
             with open(join(timestamp_dir, 'cred_def'), 'r') as archive:
                 cred_defs = json.loads(archive.read())
                 for cd_id in cred_defs:
-                    if cd_id in CRED_DEF_CACHE:
+                    if not ok_cred_def_id(cd_id):
+                        LOGGER.warning('Abstaining feeding cache cred def on bad id %s', cd_id)
+                    elif cd_id in CRED_DEF_CACHE:
                         LOGGER.warning('Cred def cache already has cred def on %s: skipping', cd_id)
                     else:
                         CRED_DEF_CACHE[cd_id] = cred_defs[cd_id]
@@ -824,7 +833,9 @@ class Caches:
             with open(join(timestamp_dir, 'revocation'), 'r') as archive:
                 rr_cache_entries = json.loads(archive.read())
                 for (rr_id, entry) in rr_cache_entries.items():
-                    if rr_id in REVO_CACHE:
+                    if not ok_rev_reg_id(rr_id):
+                        LOGGER.warning('Abstaining from feeding revocation cache rev reg on bad id %s', rr_id)
+                    elif rr_id in REVO_CACHE:
                         LOGGER.warning('Revocation cache already has entry on %s: skipping', rr_id)
                     else:
                         rr_cache_entry = RevoCacheEntry(entry['rev_reg_def'])

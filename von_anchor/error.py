@@ -38,6 +38,7 @@ class ErrorCode(IntEnum):
     BadRevStateTime = 1013
     AbsentInterval = 1014
     AbsentRevReg = 1015
+    BadIdentifier = 1016
 
     # Errors to do with wallet operation
     AbsentWallet = 3000
@@ -253,6 +254,26 @@ class AbsentRevReg(VonAnchorError):
         """
 
         super().__init__(ErrorCode.AbsentRevReg, message)
+
+
+class BadIdentifier(VonAnchorError):
+    """
+    Encountered incorrectly formatted:
+      - distributed identifier (DID),
+      - schema identifier,
+      - credential definition identifier,
+      - revocation registry identifier, or
+      - tails hash.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.BadIdentifier, message)
 
 
 class AbsentWallet(VonAnchorError):

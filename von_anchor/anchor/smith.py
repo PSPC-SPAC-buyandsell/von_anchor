@@ -19,6 +19,8 @@ import logging
 
 from indy import ledger
 from von_anchor.anchor.base import _BaseAnchor
+from von_anchor.error import BadIdentifier
+from von_anchor.util import ok_did
 
 
 LOGGER = logging.getLogger(__name__)
@@ -59,6 +61,10 @@ class AnchorSmith(_BaseAnchor):
 
         LOGGER.debug(
             'AnchorSmith.send_nym >>> did: %s, verkey: %s, alias: %s, role: %s', did, verkey, alias, role or '')
+
+        if not ok_did(did):
+            LOGGER.debug('AnchorSmith <!< Bad DID %s', did)
+            raise BadIdentifier('Bad DID {}'.format(did))
 
         req_json = await ledger.build_nym_request(self.did, did, verkey, alias, role or '')
         await self._sign_submit(req_json)

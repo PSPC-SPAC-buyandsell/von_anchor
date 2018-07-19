@@ -26,13 +26,23 @@ from indy.error import IndyError, ErrorCode
 from von_anchor.anchor.origin import Origin
 from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE
 from von_anchor.codec import cred_attr_value
-from von_anchor.error import AbsentCredDef, AbsentSchema, AbsentTails, BadRevocation, CorruptTails, CorruptWallet
+from von_anchor.error import (
+    AbsentCredDef,
+    AbsentSchema,
+    AbsentTails,
+    BadIdentifier,
+    BadRevocation,
+    CorruptTails,
+    CorruptWallet)
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.util import (
     CD_ID_TAG,
     cred_def_id,
     cred_def_id2seq_no,
+    ok_cred_def_id,
+    ok_rev_reg_id,
+    ok_schema_id,
     rev_reg_id,
     rev_reg_id2cred_def_id__tag,
     schema_key)
@@ -96,6 +106,10 @@ class Issuer(Origin):
 
         LOGGER.debug('Issuer._create_rev_reg >>> rr_id: %s, rr_size: %s', rr_id, rr_size)
 
+        if not ok_rev_reg_id(rr_id):
+            LOGGER.debug('Issuer._create_rev_reg <!< Bad rev reg id %s', rr_id)
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
+
         rr_size = rr_size or 256
         (cd_id, tag) = rev_reg_id2cred_def_id__tag(rr_id)
 
@@ -147,6 +161,10 @@ class Issuer(Origin):
 
         LOGGER.debug('Issuer._sync_revoc >>> rr_id: %s, rr_size: %s', rr_id, rr_size)
 
+        if not ok_rev_reg_id(rr_id):
+            LOGGER.debug('Issuer._sync_revoc <!< Bad rev reg id %s', rr_id)
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
+
         (cd_id, tag) = rev_reg_id2cred_def_id__tag(rr_id)
 
         try:
@@ -185,7 +203,15 @@ class Issuer(Origin):
         :return: path to tails file for input revocation registry identifier
         """
 
-        return Tails.linked(self._dir_tails, rr_id)
+        LOGGER.debug('Issuer.path_tails >>>')
+
+        if not ok_rev_reg_id(rr_id):
+            LOGGER.debug('Issuer.path_tails <!< Bad rev reg id %s', rr_id)
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
+
+        rv = Tails.linked(self._dir_tails, rr_id)
+        LOGGER.debug('Issuer.path_tails <<< %s', rv)
+        return rv
 
     async def send_cred_def(self, s_id: str, revocation: bool = True, rr_size: int = None) -> str:
         """
@@ -202,6 +228,10 @@ class Issuer(Origin):
         """
 
         LOGGER.debug('Issuer.send_cred_def >>> s_id: %s, revocation: %s, rr_size: %s', s_id, revocation, rr_size)
+
+        if not ok_schema_id(s_id):
+            LOGGER.debug('Issuer.send_cred_def <!< Bad schema id %s', s_id)
+            raise BadIdentifier('Bad schema id {}'.format(s_id))
 
         rv_json = json.dumps({})
         schema_json = await self.get_schema(schema_key(s_id))
@@ -350,6 +380,10 @@ class Issuer(Origin):
             rr_size)
 
         cd_id = json.loads(cred_offer_json)['cred_def_id']
+        if not ok_cred_def_id(cd_id):
+            LOGGER.debug('Issuer.create_cred <!< Bad cred def id %s', cd_id)
+            raise BadIdentifier('Bad cred def id {}'.format(cd_id))
+
         cred_def = json.loads(await self.get_cred_def(cd_id))  # ensure cred def is in cache
 
         if 'revocation' in cred_def['value']:
@@ -384,11 +418,9 @@ class Issuer(Origin):
                         await self._create_rev_reg(rr_id, rr_size or rr_size_suggested)
                         REVO_CACHE[rr_id].tails = await Tails(self._dir_tails, cd_id).open()
                         return await self.create_cred(cred_offer_json, cred_req_json, cred_attrs)  # should be ok now
-                    else:
-                        LOGGER.debug(
-                            'Issuer.create_cred: <!<  cannot create cred, indy error code %s',
-                            x_indy.error_code)
-                        raise
+
+                    LOGGER.debug('Issuer.create_cred: <!<  cannot create cred, indy error code %s', x_indy.error_code)
+                    raise
         else:
             try:
                 (cred_json, _, _) = await anoncreds.issuer_create_credential(
@@ -424,6 +456,10 @@ class Issuer(Origin):
         """
 
         LOGGER.debug('Issuer.revoke_cred >>> rr_id: %s, cr_id: %s', rr_id, cr_id)
+
+        if not ok_rev_reg_id(rr_id):
+            LOGGER.debug('Issuer.revoke_cred <!< Bad rev reg id %s', rr_id)
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
         tails_reader_handle = (await Tails(
             self._dir_tails,
@@ -491,7 +527,7 @@ class Issuer(Origin):
         LOGGER.debug('Issuer.get_box_ids_json >>>')
 
         cd_ids = [d for d in listdir(self._dir_tails)
-            if isdir(join(self._dir_tails, d)) and d.startswith('{}:3:'.format(self.did))]
+            if isdir(join(self._dir_tails, d)) and ok_cred_def_id(d) and d.startswith('{}:3:'.format(self.did))]
         s_ids = []
         for cd_id in cd_ids:
             try:

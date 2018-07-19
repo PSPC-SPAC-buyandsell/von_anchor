@@ -71,18 +71,19 @@ def ok_did(token: str) -> bool:
     :return: whether input token looks like a valid schema identifier
     """
 
-    return (re.match('[{}]{{21,22}}$'.format(B58), token) is not None)
+    return re.match('[{}]{{21,22}}$'.format(B58), token) is not None
 
 
 def ok_schema_id(token: str) -> bool:
     """
-    Whether input token looks like a valid schema identifier.
+    Whether input token looks like a valid schema identifier;
+    i.e., <issuer-did>:2:<name>:<version>.
 
     :param token: candidate string
     :return: whether input token looks like a valid schema identifier
     """
 
-    return (re.match('[{}]{{21,22}}:2:.+:[0-9.]+$'.format(B58), token) is not None)
+    return re.match('[{}]{{21,22}}:2:.+:[0-9.]+$'.format(B58), token) is not None
 
 
 def schema_key(s_id: str) -> SchemaKey:
@@ -113,13 +114,14 @@ def cred_def_id(issuer_did: str, schema_seq_no: int) -> str:
 
 def ok_cred_def_id(token: str) -> bool:
     """
-    Whether input token looks like a valid credential definition identifier.
+    Whether input token looks like a valid credential definition identifier; i.e.,
+    <issuer-did>:3:CL:<schema-seq-no>:<cred-def-id-tag>.
 
     :param token: candidate string
     :return: whether input token looks like a valid credential definition identifier
     """
 
-    return (re.match('[{}]{{21,22}}:3:CL:[1-9][0-9]*:.+$'.format(B58), token) is not None)
+    return re.match('[{}]{{21,22}}:3:CL:[1-9][0-9]*:.+$'.format(B58), token) is not None
 
 
 def cred_def_id2seq_no(cd_id: str) -> int:
@@ -149,13 +151,15 @@ def rev_reg_id(cd_id: str, tag: str) -> str:
 
 def ok_rev_reg_id(token: str) -> bool:
     """
-    Whether input token looks like a valid revocation registry identifier.
+    Whether input token looks like a valid revocation registry identifier; i.e.,
+    <issuer-did>:4:<issuer-did>:3:CL:<schema-seq-no>:<cred-def-id-tag>:CL_ACCUM:<rev-reg-id-tag>.
 
     :param token: candidate string
     :return: whether input token looks like a valid revocation registry identifier
     """
 
-    return (re.match('[{}]{{21,22}}:4:[{}]{{21,22}}:3:CL:[1-9][0-9]*:.+:CL_ACCUM:.+$'.format(B58, B58), token) is not None)
+    return (re.match('[{}]{{21,22}}:4:[{}]{{21,22}}:3:CL:[1-9][0-9]*:.+:CL_ACCUM:.+$'.format(B58, B58), token)
+        is not None)
 
 
 def rev_reg_id2cred_def_id(rr_id: str) -> str:

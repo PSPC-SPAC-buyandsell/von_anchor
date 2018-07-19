@@ -35,7 +35,10 @@ async def test_schema_cache():
     s_key = []
     schema = []
     for i in range(N):
-        s_key.append(SchemaKey('did.{}'.format(i), 'schema-{}'.format(i//5), '{}'.format(i%5)))
+        s_key.append(
+            SchemaKey('Q4zqM7aXqm7gDQkUVLng{:02d}'.format(i).replace('0', 'Q'),
+            'schema-{}'.format(i//5),
+            '{}'.format(i%5)))
         schema.append({
             # 'id': schema_id(s_key[i].origin_did, s_key[i].name, s_key[i].version),
             'id': schema_id(*s_key[i]),

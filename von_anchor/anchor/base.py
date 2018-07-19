@@ -28,11 +28,12 @@ from von_anchor.error import (
     AbsentCredDef,
     AbsentRevReg,
     AbsentSchema,
+    BadIdentifier,
     BadLedgerTxn,
     ClosedPool,
     CorruptWallet)
 from von_anchor.nodepool import NodePool
-from von_anchor.util import schema_id, SchemaKey, schema_key
+from von_anchor.util import ok_cred_def_id, ok_did, ok_rev_reg_id, ok_schema_id, schema_id, SchemaKey, schema_key
 from von_anchor.wallet import Wallet
 
 
@@ -182,6 +183,10 @@ class _BaseAnchor:
 
         LOGGER.debug('_BaseAnchor.get_nym >>> did: %s', did)
 
+        if not ok_did(did):
+            LOGGER.debug('_BaseAnchor._get_nym <!< Bad DID %s', did)
+            raise BadIdentifier('Bad DID {}'.format(did))
+
         rv = json.dumps({})
         get_nym_req = await ledger.build_get_nym_request(self.did, did)
         resp_json = await self._submit(get_nym_req)
@@ -301,6 +306,10 @@ class _BaseAnchor:
 
         LOGGER.debug('_BaseAnchor._get_rev_reg_def >>> rr_id: %s', rr_id)
 
+        if not ok_rev_reg_id(rr_id):
+            LOGGER.debug('_BaseAnchor._get_rev_reg_def <!< Bad rev reg id %s', rr_id)
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
+
         rv_json = json.dumps({})
 
         with REVO_CACHE.lock:
@@ -342,6 +351,10 @@ class _BaseAnchor:
         """
 
         LOGGER.debug('_BaseAnchor.get_cred_def >>> cd_id: %s', cd_id)
+
+        if not ok_cred_def_id(cd_id):
+            LOGGER.debug('_BaseAnchor._get_cred_def <!< Bad cred def id %s', cd_id)
+            raise BadIdentifier('Bad cred def id {}'.format(cd_id))
 
         rv_json = json.dumps({})
 
@@ -394,7 +407,7 @@ class _BaseAnchor:
                 LOGGER.debug('_BaseAnchor.get_schema <<< %s', rv_json)
                 return json.dumps(rv_json)
 
-            if isinstance(index, SchemaKey) or (isinstance(index, str) and ':2:' in index):
+            if isinstance(index, SchemaKey) or (isinstance(index, str) and ok_schema_id(index)):
                 s_id = schema_id(*index) if isinstance(index, SchemaKey) else index
                 s_key = schema_key(s_id)
                 req_json = await ledger.build_get_schema_request(self.did, s_id)
@@ -412,7 +425,7 @@ class _BaseAnchor:
                 SCHEMA_CACHE[s_key] = json.loads(rv_json)  # cache indexes by both txn# and schema key en passant
                 LOGGER.info('_BaseAnchor.get_schema: got schema %s from ledger', index)
 
-            elif isinstance(index, (int, str)):  # ':2:' not in index - it's a stringified int txn num if it's a str
+            elif isinstance(index, (int, str)):  # index is not a schema id: it's a stringified int txn # if it's a str
                 txn_json = await self.get_txn(int(index))
                 txn = json.loads(txn_json)
                 if txn.get('type', None) == '101':  # {} for no such txn; 101 marks indy-sdk schema txn type

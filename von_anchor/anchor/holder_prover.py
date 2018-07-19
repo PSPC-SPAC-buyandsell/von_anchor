@@ -34,12 +34,19 @@ from von_anchor.error import (
     AbsentRevReg,
     AbsentSchema,
     AbsentTails,
+    BadIdentifier,
     BadRevStateTime,
     ClosedPool,
     CredentialFocus)
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
-from von_anchor.util import cred_def_id2seq_no, prune_creds_json, rev_reg_id2cred_def_id__tag
+from von_anchor.util import (
+    cred_def_id2seq_no,
+    ok_cred_def_id,
+    ok_rev_reg_id, 
+    ok_schema_id,
+    prune_creds_json,
+    rev_reg_id2cred_def_id__tag)
 from von_anchor.validate_config import validate_config
 from von_anchor.wallet import Wallet
 
@@ -142,6 +149,10 @@ class HolderProver(_BaseAnchor):
 
         LOGGER.debug('HolderProver._sync_revoc >>> rr_id: %s', rr_id)
 
+        if not ok_rev_reg_id(rr_id):
+            LOGGER.debug('HolderProver._sync_revoc <!< Bad rev reg id %s', rr_id)
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
+
         (cd_id, tag) = rev_reg_id2cred_def_id__tag(rr_id)
 
         try:
@@ -198,6 +209,10 @@ class HolderProver(_BaseAnchor):
             to,
             fro,
             fro_delta)
+
+        if not ok_rev_reg_id(rr_id):
+            LOGGER.debug('HolderProver._build_rr_delta_json <!< Bad rev reg id %s', rr_id)
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
         rr_delta_json = None
         ledger_timestamp = None
@@ -294,6 +309,10 @@ class HolderProver(_BaseAnchor):
         }
 
         for cd_id in cd_id2spec:
+            if not ok_cred_def_id(cd_id):
+                LOGGER.debug('HolderProver.build_proof_req_json <!< Bad cred def id %s', cd_id)
+                raise BadIdentifier('Bad cred def id {}'.format(cd_id))
+
             interval = None
             cred_def = json.loads(await self.get_cred_def(cd_id))
             seq_no = cred_def_id2seq_no(cd_id)
@@ -425,6 +444,10 @@ class HolderProver(_BaseAnchor):
 
         if filt:
             for cd_id in filt:
+                if not ok_cred_def_id(cd_id):
+                    LOGGER.debug('HolderProver.build_req_creds_json <!< Bad cred def id %s', cd_id)
+                    raise BadIdentifier('Bad cred def id {}'.format(cd_id))
+
                 try:
                     json.loads(await self.get_cred_def(cd_id))
                 except AbsentCredDef:
@@ -489,7 +512,15 @@ class HolderProver(_BaseAnchor):
         :return: path to tails dir for input revocation registry identifier
         """
 
-        return Tails.dir(self._dir_tails, rr_id)
+        LOGGER.debug('HolderProver.dir_tails >>>')
+
+        if not ok_rev_reg_id(rr_id):
+            LOGGER.debug('HolderProver.dir_tails <!< Bad rev reg id %s', rr_id)
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
+
+        rv = Tails.dir(self._dir_tails, rr_id)
+        LOGGER.debug('HolderProver.dir_tails <<< %s', rv)
+        return rv
 
     async def open(self) -> 'HolderProver':
         """
@@ -587,6 +618,10 @@ class HolderProver(_BaseAnchor):
         """
 
         LOGGER.debug('HolderProver.create_cred_req >>> cred_offer_json: %s, cd_id: %s', cred_offer_json, cd_id)
+
+        if not ok_cred_def_id(cd_id):
+            LOGGER.debug('HolderProver.create_cred_req <!< Bad cred def id %s', cd_id)
+            raise BadIdentifier('Bad cred def id {}'.format(cd_id))
 
         self._assert_link_secret('create_cred_req')
 
@@ -1016,6 +1051,10 @@ class HolderProver(_BaseAnchor):
             interval = referents[0].get('interval', None)
             cred_info = referents[0]['cred_info']
             s_id = cred_info['schema_id']
+            if not ok_schema_id(s_id):
+                LOGGER.debug('HolderProver.create_proof <!< Bad schema id %s', s_id)
+                raise BadIdentifier('Bad schema id {}'.format(s_id))
+
             if s_id not in s_id2schema:
                 schema = json.loads(await self.get_schema(s_id))  # add to cache en passant
                 if not schema:
@@ -1027,12 +1066,20 @@ class HolderProver(_BaseAnchor):
                 s_id2schema[s_id] = schema
 
             cd_id = cred_info['cred_def_id']
+            if not ok_cred_def_id(cd_id):
+                LOGGER.debug('HolderProver.create_proof <!< Bad cred def id %s', cd_id)
+                raise BadIdentifier('Bad cred def id {}'.format(cd_id))
+
             if cd_id not in cd_id2cred_def:
                 cred_def = json.loads(await self.get_cred_def(cd_id))  # add to cache en passant
                 cd_id2cred_def[cd_id] = cred_def
 
             rr_id = cred_info['rev_reg_id']
             if rr_id:
+                if not ok_rev_reg_id(rr_id):
+                    LOGGER.debug('HolderProver.create_proof <!< Bad rev reg id %s', rr_id)
+                    raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
+
                 await self._sync_revoc(rr_id)  # link tails file to its rr_id if it's new
                 if interval:
                     if rr_id not in rr_id2timestamp:

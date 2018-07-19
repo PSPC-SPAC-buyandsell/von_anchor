@@ -26,8 +26,9 @@ from indy import anoncreds, ledger
 from indy.error import IndyError
 from von_anchor.anchor.base import _BaseAnchor
 from von_anchor.cache import Caches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
-from von_anchor.error import AbsentRevReg, AbsentSchema, BadRevStateTime, ClosedPool
+from von_anchor.error import AbsentRevReg, AbsentSchema, BadIdentifier, BadRevStateTime, ClosedPool
 from von_anchor.nodepool import NodePool
+from von_anchor.util import ok_cred_def_id, ok_rev_reg_id, ok_schema_id
 from von_anchor.validate_config import validate_config
 from von_anchor.wallet import Wallet
 
@@ -138,6 +139,10 @@ class Verifier(_BaseAnchor):
 
         LOGGER.debug('_Verifier._build_rr_state_json >>> rr_id: %s, timestamp: %s', rr_id, timestamp)
 
+        if not ok_rev_reg_id(rr_id):
+            LOGGER.debug('Verifier._build_rr_state_json <!< Bad rev reg id %s', rr_id)
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
+
         rr_json = None
         ledger_timestamp = None
 
@@ -178,25 +183,34 @@ class Verifier(_BaseAnchor):
 
         rv = int(time())
         for s_id in self.cfg.get('archive-on-close', {}).get('schema_id', {}):
-            with SCHEMA_CACHE.lock:
-                await self.get_schema(s_id)
+            if ok_schema_id(s_id):
+                with SCHEMA_CACHE.lock:
+                    await self.get_schema(s_id)
+            else:
+                LOGGER.info('Not archiving schema for specified bad id %s', s_id)
         for cd_id in self.cfg.get('archive-on-close', {}).get('cred_def_id', {}):
-            with CRED_DEF_CACHE.lock:
-                await self.get_cred_def(cd_id)
+            if ok_cred_def_id(cd_id):
+                with CRED_DEF_CACHE.lock:
+                    await self.get_cred_def(cd_id)
+            else:
+                LOGGER.info('Not archiving cred def for specified bad id %s', cd_id)
         for rr_id in self.cfg.get('archive-on-close', {}).get('rev_reg_id', {}):
-            await self._get_rev_reg_def(rr_id)
-            with REVO_CACHE.lock:
-                revo_cache_entry = REVO_CACHE.get(rr_id, None)
-                if revo_cache_entry:
-                    try:
-                        await revo_cache_entry.get_state_json(self._build_rr_state_json, rv, rv)
-                    except ClosedPool:
-                        LOGGER.warning(
-                            'Verifier %s is offline from pool %s, cannot update revo cache reg state for %s to %s',
-                            self.wallet.name,
-                            self.pool.name,
-                            rr_id,
-                            rv)
+            if ok_rev_reg_id(rr_id):
+                await self._get_rev_reg_def(rr_id)
+                with REVO_CACHE.lock:
+                    revo_cache_entry = REVO_CACHE.get(rr_id, None)
+                    if revo_cache_entry:
+                        try:
+                            await revo_cache_entry.get_state_json(self._build_rr_state_json, rv, rv)
+                        except ClosedPool:
+                            LOGGER.warning(
+                                'Verifier %s is offline from pool %s, cannot update revo cache reg state for %s to %s',
+                                self.wallet.name,
+                                self.pool.name,
+                                rr_id,
+                                rv)
+            else:
+                LOGGER.info('Not archiving rev reg for specified bad id %s', rr_id)
 
         if archive:
             Caches.archive(self.dir_cache)
@@ -261,6 +275,10 @@ class Verifier(_BaseAnchor):
         for proof_id in proof_ids:
             # schema
             s_id = proof_id['schema_id']
+            if not ok_schema_id(s_id):
+                LOGGER.debug('Verifier.verify_proof: <!< Bad schema id %s', s_id)
+                raise BadIdentifier('Bad schema id {}'.format(s_id))
+
             if s_id not in s_id2schema:
                 schema = json.loads(await self.get_schema(s_id))  # add to cache en passant
                 if not schema:
@@ -273,6 +291,10 @@ class Verifier(_BaseAnchor):
 
             # cred def
             cd_id = proof_id['cred_def_id']
+            if not ok_cred_def_id(cd_id):
+                LOGGER.debug('Verifier.verify_proof: <!< Bad cred def id %s', cd_id)
+                raise BadIdentifier('Bad cred def id {}'.format(cd_id))
+
             if cd_id not in cd_id2cred_def:
                 cred_def = json.loads(await self.get_cred_def(cd_id))  # add to cache en passant
                 cd_id2cred_def[cd_id] = cred_def
@@ -281,6 +303,9 @@ class Verifier(_BaseAnchor):
             rr_id = proof_id['rev_reg_id']
             if not rr_id:
                 continue
+            if not ok_rev_reg_id(rr_id):
+                LOGGER.debug('Verifier.verify_proof: <!< Bad rev reg id %s', rr_id)
+                raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
             rr_def_json = await self._get_rev_reg_def(rr_id)
             rr_id2rr_def[rr_id] = json.loads(rr_def_json)
