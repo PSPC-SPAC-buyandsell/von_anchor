@@ -567,15 +567,17 @@ class HolderProver(_BaseAnchor):
 
         LOGGER.debug('HolderProver.close <<<')
 
-    def rev_regs(self) -> list:
+    async def rev_regs(self) -> list:
         """
-        Return list of revocation registry identifiers for which HolderProver has tails files.
+        Return list of revocation registry identifiers for which HolderProver has associated tails files.
+        The operation creates associations for any (newly copied, via service wrapper API) tails files without.
 
-        :return: list of revocation registry identifiers for which HolderProver has tails files
+        :return: list of revocation registry identifiers for which HolderProver has associated tails files
         """
 
         LOGGER.debug('HolderProver.rev_regs >>>')
 
+        await self._sync_revoc(rr_id)
         rv = [basename(f) for f in Tails.links(self._dir_tails)]
         LOGGER.debug('HolderProver.rev_regs <<< %s', rv)
         return rv
