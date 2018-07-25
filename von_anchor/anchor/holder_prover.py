@@ -251,12 +251,13 @@ class HolderProver(_BaseAnchor):
         revocation cache does not have delta frames for any revocation registries on a specified cred def.
 
         :param cd_id2spec: dict mapping cred def ids to:
+
             - (optionally) 'attrs': lists of names of attributes of interest (omit for all, empty list or None for none)
             - (optionally) 'minima': (pred) integer lower-bounds of interest (omit, empty list, or None for none)
             - (optionally), 'interval': (2-tuple) pair of epoch second counts marking 'from' and 'to' timestamps,
-                or single epoch second count to set 'from' and 'to' the same: default (now, now) if cache_only
-                is clear, or latest values from cache if cache_only is set.
-            e.g.,
+                - or single epoch second count to set 'from' and 'to' the same: default (now, now) if cache_only is clear,
+                - or latest values from cache if cache_only is set.
+                - e.g.,
 
         ::
 
@@ -731,26 +732,26 @@ class HolderProver(_BaseAnchor):
 
         ::
 
-        {
-            "schema_id": [
-                "R17v42T4pk...:2:tombstone:1.2",
-                "9cHbp54C8n...:2:business:2.0",
-                ...
-            ],
-            "cred_def_id": [
-                "R17v42T4pk...:3:CL:19:0",
-                "9cHbp54C8n...:3:CL:37:0",
-                ...
-            ]
-            "rev_reg_id": [
-                "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:0",
-                "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:1",
-                "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:0",
-                "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:1",
-                "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:2",
-                ...
-            ]
-        }
+            {
+                "schema_id": [
+                    "R17v42T4pk...:2:tombstone:1.2",
+                    "9cHbp54C8n...:2:business:2.0",
+                    ...
+                ],
+                "cred_def_id": [
+                    "R17v42T4pk...:3:CL:19:0",
+                    "9cHbp54C8n...:3:CL:37:0",
+                    ...
+                ]
+                "rev_reg_id": [
+                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:0",
+                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:1",
+                    "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:0",
+                    "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:1",
+                    "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:2",
+                    ...
+                ]
+            }
 
         :return: tuple of sets for schema ids, cred def ids, rev reg ids
         """
