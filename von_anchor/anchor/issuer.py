@@ -498,21 +498,21 @@ class Issuer(Origin):
 
         ::
 
-        {
-            "schema_id": [
-                "R17v42T4pk...:2:tombstone:1.2",
-                ...
-            ],
-            "cred_def_id": [
-                "R17v42T4pk...:3:CL:19:0",
-                ...
-            ]
-            "rev_reg_id": [
-                "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:0",
-                "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:1",
-                ...
-            ]
-        }
+            {
+                "schema_id": [
+                    "R17v42T4pk...:2:tombstone:1.2",
+                    ...
+                ],
+                "cred_def_id": [
+                    "R17v42T4pk...:3:CL:19:0",
+                    ...
+                ]
+                "rev_reg_id": [
+                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:0",
+                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:1",
+                    ...
+                ]
+            }
 
         An issuer must issue a credential definition to include its schema identifier
         in the returned values; the schema identifier in isolation belongs properly
