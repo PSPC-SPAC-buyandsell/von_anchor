@@ -18,6 +18,7 @@ limitations under the License.
 import json
 import logging
 
+from math import sqrt
 from os import listdir, makedirs
 from os.path import isdir, join
 from shutil import rmtree
@@ -423,7 +424,7 @@ class RevoCacheEntry:
         LOGGER.debug('RevoCacheEntry.cull >>> delta: %s', delta)
 
         rr_frames = self.rr_delta_frames if delta else self.rr_state_frames
-        mark = 4096**0.5  # max rev reg size = 4096; heuristic: hover max around sqrt(4096) = 64
+        mark = sqrt(4096)  # max rev reg size = 4096; heuristic: hover max around sqrt(4096) = 64
         if len(rr_frames) > int(mark * 1.25):
             rr_frames.sort(key=lambda x: -x.qtime)  # order by descending query time
             del rr_frames[int(mark * 0.75):]  # retain most recent, grow again from here

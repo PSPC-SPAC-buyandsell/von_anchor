@@ -28,7 +28,7 @@ from von_anchor.anchor.base import _BaseAnchor
 from von_anchor.cache import Caches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.error import AbsentRevReg, AbsentSchema, BadIdentifier, BadRevStateTime, ClosedPool
 from von_anchor.nodepool import NodePool
-from von_anchor.util import ok_cred_def_id, ok_rev_reg_id, ok_schema_id
+from von_anchor.util import cred_def_id2seq_no, ok_cred_def_id, ok_rev_reg_id, ok_schema_id
 from von_anchor.validate_config import validate_config
 from von_anchor.wallet import Wallet
 
@@ -89,7 +89,7 @@ class Verifier(_BaseAnchor):
         self._dir_cache = join(expanduser('~'), '.indy_client', 'wallet', self.wallet.name, 'cache')
         makedirs(self._dir_cache, exist_ok=True)
 
-        LOGGER.debug('HolderProver.__init__ <<<')
+        LOGGER.debug('Verifier.__init__ <<<')
 
     @property
     def cfg(self) -> dict:
@@ -167,6 +167,119 @@ class Verifier(_BaseAnchor):
         LOGGER.debug('_Verifier._build_rr_state_json <<< %s', rv)
         return rv
 
+    async def build_proof_req_json(self, cd_id2spec: dict) -> str:
+        """
+        Build and return indy-sdk proof request for input attributes and non-revocation intervals by cred def id.
+
+        :param cd_id2spec: dict mapping cred def ids to:
+
+            - (optionally) 'attrs': lists of names of attributes of interest (omit for all, empty list or None for none)
+            - (optionally) 'minima': (pred) integer lower-bounds of interest (omit, empty list, or None for none)
+            - (optionally), 'interval': (2-tuple) pair of epoch second counts marking 'from' and 'to' timestamps,
+                or single epoch second count to set 'from' and 'to' the same: default (now, now) for
+                cred defs supporting revocation or None otherwise; e.g.,
+
+        ::
+
+            {
+                'Vx4E82R17q...:3:CL:16:0': {
+                    'attrs': [  # request attrs 'name' and 'favouriteDrink' from this cred def's schema
+                        'name',
+                        'favouriteDrink'
+                    ],
+                    'minima': {  # request predicate score>=80 from this cred def
+                        'score': 80
+                    }
+                    'interval': 1528116008  # same instant for all attrs and preds of corresponding schema
+                },
+                'R17v42T4pk...:3:CL:19:0': None,  # request all attrs, no preds, default intervals on all attrs
+                'e3vc5K168n...:3:CL:23:0': {},  # request all attrs, no preds, default intervals on all attrs
+                'Z9ccax812j...:3:CL:27:0': {  # request all attrs, no preds, this interval on all attrs
+                    'interval': (1528112408, 1528116008)
+                },
+                '9cHbp54C8n...:3:CL:37:0': {  # request no attrs, one pred, specify interval on pred
+                    'attrs': [],  # or equivalently, 'attrs': None
+                    'minima': {
+                        'employees': '50'  # nicety: implementation converts to int for caller
+                    },
+                    'interval': (1528029608, 1528116008)
+                },
+                '6caBcmLi33...:3:CL:41:0': {  # all attrs, one pred, default intervals to now on attrs & pred
+                    'minima': {
+                        'regEpoch': 1514782800
+                    }
+                },
+                ...
+            }
+
+        :return: indy-sdk proof request json
+        """
+
+        LOGGER.debug('Verifier.build_proof_req_json >>> cd_id2spec: %s', cd_id2spec)
+
+        cd_id2schema = {}
+        now = int(time())
+        proof_req = {
+            'nonce': str(int(time())),
+            'name': 'proof_req',
+            'version': '0.0',
+            'requested_attributes': {},
+            'requested_predicates': {}
+        }
+
+        for cd_id in cd_id2spec:
+            if not ok_cred_def_id(cd_id):
+                LOGGER.debug('Verifier.build_proof_req_json <!< Bad cred def id %s', cd_id)
+                raise BadIdentifier('Bad cred def id {}'.format(cd_id))
+
+            interval = None
+            cred_def = json.loads(await self.get_cred_def(cd_id))
+            seq_no = cred_def_id2seq_no(cd_id)
+            cd_id2schema[cd_id] = json.loads(await self.get_schema(seq_no))
+
+            if 'revocation' in cred_def['value']:
+                fro_to = cd_id2spec[cd_id].get('interval', (now, now)) if cd_id2spec[cd_id] else (now, now)
+                interval = {
+                    'from': fro_to if isinstance(fro_to, int) else min(fro_to),
+                    'to': fro_to if isinstance(fro_to, int) else max(fro_to)
+                }
+
+            for attr in (cd_id2spec[cd_id].get('attrs', cd_id2schema[cd_id]['attrNames']) or []
+                    if cd_id2spec[cd_id] else cd_id2schema[cd_id]['attrNames']):
+                attr_uuid = '{}_{}_uuid'.format(seq_no, attr)
+                proof_req['requested_attributes'][attr_uuid] = {
+                    'name': attr,
+                    'restrictions': [{
+                        'cred_def_id': cd_id
+                    }]
+                }
+                if interval:
+                    proof_req['requested_attributes'][attr_uuid]['non_revoked'] = interval
+
+            for attr in (cd_id2spec[cd_id].get('minima', {}) or {} if cd_id2spec[cd_id] else {}):
+                pred_uuid = '{}_{}_uuid'.format(seq_no, attr)
+                try:
+                    proof_req['requested_predicates'][pred_uuid] = {
+                        'name': attr,
+                        'p_type': '>=',
+                        'p_value': int(cd_id2spec[cd_id]['minima'][attr]),
+                        'restrictions': [{
+                            'cred_def_id': cd_id
+                        }]
+                    }
+                except ValueError:
+                    LOGGER.info(
+                        'cannot build predicate on non-int minimum %s for %s',
+                        cd_id2spec[cd_id]['minima'][attr],
+                        attr)
+                    continue  # int conversion failed - reject candidate
+                if interval:
+                    proof_req['requested_predicates'][pred_uuid]['non_revoked'] = interval
+
+        rv_json = json.dumps(proof_req)
+        LOGGER.debug('Verifier.build_proof_req_json <<< %s', rv_json)
+        return rv_json
+
     async def load_cache(self, archive: bool = False) -> int:
         """
         Load caches and archive enough to go offline and be able to verify proof
@@ -217,7 +330,7 @@ class Verifier(_BaseAnchor):
         LOGGER.debug('Verifier.load_cache <<< %s', rv)
         return rv
 
-    async def open(self) -> 'HolderProver':
+    async def open(self) -> 'Verifier':
         """
         Explicit entry. Perform ancestor opening operations,
         then parse cache from archive if so configured, and

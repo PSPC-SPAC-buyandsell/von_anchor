@@ -19,6 +19,7 @@ import pytest
 
 from random import choice
 from string import printable
+from von_anchor.tails import Tails
 from von_anchor.util import ok_cred_def_id, ok_did, ok_rev_reg_id, ok_schema_id
 
 
@@ -27,6 +28,12 @@ async def test_box_ids():
     assert ok_did('Q4zqM7aXqm7gDQkUVLng9h')  # quibble: not technically a box id
     assert not ok_did('Q4zqM7aXqm7gDQkUVLng9I')
     assert not ok_did('Q4zqM7aXqm7gDQkUVLng')
+
+    assert Tails.ok_hash('Q4zqM7aXqm7gDQkUVLng9hQ4zqM7aXqm7gDQkUVLng9h')
+    assert Tails.ok_hash('Q4zqM7aXqm7gDQkUVLng9hQ4zqM7aXqm7gDQkUVLng')
+    assert not Tails.ok_hash('Q4zqM7aXqm7gDQkUVLng9h')
+    assert not Tails.ok_hash('Q4zqM7aXqm7gDQkUVLng9hQ4zqM7aXqm7gDQkUVLng9hx')
+    assert not Tails.ok_hash('Q4zqM7aXqm7gDQkUVLng9hQ4zqM7aXqm7gDQkUVLng90')
 
     assert ok_schema_id('Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0')
     assert not ok_schema_id('Q4zqM7aXqm7gDQkUVLng9h:3:bc-reg:1.0')

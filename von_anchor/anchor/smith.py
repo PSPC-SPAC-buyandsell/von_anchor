@@ -28,7 +28,7 @@ LOGGER = logging.getLogger(__name__)
 
 class AnchorSmith(_BaseAnchor):
     """
-    Mixin for (trustee) anchor to write anchors onto the distributed ledger
+    Mixin for (trustee) anchor to write anchors onto the distributed ledger.
     """
 
     @staticmethod

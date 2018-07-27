@@ -15,9 +15,14 @@ limitations under the License.
 """
 
 
+import json
+import re
+
 from binascii import hexlify, unhexlify
 from math import ceil, log
 from typing import Any, Union
+
+from von_anchor.error import BadWalletQuery
 
 
 ENCODE_PREFIX = {
@@ -79,16 +84,16 @@ def decode(value: str) -> Union[str, None, bool, int, float]:
 
     if -I32_BOUND <= int(value) < I32_BOUND:  # it's an i32: it is its own encoding
         return int(value)
-    elif int(value) == I32_BOUND:
+    if int(value) == I32_BOUND:
         return None
 
     (prefix, value) = (int(value[0]), int(value[1:]))
     ival = int(value) - I32_BOUND
     if ival == 0:
         return ''  # special case: empty string encodes as 2**31
-    elif ival == 1:
+    if ival == 1:
         return False  # sentinel for bool False
-    elif ival == 2:
+    if ival == 2:
         return True  # sentinel for bool True
 
     blen = ceil(log(ival, 16)/2)
@@ -118,3 +123,26 @@ def canon(raw_attr_name: str) -> str:
     if raw_attr_name:  # do not dereference None, and '' is already canonical
         return raw_attr_name.replace(' ', '').lower()
     return raw_attr_name
+
+
+def canon_wql(query: dict) -> dict:
+    """
+    Canonicalize WQL attribute marker and value keys for input to indy-sdk wallet credential filtration.
+
+    Raise BadWalletQuery for WQL mapping '$or' to non-list.
+
+    :param query: WQL query
+    :return canonicalized WQL query dict
+    """
+
+    for k in query:
+        attr_match = re.match('attr::([^:]+)::(marker|value)$', k)
+        if isinstance(query[k], dict):
+            query[k] = canon_wql(query[k])
+        if k == '$or':
+            if not isinstance(query[k], list):
+                raise BadWalletQuery('Bad WQL; $or value must be a list in {}'.format(json.dumps(query)))
+            query[k] = [canon_wql(subq) for subq in query[k]]
+        if attr_match:
+            query['attr::{}::{}'.format(canon(attr_match.group(1)), attr_match.group(2))] = query.pop(k)
+    return query

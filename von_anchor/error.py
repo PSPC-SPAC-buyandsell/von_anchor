@@ -20,7 +20,7 @@ from enum import IntEnum
 
 class ErrorCode(IntEnum):
     """
-    Error codes particular to von_anchor operation. Start at 1000 to avoid collisions with HTTP error codes.
+    Error codes particular to von_anchor operation.
     """
 
     Success = 0
@@ -42,6 +42,8 @@ class ErrorCode(IntEnum):
 
     # Errors to do with wallet operation
     AbsentWallet = 3000
+    BadWalletQuery = 3001
+    AbsentCred = 3002
 
     # Errors to do with node pool operation
     ClosedPool = 4000
@@ -289,6 +291,36 @@ class AbsentWallet(VonAnchorError):
         """
 
         super().__init__(ErrorCode.AbsentWallet, message)
+
+
+class BadWalletQuery(VonAnchorError):
+    """
+    Wallet query is badly formed.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.BadWalletQuery, message)
+
+
+class AbsentCred(VonAnchorError):
+    """
+    No such credential.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.AbsentCred, message)
 
 
 class ClosedPool(VonAnchorError):

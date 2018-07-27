@@ -44,7 +44,7 @@ from von_anchor.util import (
     ok_rev_reg_id,
     ok_schema_id,
     rev_reg_id,
-    rev_reg_id2cred_def_id__tag,
+    rev_reg_id2cred_def_id_tag,
     schema_key)
 from von_anchor.wallet import Wallet
 
@@ -111,7 +111,7 @@ class Issuer(Origin):
             raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
         rr_size = rr_size or 256
-        (cd_id, tag) = rev_reg_id2cred_def_id__tag(rr_id)
+        (cd_id, tag) = rev_reg_id2cred_def_id_tag(rr_id)
 
         LOGGER.info('Creating revocation registry (capacity %s) for rev reg id %s', rr_size, rr_id)
         tails_writer_handle = await blob_storage.open_writer(
@@ -165,7 +165,7 @@ class Issuer(Origin):
             LOGGER.debug('Issuer._sync_revoc <!< Bad rev reg id %s', rr_id)
             raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
-        (cd_id, tag) = rev_reg_id2cred_def_id__tag(rr_id)
+        (cd_id, tag) = rev_reg_id2cred_def_id_tag(rr_id)
 
         try:
             await self.get_cred_def(cd_id)
@@ -398,15 +398,16 @@ class Issuer(Origin):
                         cred_offer_json,
                         cred_req_json,
                         json.dumps({k: cred_attr_value(cred_attrs[k]) for k in cred_attrs}),
-                        tails.rr_id,
+                        rr_id,
                         tails.reader_handle)
                     # do not create rr delta frame and append to cached delta frames list: timestamp could lag or skew
                     rre_req_json = await ledger.build_revoc_reg_entry_request(
                         self.did,
-                        tails.rr_id,
+                        rr_id,
                         'CL_ACCUM',
                         rr_delta_json)
                     await self._sign_submit(rre_req_json)
+                    assert rr_id == tails.rr_id
                     resp_json = await self._sign_submit(rre_req_json)
                     resp = json.loads(resp_json)
                     rv = (cred_json, cred_revoc_id, resp['result']['txnMetadata']['txnTime'])
@@ -463,7 +464,7 @@ class Issuer(Origin):
 
         tails_reader_handle = (await Tails(
             self._dir_tails,
-            *rev_reg_id2cred_def_id__tag(rr_id)).open()).reader_handle
+            *rev_reg_id2cred_def_id_tag(rr_id)).open()).reader_handle
         try:
             rrd_json = await anoncreds.issuer_revoke_credential(
                 self.wallet.handle,
@@ -498,21 +499,21 @@ class Issuer(Origin):
 
         ::
 
-        {
-            "schema_id": [
-                "R17v42T4pk...:2:tombstone:1.2",
-                ...
-            ],
-            "cred_def_id": [
-                "R17v42T4pk...:3:CL:19:0",
-                ...
-            ]
-            "rev_reg_id": [
-                "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:0",
-                "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:1",
-                ...
-            ]
-        }
+            {
+                "schema_id": [
+                    "R17v42T4pk...:2:tombstone:1.2",
+                    ...
+                ],
+                "cred_def_id": [
+                    "R17v42T4pk...:3:CL:19:0",
+                    ...
+                ]
+                "rev_reg_id": [
+                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:0",
+                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:1",
+                    ...
+                ]
+            }
 
         An issuer must issue a credential definition to include its schema identifier
         in the returned values; the schema identifier in isolation belongs properly

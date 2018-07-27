@@ -31,6 +31,7 @@ class Wallet:
     """
 
     DEFAULT_ACCESS_CREDS = {'key': 'key'}
+    DEFAULT_CHUNK = 256  # chunk size in searching credentials
 
     def __init__(
             self,

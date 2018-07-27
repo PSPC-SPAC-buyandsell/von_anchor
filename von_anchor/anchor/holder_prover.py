@@ -21,13 +21,15 @@ import logging
 from os import makedirs
 from os.path import basename, expanduser, isfile, join
 from time import time
-from typing import Set
+from typing import Set, Union
 
 from indy import anoncreds, ledger
 from indy.error import IndyError, ErrorCode
 from von_anchor.anchor.base import _BaseAnchor
 from von_anchor.cache import Caches, RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
+from von_anchor.codec import canon_wql
 from von_anchor.error import (
+    AbsentCred,
     AbsentCredDef,
     AbsentInterval,
     AbsentLinkSecret,
@@ -36,17 +38,17 @@ from von_anchor.error import (
     AbsentTails,
     BadIdentifier,
     BadRevStateTime,
+    CacheIndex,
     ClosedPool,
     CredentialFocus)
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.util import (
-    cred_def_id2seq_no,
     ok_cred_def_id,
-    ok_rev_reg_id, 
+    ok_rev_reg_id,
     ok_schema_id,
     prune_creds_json,
-    rev_reg_id2cred_def_id__tag)
+    rev_reg_id2cred_def_id_tag)
 from von_anchor.validate_config import validate_config
 from von_anchor.wallet import Wallet
 
@@ -153,7 +155,7 @@ class HolderProver(_BaseAnchor):
             LOGGER.debug('HolderProver._sync_revoc <!< Bad rev reg id %s', rr_id)
             raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
-        (cd_id, tag) = rev_reg_id2cred_def_id__tag(rr_id)
+        (cd_id, tag) = rev_reg_id2cred_def_id_tag(rr_id)
 
         try:
             json.loads(await self.get_cred_def(cd_id))
@@ -243,143 +245,12 @@ class HolderProver(_BaseAnchor):
         LOGGER.debug('_HolderProver._build_rr_delta_json <<< %s', rv)
         return rv
 
-    async def build_proof_req_json(self, cd_id2spec: dict, cache_only: bool = False) -> str:
-        """
-        Build and return indy-sdk proof request for input attributes and timestamps by cred def id.
-
-        Raise AbsentInterval if caller specifies cache_only and default non-revocation intervals, but
-        revocation cache does not have delta frames for any revocation registries on a specified cred def.
-
-        :param cd_id2spec: dict mapping cred def ids to:
-            - (optionally) 'attrs': lists of names of attributes of interest (omit for all, empty list or None for none)
-            - (optionally) 'minima': (pred) integer lower-bounds of interest (omit, empty list, or None for none)
-            - (optionally), 'interval': (2-tuple) pair of epoch second counts marking 'from' and 'to' timestamps,
-                or single epoch second count to set 'from' and 'to' the same: default (now, now) if cache_only
-                is clear, or latest values from cache if cache_only is set.
-            e.g.,
-
-        ::
-
-            {
-                'Vx4E82R17q...:3:CL:16:0': {
-                    'attrs': [  # request attrs 'name' and 'favouriteDrink' from this cred def's schema
-                        'name',
-                        'favouriteDrink'
-                    ],
-                    'minima': {  # request predicate score>=80 from this cred def
-                        'score': 80
-                    }
-                    'interval': 1528116008  # same instant for all attrs and preds of corresponding schema
-                },
-                'R17v42T4pk...:3:CL:19:0': None,  # request all attrs, no preds, default intervals on all attrs
-                'e3vc5K168n...:3:CL:23:0': {},  # request all attrs, no preds, default intervals on all attrs
-                'Z9ccax812j...:3:CL:27:0': {  # request all attrs, no preds, this interval on all attrs
-                    'interval': (1528112408, 1528116008)
-                },
-                '9cHbp54C8n...:3:CL:37:0': {  # request no attrs, one pred, specify interval on pred
-                    'attrs': [],  # or equivalently, 'attrs': None
-                    'minima': {
-                        'employees': '50'  # nicety: implementation converts to int for caller
-                    },
-                    'interval': (1528029608, 1528116008)
-                },
-                '6caBcmLi33...:3:CL:41:0': {  # all attrs, one pred, default intervals to now on attrs & pred
-                    'minima': {
-                        'regEpoch': 1514782800
-                    }
-                }
-                ...
-            }
-
-        :param cache_only: (True) take default intervals (per cred def id) from latest cached deltas, or
-            (default False) use current time
-        :return: indy-sdk proof request json
-        """
-
-        LOGGER.debug('HolderProver.build_proof_req_json >>> cd_id2spec: %s, cache_only: %s', cd_id2spec, cache_only)
-
-        cd_id2schema = {}
-        now = int(time())
-        proof_req = {
-            'nonce': str(int(time())),
-            'name': 'proof_req',
-            'version': '0.0',
-            'requested_attributes': {},
-            'requested_predicates': {}
-        }
-
-        for cd_id in cd_id2spec:
-            if not ok_cred_def_id(cd_id):
-                LOGGER.debug('HolderProver.build_proof_req_json <!< Bad cred def id %s', cd_id)
-                raise BadIdentifier('Bad cred def id {}'.format(cd_id))
-
-            interval = None
-            cred_def = json.loads(await self.get_cred_def(cd_id))
-            seq_no = cred_def_id2seq_no(cd_id)
-            cd_id2schema[cd_id] = json.loads(await self.get_schema(seq_no))
-
-            if 'revocation' in cred_def['value']:
-                if cache_only and not (cd_id2spec.get(cd_id, {}) or {}).get('interval', None):
-                    with REVO_CACHE.lock:
-                        (fro, to) = REVO_CACHE.dflt_interval(cd_id)
-                        if not (fro and to):
-                            LOGGER.debug(
-                                'HolderProver.build_proof_req_json: <!< no cached delta for non-revoc interval on %s',
-                                cd_id)
-                            raise AbsentInterval('No cached delta for non-revoc interval on {}'.format(cd_id))
-                        interval = {
-                            'from': fro,
-                            'to': to
-                        }
-                else:
-                    fro_to = cd_id2spec[cd_id].get('interval', (now, now)) if cd_id2spec[cd_id] else (now, now)
-                    interval = {
-                        'from': fro_to if isinstance(fro_to, int) else min(fro_to),
-                        'to': fro_to if isinstance(fro_to, int) else max(fro_to)
-                    }
-
-            for attr in (cd_id2spec[cd_id].get('attrs', cd_id2schema[cd_id]['attrNames']) or []
-                    if cd_id2spec[cd_id] else cd_id2schema[cd_id]['attrNames']):
-                attr_uuid = '{}_{}_uuid'.format(seq_no, attr)
-                proof_req['requested_attributes'][attr_uuid] = {
-                    'name': attr,
-                    'restrictions': [{
-                        'cred_def_id': cd_id
-                    }]
-                }
-                if interval:
-                    proof_req['requested_attributes'][attr_uuid]['non_revoked'] = interval
-
-            for attr in (cd_id2spec[cd_id].get('minima', {}) or {} if cd_id2spec[cd_id] else {}):
-                pred_uuid = '{}_{}_uuid'.format(seq_no, attr)
-                try:
-                    proof_req['requested_predicates'][pred_uuid] = {
-                        'name': attr,
-                        'p_type': '>=',
-                        'p_value': int(cd_id2spec[cd_id]['minima'][attr]),
-                        'restrictions': [{
-                            'cred_def_id': cd_id
-                        }]
-                    }
-                except ValueError:
-                    LOGGER.info(
-                        'cannot build predicate on non-int minimum %s for %s',
-                        cd_id2spec[cd_id]['minima'][attr],
-                        attr)
-                    continue  # int conversion failed - reject candidate
-                if interval:
-                    proof_req['requested_predicates'][pred_uuid]['non_revoked'] = interval
-
-        rv_json = json.dumps(proof_req)
-        LOGGER.debug('HolderProver.build_proof_req_json <<< %s', rv_json)
-        return rv_json
-
     async def build_req_creds_json(self, creds: dict, filt: dict = None, filt_dflt_incl: bool = False) -> str:
         """
         Build and return indy-sdk requested credentials json from input indy-sdk creds structure
         through specified filter.
 
-        :param creds: indy-sdk creds structure
+        :param creds: indy-sdk creds structure or list of cred-briefs (cred-info + interval)
         :param filt: filter  mapping cred def ids to:
             - (optionally) 'attr-match': dict mapping attributes to values (omit, empty dict, or None to match all);
             - (optionally) 'minima': (pred) integer lower-bounds of interest (omit, empty dict, or None to match all);
@@ -431,16 +302,16 @@ class HolderProver(_BaseAnchor):
             'requested_predicates': {}
         }
 
-        def _add_cred(cred, uuid, key):
+        def _add_brief(brief, uuid, req_creds_key):
             nonlocal req_creds
-            req_creds[key][uuid] = {
-                'cred_id': cred['cred_info']['referent'],
+            req_creds[req_creds_key][uuid] = {
+                'cred_id': brief['cred_info']['referent'],
                 'revealed': True
             }
-            if cred.get('interval', None):
-                req_creds[key][uuid]['timestamp'] = cred['interval']['to']
-            if key == 'requested_attributes':
-                req_creds[key][uuid]['revealed'] = True
+            if brief.get('interval', None):
+                req_creds[req_creds_key][uuid]['timestamp'] = brief['interval']['to']
+            if req_creds_key == 'requested_attributes':
+                req_creds[req_creds_key][uuid]['revealed'] = True
 
         if filt:
             for cd_id in filt:
@@ -456,36 +327,36 @@ class HolderProver(_BaseAnchor):
                     filt.pop(cd_id)
 
         for attr_uuid in creds.get('attrs', {}):
-            for cred in creds['attrs'][attr_uuid]:
+            for brief in creds['attrs'][attr_uuid]:
                 if attr_uuid in req_creds['requested_attributes']:
                     continue
-                cred_info = cred['cred_info']
+                cred_info = brief['cred_info']
                 cred_cd_id = cred_info['cred_def_id']
 
                 if filt:
                     if cred_cd_id not in filt:
                         if filt_dflt_incl:
-                            _add_cred(cred, attr_uuid, 'requested_attributes')
+                            _add_brief(brief, attr_uuid, 'requested_attributes')
                         continue
                     if cred_cd_id in filt and 'attr-match' in (filt[cred_cd_id] or {}):  # maybe filt[cred_cd_id]: None
                         if not {k: str(filt[cred_cd_id].get('attr-match', {})[k])
                                 for k in filt[cred_cd_id].get('attr-match', {})}.items() <= cred_info['attrs'].items():
                             continue
-                    _add_cred(cred, attr_uuid, 'requested_attributes')
+                    _add_brief(brief, attr_uuid, 'requested_attributes')
                 else:
-                    _add_cred(cred, attr_uuid, 'requested_attributes')
+                    _add_brief(brief, attr_uuid, 'requested_attributes')
 
         for pred_uuid in creds.get('predicates', {}):
-            for cred in creds['predicates'][pred_uuid]:
+            for brief in creds['predicates'][pred_uuid]:
                 if pred_uuid in req_creds['requested_predicates']:
                     continue
-                cred_info = cred['cred_info']
+                cred_info = brief['cred_info']
                 cred_cd_id = cred_info['cred_def_id']
 
                 if filt:
                     if cred_cd_id not in filt:
                         if filt_dflt_incl:
-                            _add_cred(cred, pred_uuid, 'requested_predicates')
+                            _add_brief(brief, pred_uuid, 'requested_predicates')
                         continue
                     if cred_cd_id in filt and 'minima' in (filt[cred_cd_id] or {}):  # maybe filt[cred_cd_id]: None
                         minima = filt[cred_cd_id].get('minima', {})
@@ -496,9 +367,9 @@ class HolderProver(_BaseAnchor):
                                 continue
                         except ValueError:
                             continue  # int conversion failed - reject candidate
-                    _add_cred(cred, pred_uuid, 'requested_predicates')
+                    _add_brief(brief, pred_uuid, 'requested_predicates')
                 else:
-                    _add_cred(cred, pred_uuid, 'requested_predicates')
+                    _add_brief(brief, pred_uuid, 'requested_predicates')
 
         rv_json = json.dumps(req_creds)
         LOGGER.debug('HolderProver.build_req_creds_json <<< %s', rv_json)
@@ -577,9 +448,73 @@ class HolderProver(_BaseAnchor):
 
         LOGGER.debug('HolderProver.rev_regs >>>')
 
-        await self._sync_revoc(rr_id)
+        for path_rr_id in Tails.links(self._dir_tails):
+            await self._sync_revoc(basename(path_rr_id))
+
         rv = [basename(f) for f in Tails.links(self._dir_tails)]
         LOGGER.debug('HolderProver.rev_regs <<< %s', rv)
+        return rv
+
+    async def offline_intervals(self, cd_ids: list) -> dict:
+        """
+        Return default non-revocation intervals for input cred def ids, based on content of revocation cache,
+        for augmentation into specification for Verifier.build_proof_req_json. Note that the close() call
+        to set the anchor off-line extends all revocation cache registry delta entries to its time of execution:
+        in this case, the intervals will all be single timestamps rather than (to, fro) pairs.
+
+        Raise CacheIndex if proof request cites credential definition without corresponding
+        content in cred def cache or revocation cache.
+
+        :param cd_ids: list of credential definition identifiers
+        :return: dict mapping revocable cred def ids to interval specifications to augment into cd_id2spec
+            parameter for Verifier.build_proof_req_json(), and non-revocable cred def ids to empty dict; e.g.,
+
+        ::
+
+            {
+                'Vx4E82R17q...:3:CL:16:0': {
+                    'interval': (1528111730, 1528115832)
+                },
+                'R17v42T4pk...:3:CL:19:0': {},
+                'Z9ccax812j...:3:CL:27:0': {
+                    'interval': (1528112408, 1528116008)
+                },
+                '9cHbp54C8n...:3:CL:37:0': {
+                    'interval': 1528116426
+                },
+                '6caBcmLi33...:3:CL:41:0': {},
+                ...
+            }
+        """
+
+        LOGGER.debug('HolderProver.offline_intervals >>> cd_ids: %s', cd_ids)
+
+        rv = {}
+        for cd_id in cd_ids:
+
+            if not ok_cred_def_id(cd_id):
+                LOGGER.debug('HolderProver.offline_intervals <!< Bad cred def id %s', cd_id)
+                raise BadIdentifier('Bad cred def id {}'.format(cd_id))
+
+            try:
+                cred_def = json.loads(await self.get_cred_def(cd_id))
+            except ClosedPool:
+                LOGGER.debug('HolderProver.offline_intervals: <!< no such cred def %s in cred def cache', cd_id)
+                raise CacheIndex('No cached delta for non-revoc interval on {}'.format(cd_id))
+
+            rv[cd_id] = {}
+            if 'revocation' in cred_def['value']:
+                with REVO_CACHE.lock:
+                    (fro, to) = REVO_CACHE.dflt_interval(cd_id)
+                    if not (fro and to):
+                        LOGGER.debug(
+                            'HolderProver.offline_intervals: <!< no cached delta for non-revoc interval on %s',
+                            cd_id)
+                        raise CacheIndex('No cached delta for non-revoc interval on {}'.format(cd_id))
+
+                    rv[cd_id]['interval'] = to if fro == to else (fro, to)
+
+        LOGGER.debug('HolderProver.offline_intervals <<< %s', rv)
         return rv
 
     async def create_link_secret(self, link_secret: str) -> None:
@@ -731,26 +666,26 @@ class HolderProver(_BaseAnchor):
 
         ::
 
-        {
-            "schema_id": [
-                "R17v42T4pk...:2:tombstone:1.2",
-                "9cHbp54C8n...:2:business:2.0",
-                ...
-            ],
-            "cred_def_id": [
-                "R17v42T4pk...:3:CL:19:0",
-                "9cHbp54C8n...:3:CL:37:0",
-                ...
-            ]
-            "rev_reg_id": [
-                "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:0",
-                "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:1",
-                "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:0",
-                "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:1",
-                "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:2",
-                ...
-            ]
-        }
+            {
+                "schema_id": [
+                    "R17v42T4pk...:2:tombstone:1.2",
+                    "9cHbp54C8n...:2:business:2.0",
+                    ...
+                ],
+                "cred_def_id": [
+                    "R17v42T4pk...:3:CL:19:0",
+                    "9cHbp54C8n...:3:CL:37:0",
+                    ...
+                ]
+                "rev_reg_id": [
+                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:0",
+                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:1",
+                    "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:0",
+                    "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:1",
+                    "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:2",
+                    ...
+                ]
+            }
 
         :return: tuple of sets for schema ids, cred def ids, rev reg ids
         """
@@ -760,7 +695,7 @@ class HolderProver(_BaseAnchor):
         s_ids = set()
         cd_ids = set()
         rr_ids = set()
-        for cred in json.loads(await self.get_creds_display_coarse()):
+        for cred in json.loads(await self.get_cred_infos_by_filter()):
             s_ids.add(cred['schema_id'])
             cd_ids.add(cred['cred_def_id'])
             if cred['rev_reg_id']:
@@ -774,11 +709,85 @@ class HolderProver(_BaseAnchor):
         LOGGER.debug('HolderProver.get_box_ids_json <<< %s', rv)
         return rv
 
-    async def get_creds_display_coarse(self, filt: dict = None) -> str:
+    async def get_cred_infos_by_q(self, query_json: str = None) -> str:
         """
-        Return human-readable credentials from wallet by input filter for
+        Return list of cred-infos from wallet by input WQL query;
+        return synopses of all credentials for no query.
+
+        The operation supports a subset of WQL; i.e.,
+
+        ::
+
+            query = {subquery}
+            subquery = {subquery, ..., subquery} - WHERE subquery AND ... AND subquery
+            subquery = $or: [{subquery},..., {subquery}] - WHERE subquery OR ... OR subquery
+            subquery = $not: {subquery} - Where NOT (subquery)
+            subquery = "tagName": tagValue - WHERE tagName == tagValue
+            subquery = "tagName": {$in: [tagValue, ..., tagValue]} - WHERE tagName IN (tagValue, ..., tagValue)
+            subquery = "tagName": {$neq: tagValue} - WHERE tagName != tagValue
+
+        but not
+
+        ::
+
+            subquery = "tagName": {$gt: tagValue} - WHERE tagName > tagValue
+            subquery = "tagName": {$gte: tagValue} - WHERE tagName >= tagValue
+            subquery = "tagName": {$lt: tagValue} - WHERE tagName < tagValue
+            subquery = "tagName": {$lte: tagValue} - WHERE tagName <= tagValue
+            subquery = "tagName": {$like: tagValue} - WHERE tagName LIKE tagValue
+
+        :param query_json: WQL query json
+
+        :return: cred-infos as json list; i.e.,
+
+        ::
+
+            [
+                {
+                    "referent": string,  # credential identifier in the wallet
+                    "attrs": {
+                        "attr1" : {"raw": "value1", "encoded": "value1_as_int" },
+                        "attr2" : {"raw": "value2", "encoded": "value2_as_int" },
+                        ...
+                    }
+                    "schema_id": string,
+                    "cred_def_id": string,
+                    "rev_reg_id": Optional<string>,
+                    "cred_rev_id": Optional<string>
+                },
+                ...
+            ]
+
+        """
+
+        LOGGER.debug('HolderProver.get_cred_infos_by_query >>> query_json: %s', query_json)
+
+        infos = []
+
+        (handle, cardinality) = await anoncreds.prover_search_credentials(
+            self.wallet.handle,
+            json.dumps(canon_wql(json.loads(query_json or '{}'))))  # indy-sdk requires attr name canonicalization
+        chunk = min(cardinality, Wallet.DEFAULT_CHUNK)  # heuristic
+        try:
+            while len(infos) != cardinality:
+                batch = json.loads(await anoncreds.prover_fetch_credentials(handle, chunk))
+                infos.extend(batch)
+                if len(batch) < cardinality:
+                    break
+            if len(infos) != cardinality:
+                LOGGER.warning('Credential search indicated %s results but fetched %s', cardinality, len(infos))
+        finally:
+            await anoncreds.prover_close_credentials_search(handle)
+
+        rv_json = json.dumps(infos)
+        LOGGER.debug('HolderProver.get_cred_infos_by_query <<< %s', rv_json)
+        return rv_json
+
+    async def get_cred_infos_by_filter(self, filt: dict = None) -> str:
+        """
+        Return cred-info (list) from wallet by input filter for
         schema identifier and/or credential definition identifier components;
-        return all credentials for no filter.
+        return info of all credentials for no filter.
 
         :param filt: indy-sdk filter for credentials; i.e.,
 
@@ -793,11 +802,47 @@ class HolderProver(_BaseAnchor):
                 "cred_def_id": string  # optional
             }
 
-        :return: credentials json list; i.e.,
+        :return: credential infos as json list; i.e.,
+
+        ::
+            [
+                {
+                    "referent": string,  # credential identifier in the wallet
+                    "attrs": {
+                        "attr1" : {"raw": "value1", "encoded": "value1_as_int" },
+                        "attr2" : {"raw": "value2", "encoded": "value2_as_int" },
+                        ...
+                    }
+                    "schema_id": string,
+                    "cred_def_id": string,
+                    "rev_reg_id": Optional<string>,
+                    "cred_rev_id": Optional<string>
+                },
+                ...
+            ]
+
+        """
+
+        LOGGER.debug('HolderProver.get_cred_infos_by_filter >>> filt: %s', filt)
+
+        rv_json = await anoncreds.prover_get_credentials(self.wallet.handle, json.dumps(filt or {}))
+        LOGGER.debug('HolderProver.get_cred_infos_by_filter <<< %s', rv_json)
+        return rv_json
+
+    async def get_cred_info_by_id(self, cred_id: str) -> str:
+        """
+        Return cred-info from wallet by wallet credential identifier.
+
+        Raise AbsentCred for no such credential.
+
+        :param cred_id: credential identifier of interest
+        :return: json with cred for input credential identifier
+
+        :return: cred-info json; i.e.,
 
         ::
 
-            [{
+            {
                 "referent": string,  # credential identifier in the wallet
                 "attrs": {
                     "attr1" : {"raw": "value1", "encoded": "value1_as_int" },
@@ -808,14 +853,29 @@ class HolderProver(_BaseAnchor):
                 "cred_def_id": string,
                 "rev_reg_id": Optional<string>,
                 "cred_rev_id": Optional<string>
-            }]
-
+            }
         """
 
-        LOGGER.debug('HolderProver.get_creds_display_coarse >>> filt: %s', filt)
+        LOGGER.debug('HolderProver.get_cred_info_by_id >>> cred_id: %s', cred_id)
 
-        rv_json = await anoncreds.prover_get_credentials(self.wallet.handle, json.dumps(filt or {}))
-        LOGGER.debug('HolderProver.get_creds_display_coarse <<< %s', rv_json)
+        try:
+            rv_json = await anoncreds.prover_get_credential(self.wallet.handle, cred_id)
+        except IndyError as x_indy:  # no such cred
+            if x_indy.error_code == ErrorCode.WalletItemNotFound:
+                LOGGER.debug(
+                    'HolderProver.get_cred_info_by_id: <!< no cred in wallet %s for cred id %s',
+                    self.wallet.name,
+                    cred_id)
+                raise AbsentCred('No cred in wallet for {}'.format(cred_id))
+            else:
+                LOGGER.debug(
+                    'HolderProver.get_cred_info_by_id: <!< wallet %s, cred id %s: indy error code %s',
+                    self.wallet.name,
+                    cred_id,
+                    x_indy.error_code)
+                raise
+
+        LOGGER.debug('HolderProver.get_cred_info_by_id <<< %s', rv_json)
         return rv_json
 
     async def get_creds(self, proof_req_json: str, filt: dict = None, filt_dflt_incl: bool = False) -> (Set[str], str):
@@ -823,6 +883,8 @@ class HolderProver(_BaseAnchor):
         Get credentials from HolderProver wallet corresponding to proof request and
         filter criteria; return credential identifiers from wallet and credentials json.
         Return empty set and empty production for no such credentials.
+
+        This method is deprecated - prefer get_cred_briefs_by_proof_req_q() as it filters in-wallet.
 
         :param proof_req_json: proof request json as Verifier creates; has entries for proof request's
             nonce, name, and version; plus credential's requested attributes, requested predicates. I.e.,
@@ -940,9 +1002,9 @@ class HolderProver(_BaseAnchor):
                     LOGGER.warning('HolderProver.get_creds: ignoring filter criterion, no cred def on %s', cd_id)
                     filt.pop(cd_id)
 
-        for inner_creds in {**creds['attrs'], **creds['predicates']}.values():
-            for cred in inner_creds:  # cred is a dict in a list of dicts
-                cred_info = cred['cred_info']
+        for briefs in {**creds['attrs'], **creds['predicates']}.values():
+            for brief in briefs:  # brief is a dict in a list of dicts
+                cred_info = brief['cred_info']
                 if filt:
                     cred_cd_id = cred_info['cred_def_id']
                     if cred_cd_id not in filt:
@@ -973,25 +1035,101 @@ class HolderProver(_BaseAnchor):
         LOGGER.debug('HolderProver.get_creds <<< %s', rv)
         return rv
 
-    async def get_creds_by_id(self, proof_req_json: str, cred_ids: set) -> str:
+    async def get_cred_briefs_by_proof_req_q(
+            self,
+            proof_req_json: str,
+            x_queries_json: str = None) -> (Set[str], str):
         """
-        Get creds structure from HolderProver wallet by credential identifiers.
+        Return cred-briefs from wallet by proof request and WQL queries by
+        proof request referent.  Return cred-briefs for all credentials for no WQL query.
 
-        :param proof_req_json: proof request as per get_creds() above
-        :param cred_ids: set of credential identifiers of interest
-        :return: json with cred(s) for input credential identifier(s)
+        :param proof_req_json: proof request as per get_creds()
+        :param x_queries_json: json list of extra queries to apply to proof request attribute and predicate referents.
+        :return: tuple with set of wallet cred ids, json list of cred briefs;
+            e.g.,
+
+        ::
+            (
+                {
+                    'b42ce5bc-b690-43cd-9493-6fe86ad25e85',
+                    'd773434a-0080-4e3e-a03b-f2033eae7d75'
+                },
+                '[
+                    {
+                        "interval": null,
+                        "cred_info": {
+                            "schema_id": "LjgpST2rjsoxYegQDRm7EL:2:non-revo:1.0",
+                            "rev_reg_id": null,
+                            "attrs": {
+                                "name": "Chicken Hawk",
+                                "thing": "chicken"
+                            },
+                            "cred_rev_id": null,
+                            "referent": "d773434a-0080-4e3e-a03b-f2033eae7d75",
+                            "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:0"
+                        }
+                    },
+                    {
+                        "interval": null,
+                        "cred_info": {
+                            "schema_id": "LjgpST2rjsoxYegQDRm7EL:2:non-revo:1.0",
+                            "rev_reg_id": null,
+                            "attrs": {
+                                "name": "J.R. \"Bob\" Dobbs",
+                                "thing": "slack"
+                            },
+                            "cred_rev_id": null,
+                            "referent": "b42ce5bc-b690-43cd-9493-6fe86ad25e85",
+                            "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:0"
+                        }
+                    }
+                ]'
+            }
         """
 
-        LOGGER.debug('HolderProver.get_creds_by_id >>> proof_req_json: %s, cred_ids: %s', proof_req_json, cred_ids)
+        LOGGER.debug(
+            ('HolderProver.get_cred_briefs_by_proof_req_query >>> proof_req_json: %s, x_queries_json: %s'),
+            proof_req_json,
+            x_queries_json)
 
-        creds_json = await anoncreds.prover_get_credentials_for_proof_req(self.wallet.handle, proof_req_json)
+        rv = None
 
-        # retain only creds of interest: find corresponding referents
-        rv_json = prune_creds_json(json.loads(creds_json), cred_ids)
-        LOGGER.debug('HolderProver.get_cred_by_referent <<< %s', rv_json)
-        return rv_json
+        x_queries = json.loads(x_queries_json or '{}')
+        for k in x_queries:
+            x_queries[k] = canon_wql(x_queries[k])  # indy-sdk requires attr name canonicalization
 
-    async def create_proof(self, proof_req: dict, creds: dict, requested_creds: dict) -> str:
+        handle = await anoncreds.prover_search_credentials_for_proof_req(
+            self.wallet.handle,
+            proof_req_json,
+            json.dumps(x_queries) if x_queries else None)
+        briefs = []
+        cred_ids = set()
+        proof_req = json.loads(proof_req_json)
+
+        try:
+            for item_referent in (x_queries
+                    if x_queries
+                    else {**proof_req['requested_attributes'], **proof_req['requested_predicates']}):
+                count = Wallet.DEFAULT_CHUNK
+                while count == Wallet.DEFAULT_CHUNK:
+                    fetched = json.loads(await anoncreds.prover_fetch_credentials_for_proof_req(
+                        handle,
+                        item_referent,
+                        Wallet.DEFAULT_CHUNK))
+                    count = len(fetched)
+                    for brief in fetched:
+                        if brief['cred_info']['referent'] not in cred_ids:
+                            cred_ids.add(brief['cred_info']['referent'])
+                            briefs.append(brief)
+        finally:
+            await anoncreds.prover_close_credentials_search_for_proof_req(handle)
+
+        rv = (cred_ids, json.dumps(briefs))
+        LOGGER.debug('HolderProver.get_cred_briefs_by_proof_req_query <<< %s', rv)
+        return rv
+
+
+    async def create_proof(self, proof_req: dict, creds: Union[dict, list], requested_creds: dict) -> str:
         """
         Create proof as HolderProver.
 
@@ -1005,7 +1143,7 @@ class HolderProver(_BaseAnchor):
             * AbsentInterval if creds missing non-revocation interval, but cred def supports revocation
 
         :param proof_req: proof request as per get_creds() above
-        :param creds: credentials to prove
+        :param creds: credentials to prove: indy-sdk creds structure or list of cred-briefs
         :param requested_creds: data structure with self-attested attribute info, requested attribute info
             and requested predicate info, assembled from get_creds() and filtered for content of interest. I.e.,
 
@@ -1040,18 +1178,31 @@ class HolderProver(_BaseAnchor):
 
         self._assert_link_secret('create_proof')
 
-        x_uuids = [attr_uuid for attr_uuid in creds['attrs'] if len(creds['attrs'][attr_uuid]) != 1]
-        if x_uuids:
-            LOGGER.debug('HolderProver.create_proof: <!< creds specification out of focus (non-uniqueness)')
-            raise CredentialFocus('Proof request requires unique cred per attribute; violators: {}'.format(x_uuids))
+        if isinstance(creds, dict):
+            x_uuids = [attr_uuid for attr_uuid in creds['attrs'] if len(creds['attrs'][attr_uuid]) != 1]
+            if x_uuids:
+                LOGGER.debug('HolderProver.create_proof: <!< creds specification out of focus (non-uniqueness)')
+                raise CredentialFocus('Proof request requires unique cred per attribute; violators: {}'.format(x_uuids))
+        else:
+            cd_ids = set()
+            x_cd_ids = set()
+            for brief in creds:
+                cd_id = brief['cred_info']['cred_def_id']
+                if cd_id in cd_ids and cd_id not in x_cd_ids:
+                    x_cd_ids.add(cd_id)
+                cd_ids.add(cd_id)
+                if x_cd_ids:
+                    LOGGER.debug('HolderProver.create_proof: <!< creds specification out of focus (non-uniqueness)')
+                    raise CredentialFocus('Proof request repeats cred defs: {}'.format(x_cd_ids))
 
         s_id2schema = {}  # schema identifier to schema
         cd_id2cred_def = {}  # credential definition identifier to credential definition
         rr_id2timestamp = {}  # revocation registry of interest to timestamp of interest (or None)
         rr_id2cr_id = {}  # revocation registry of interest to credential revocation identifier
-        for referents in {**creds['attrs'], **creds['predicates']}.values():
-            interval = referents[0].get('interval', None)
-            cred_info = referents[0]['cred_info']
+        for brief in ((briefs[0] for briefs in {**creds['attrs'], **creds['predicates']}.values())
+                if isinstance(creds, dict) else creds):
+            interval = brief.get('interval', None)
+            cred_info = brief['cred_info']
             s_id = cred_info['schema_id']
             if not ok_schema_id(s_id):
                 LOGGER.debug('HolderProver.create_proof <!< Bad schema id %s', s_id)
