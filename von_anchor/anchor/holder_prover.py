@@ -18,8 +18,8 @@ limitations under the License.
 import json
 import logging
 
-from os import makedirs
-from os.path import basename, expanduser, isfile, join
+from os import listdir, makedirs
+from os.path import basename, expanduser, isdir, isfile, join
 from time import time
 from typing import Set, Union
 
@@ -44,10 +44,13 @@ from von_anchor.error import (
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.util import (
+    ppjson,
+    cred_def_id2seq_no,
     ok_cred_def_id,
     ok_rev_reg_id,
     ok_schema_id,
     prune_creds_json,
+    rev_reg_id2cred_def_id,
     rev_reg_id2cred_def_id_tag)
 from von_anchor.validate_config import validate_config
 from von_anchor.wallet import Wallet
@@ -661,8 +664,13 @@ class HolderProver(_BaseAnchor):
 
     async def get_box_ids_json(self) -> str:
         """
-        Return json object on lists of all unique box identifiers for credentials in wallet:
-        schema identifiers, credential definition identifiers, and revocation registry identifiers; e.g.,
+        Return json object on lists of all unique box identifiers for credentials in wallet, as
+        evidenced by tails directory content:
+          * schema identifiers
+          * credential definition identifiers
+          * revocation registry identifiers.
+
+        E.g.,
 
         ::
 
@@ -692,14 +700,31 @@ class HolderProver(_BaseAnchor):
 
         LOGGER.debug('HolderProver.get_box_ids_json >>>')
 
+        rr_ids = {basename(link) for link in Tails.links(self._dir_tails)}
+        cd_ids = {cd_id for cd_id in listdir(self._dir_tails)
+            if isdir(join(self._dir_tails, cd_id)) and ok_cred_def_id(cd_id)}
         s_ids = set()
-        cd_ids = set()
-        rr_ids = set()
-        for cred in json.loads(await self.get_cred_infos_by_filter()):
-            s_ids.add(cred['schema_id'])
-            cd_ids.add(cred['cred_def_id'])
-            if cred['rev_reg_id']:
-                rr_ids.add(cred['rev_reg_id'])
+        for cd_id in cd_ids:
+            s_ids.add(json.loads(await self.get_schema(cred_def_id2seq_no(cd_id)))['id'])
+
+        un_cd_ids = set()
+        for cd_id in cd_ids:
+            if not json.loads(await self.get_cred_infos_by_q(json.dumps({'cred_def_id': cd_id}), 1)):
+                un_cd_ids.add(cd_id)
+        cd_ids -= un_cd_ids
+
+        un_s_ids = set()
+        for s_id in s_ids:
+            if not json.loads(await self.get_cred_infos_by_q(json.dumps({'schema_id': s_id}), 1)):
+                un_s_ids.add(s_id)
+        s_ids -= un_s_ids
+
+        un_rr_ids = set()
+        schema_seq_nos = {cred_def_id2seq_no(cd_id) for cd_id in cd_ids}
+        for rr_id in rr_ids:
+            if cred_def_id2seq_no(rev_reg_id2cred_def_id(rr_id)) not in schema_seq_nos:
+                un_rr_ids.add(rr_id)
+        rr_ids -= un_rr_ids
 
         rv = json.dumps({
             'schema_id': list(s_ids),
@@ -709,7 +734,7 @@ class HolderProver(_BaseAnchor):
         LOGGER.debug('HolderProver.get_box_ids_json <<< %s', rv)
         return rv
 
-    async def get_cred_infos_by_q(self, query_json: str = None) -> str:
+    async def get_cred_infos_by_q(self, query_json: str, limit: int = None) -> str:
         """
         Return list of cred-infos from wallet by input WQL query;
         return synopses of all credentials for no query.
@@ -737,6 +762,7 @@ class HolderProver(_BaseAnchor):
             subquery = "tagName": {$like: tagValue} - WHERE tagName LIKE tagValue
 
         :param query_json: WQL query json
+        :param limit: maximum number of results to return
 
         :return: cred-infos as json list; i.e.,
 
@@ -760,14 +786,18 @@ class HolderProver(_BaseAnchor):
 
         """
 
-        LOGGER.debug('HolderProver.get_cred_infos_by_query >>> query_json: %s', query_json)
+        LOGGER.debug('HolderProver.get_cred_infos_by_query >>> query_json: %s, limit: %s', query_json, limit)
 
         infos = []
+        if limit and limit < 0:
+            limit = None
 
         (handle, cardinality) = await anoncreds.prover_search_credentials(
             self.wallet.handle,
-            json.dumps(canon_wql(json.loads(query_json or '{}'))))  # indy-sdk requires attr name canonicalization
-        chunk = min(cardinality, Wallet.DEFAULT_CHUNK)  # heuristic
+            json.dumps(canon_wql(json.loads(query_json))))  # indy-sdk requires attr name canonicalization
+        chunk = min(cardinality, limit or cardinality, Wallet.DEFAULT_CHUNK)  # heuristic
+        if limit:
+            cardinality = min(limit, cardinality)
         try:
             while len(infos) != cardinality:
                 batch = json.loads(await anoncreds.prover_fetch_credentials(handle, chunk))
@@ -775,7 +805,7 @@ class HolderProver(_BaseAnchor):
                 if len(batch) < cardinality:
                     break
             if len(infos) != cardinality:
-                LOGGER.warning('Credential search indicated %s results but fetched %s', cardinality, len(infos))
+                LOGGER.warning('Credential search/limit indicated %s results but fetched %s', cardinality, len(infos))
         finally:
             await anoncreds.prover_close_credentials_search(handle)
 

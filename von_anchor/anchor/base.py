@@ -424,7 +424,7 @@ class _BaseAnchor:
                 SCHEMA_CACHE[s_key] = json.loads(rv_json)  # cache indexes by both txn# and schema key en passant
                 LOGGER.info('_BaseAnchor.get_schema: got schema %s from ledger', index)
 
-            elif isinstance(index, (int, str)):  # index is not a schema id: it's a stringified int txn # if it's a str
+            elif isinstance(index, (int, str)):  # index is not a schema id: it's a stringified int txn# if it's a str
                 txn_json = await self.get_txn(int(index))
                 txn = json.loads(txn_json)
                 if txn.get('type', None) == '101':  # {} for no such txn; 101 marks indy-sdk schema txn type

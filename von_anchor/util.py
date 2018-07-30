@@ -262,8 +262,28 @@ def proof_req_infos2briefs(proof_req: dict, infos: list) -> list:
     Given a proof request and list of corresponding cred-infos, return a list of cred-briefs
     (i.e., cred-info plus interval).
 
+    The proof request must have cred def id restrictions on all requested attribute specifications.
+
     :param proof_req: proof request json
-    :param infos: list of cred-infos
+    :param infos: list of cred-infos; e.g.,
+
+    ::
+        [
+            {
+                'attrs': {
+                    'auditDate': '2018-07-30',
+                    'greenLevel': 'Silver',
+                    'legalName': 'Tart City'
+                },
+                'cred_rev_id': '48',
+                'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:17:0',
+                'referent': 'c15674a9-7321-440d-bbed-e1ac9273abd5',
+                'rev_reg_id': 'WgWxqztrNooG92RXvxSTWv:4:WgWxqztrNooG92RXvxSTWv:3:CL:17:0:CL_ACCUM:0',
+                'schema_id': 'WgWxqztrNooG92RXvxSTWv:2:green:1.0'
+            },
+            ...
+        ]
+
     :return: list of cred-briefs
     """
 
@@ -297,6 +317,8 @@ def proof_req_infos2briefs(proof_req: dict, infos: list) -> list:
 def proof_req_briefs2req_creds(proof_req: dict, briefs: list) -> dict:
     """
     Given a proof request and a list of cred-briefs, return a requested-creds structure.
+
+    The proof request must have cred def id restrictions on all requested attribute specifications.
 
     :param proof_req_json: proof request json
     :param briefs: list of credential briefs as indy-sdk wallet credential search returns; e.g.,
@@ -523,6 +545,9 @@ def proof_req2wql_all(proof_req: dict, except_cd_ids: list = None) -> dict:
     Given a proof request and a list of cred def ids to omit, return an extra WQL query dict
     that will find all corresponding credentials in search.
 
+    The proof request must have cred def id restrictions on all requested attribute specifications.
+    At present, the utility does not support predicates.
+
     :param proof_req: proof request
     :return: extra WQL dict to fetch all corresponding credentials in search.
     """
@@ -604,7 +629,9 @@ def proof_req_attr_referents(proof_req: dict) -> dict:
             cd_id = restriction.get('cred_def_id', None)
             if cd_id:
                 break
-        if cd_id and cd_id not in rv:
+        if not cd_id:
+            continue
+        if cd_id not in rv:  # cd_id of None is not OK
             rv[cd_id] = {}
         rv[cd_id][spec['name']] = uuid
 
