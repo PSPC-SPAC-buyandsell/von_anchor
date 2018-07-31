@@ -37,7 +37,7 @@ DECODE_PREFIX = {ENCODE_PREFIX[k]: k for k in ENCODE_PREFIX if k and k != str}
 
 
 I32_BOUND = 2**31
-def encode(raw: Any) -> str:
+def encode(raw_value: Any) -> str:
     """
     Encode credential attribute value, leaving any (stringified) int32 alone: indy-sdk predicates
     operate on int32 values properly only when their encoded values match their raw values.
@@ -50,23 +50,23 @@ def encode(raw: Any) -> str:
     * 4: floating point
     * 9: other (stringifiable)
 
-    :param raw: raw value to encode
+    :param raw_value: raw value to encode
     :return: encoded value
     """
 
-    if raw is None:
+    if raw_value is None:
         return str(I32_BOUND)  # sentinel
 
-    stringified = str(raw)
-    if isinstance(raw, bool):
+    stringified = str(raw_value)
+    if isinstance(raw_value, bool):
         return '{}{}'.format(
             ENCODE_PREFIX[bool],
-            I32_BOUND + 2 if raw else I32_BOUND + 1)  # decode gotcha: python bool('False') = True; use 2 sentinels
-    if isinstance(raw, int) and -I32_BOUND <= raw < I32_BOUND:
+            I32_BOUND + 2 if raw_value else I32_BOUND + 1)  # sheesh: python bool('False') = True; just use 2 sentinels
+    if isinstance(raw_value, int) and -I32_BOUND <= raw_value < I32_BOUND:
         return stringified  # it's an i32, leave it (as numeric string)
 
     hexed = '{}{}'.format(
-        ENCODE_PREFIX.get(type(raw), ENCODE_PREFIX[None]),
+        ENCODE_PREFIX.get(type(raw_value), ENCODE_PREFIX[None]),
         str(int.from_bytes(hexlify(stringified.encode()), 'big') + I32_BOUND))
 
     return hexed
@@ -101,14 +101,25 @@ def decode(value: str) -> Union[str, None, bool, int, float]:
     return DECODE_PREFIX.get(prefix, str)(ibytes.decode())
 
 
-def cred_attr_value(raw: Any) -> dict:
+def raw(orig: Any) -> dict:
+    """
+    Stringify input value, empty string for None.
+
+    :param orig: original attribute value of any stringifiable type
+    :return: stringified raw value
+    """
+
+    return '' if orig is None else str(orig)
+
+
+def cred_attr_value(orig: Any) -> dict:
     """
     Given a value, return corresponding credential attribute value dict for indy-sdk processing.
 
-    :param raw: raw attribute value of any stringifiable type
+    :param orig: original attribute value of any stringifiable type
     :return: dict on 'raw' and 'encoded' keys for indy-sdk processing
     """
-    return {'raw': '' if raw is None else str(raw), 'encoded': encode(raw)}
+    return {'raw': raw(orig), 'encoded': encode(orig)}
 
 
 def canon(raw_attr_name: str) -> str:
@@ -128,6 +139,7 @@ def canon(raw_attr_name: str) -> str:
 def canon_wql(query: dict) -> dict:
     """
     Canonicalize WQL attribute marker and value keys for input to indy-sdk wallet credential filtration.
+    Canonicalize original values to proper indy-sdk raw values as per raw().
 
     Raise BadWalletQuery for WQL mapping '$or' to non-list.
 
@@ -137,12 +149,23 @@ def canon_wql(query: dict) -> dict:
 
     for k in query:
         attr_match = re.match('attr::([^:]+)::(marker|value)$', k)
-        if isinstance(query[k], dict):
+        if isinstance(query[k], dict):  # only subqueries are dicts: recurse
             query[k] = canon_wql(query[k])
         if k == '$or':
             if not isinstance(query[k], list):
                 raise BadWalletQuery('Bad WQL; $or value must be a list in {}'.format(json.dumps(query)))
             query[k] = [canon_wql(subq) for subq in query[k]]
         if attr_match:
-            query['attr::{}::{}'.format(canon(attr_match.group(1)), attr_match.group(2))] = query.pop(k)
+            qkey = 'attr::{}::{}'.format(canon(attr_match.group(1)), attr_match.group(2))
+            query[qkey] = query.pop(k)
+            tag_value = query[qkey]
+            if isinstance(tag_value, dict) and len(tag_value) == 1:
+                if '$in' in tag_value:
+                    tag_value['$in'] = [raw(val) for val in tag_value.pop('$in')]
+                else:
+                    wql_op = set(tag_value.keys()).pop()  # $neq, $gt, $gte, etc.
+                    tag_value[wql_op] = raw(tag_value[wql_op])
+            else:  # equality
+                query[qkey] = raw(query[qkey])
+
     return query

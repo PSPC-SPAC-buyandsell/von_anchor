@@ -44,7 +44,6 @@ from von_anchor.error import (
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.util import (
-    ppjson,
     cred_def_id2seq_no,
     ok_cred_def_id,
     ok_rev_reg_id,
@@ -494,7 +493,6 @@ class HolderProver(_BaseAnchor):
 
         rv = {}
         for cd_id in cd_ids:
-
             if not ok_cred_def_id(cd_id):
                 LOGGER.debug('HolderProver.offline_intervals <!< Bad cred def id %s', cd_id)
                 raise BadIdentifier('Bad cred def id {}'.format(cd_id))

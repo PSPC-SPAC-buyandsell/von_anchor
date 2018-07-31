@@ -19,23 +19,23 @@ import pytest
 
 from random import choice
 from string import printable
-from von_anchor.codec import canon, canon_wql, cred_attr_value, encode, decode
+from von_anchor.codec import canon, canon_wql, cred_attr_value, encode, decode, raw
 
 
 @pytest.mark.asyncio
 async def test_enco_deco():
     print('\n\n== Starting encode/decode for string of length up to 1024')
     for printable_len in range(0, 1025):
-        raw = ''.join(choice(printable) for _ in range(printable_len))
+        orig = ''.join(choice(printable) for _ in range(printable_len))
         print('.', end='' if (printable_len + 1) % 100 else '{}\n'.format(printable_len), flush=True)
-        enc = encode(raw)
+        enc = encode(orig)
         dec = decode(enc)
-        assert cred_attr_value(raw) == {'raw': str(raw), 'encoded': enc}
-        assert raw == dec
+        assert cred_attr_value(orig) == {'raw': raw(orig), 'encoded': enc}
+        assert orig == dec
     print('\n\n== Random printable string test passed')
 
-    print('\n\n== Edge cases - (type) raw -> encoded -> (type) decoded:')
-    for raw in (
+    print('\n\n== Edge cases - (type) orig -> encoded -> (type) decoded:')
+    for orig in (
             None,
             True,
             False,
@@ -63,11 +63,11 @@ async def test_enco_deco():
             '-12345',
             [],
             [0,1,2,3]):
-        enc = encode(raw)
+        enc = encode(orig)
         dec = decode(enc)
-        print('  ({})({}) -> {} -> ({})({})'.format(type(raw).__name__, raw, enc, type(dec).__name__, dec))
-        assert cred_attr_value(raw) == {'raw': '' if raw is None else str(raw), 'encoded': enc}
-        assert str(raw) == dec if isinstance(raw, list) else raw == dec  # decode(encode) retains scalar types
+        print('  ({})({}) -> {} -> ({})({})'.format(type(orig).__name__, orig, enc, type(dec).__name__, dec))
+        assert cred_attr_value(orig) == {'raw': raw(orig), 'encoded': enc}
+        assert raw(orig) == dec if isinstance(orig, list) else orig == dec
 
 
 @pytest.mark.asyncio
@@ -107,17 +107,17 @@ async def test_canon_wql():
     print('\n\n== Canonicalization for invariant WQL works as expected')
 
     # simplest case
-    q = {'attr::testAttributeName::marker': '1'}
+    q = {'attr::testAttributeName::marker': 1}
     canon_q = canon_wql(q)
-    assert all(canon_q[canon(k)] == q[k] for k in q)
+    assert all(canon_q[canon(k)] == raw(q[k]) for k in q)
 
     # and
     q = {
-        'attr::testAttributeName::marker': '1',
-        'attr::testAttributeName::value': '0'
+        'attr::testAttributeName::marker': 1,
+        'attr::testAttributeName::value': 0
     }
     canon_q = canon_wql(q)
-    assert all(canon_q[canon(k)] == q[k] for k in q)
+    assert all(canon_q[canon(k)] == raw(q[k]) for k in q)
 
     # or
     q = {
@@ -141,10 +141,10 @@ async def test_canon_wql():
         },
         '$not': {
             '$or': [
-                {'attr::testAttributeName::value': '0'},
-                {'attr::testAttributeName::value': '1'},
-                {'attr::testAttributeName::value': {'$gt': '10'}},
-                {'attr::testAttributeName::value': {'$in': ['-3', '-7']}},
+                {'attr::testAttributeName::value': 0},
+                {'attr::testAttributeName::value': 1},
+                {'attr::testAttributeName::value': {'$gt': 10}},
+                {'attr::testAttributeName::value': {'$in': [-3, -7]}},
             ]
         }
     }

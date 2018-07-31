@@ -158,8 +158,8 @@ def ok_rev_reg_id(token: str) -> bool:
     :return: whether input token looks like a valid revocation registry identifier
     """
 
-    return (re.match('[{}]{{21,22}}:4:[{}]{{21,22}}:3:CL:[1-9][0-9]*:.+:CL_ACCUM:.+$'.format(B58, B58), token)
-        is not None)
+    return (
+        re.match('[{}]{{21,22}}:4:[{}]{{21,22}}:3:CL:[1-9][0-9]*:.+:CL_ACCUM:.+$'.format(B58, B58), token) is not None)
 
 
 def rev_reg_id2cred_def_id(rr_id: str) -> str:
