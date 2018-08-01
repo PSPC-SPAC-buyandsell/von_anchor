@@ -2438,11 +2438,11 @@ async def test_anchors_cache_only(
             },
             {
                 'ident': i//3,
-                'num': randint(0, 100) if (i//3) else 0  # set known value for querying
+                'num': randint(1, 100) if (i//12) else 0  # set 4 fixed points for querying
             },
             {
                 'ident': i//3,
-                'char': choice(printable) if (i//3) else 'Q'  # set known value for querying
+                'char': choice(printable) if (i//3) else 'Q'  # set fixed points for querying
             }
         ][i % len(cd_id)]
         (cred_json, cred_revoc_id, epoch_creation) = await san.create_cred(
@@ -2495,7 +2495,7 @@ async def test_anchors_cache_only(
     assert any(brief['cred_info']['attrs'].get('char', None) == raw('Q')
         and brief['cred_info']['cred_def_id'] == cd_id[S_ID['FAV-CHAR']] for brief in briefs_q)
     req_creds_q = proof_req_briefs2req_creds(proof_req, briefs_q)
-    print('\n\n== 8 == Proof req, briefs created req-creds: {}'.format(ppjson(req_creds_q)))
+    print('\n\n== 8 == Proof req and briefs created req-creds: {}'.format(ppjson(req_creds_q)))
     proof_q_json = await pspcoban.create_proof(proof_req, briefs_q, req_creds_q)
     print('\n\n== 9 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 1000)))
     proof_q = json.loads(proof_q_json, 1000)
@@ -2521,7 +2521,7 @@ async def test_anchors_cache_only(
         assert False
     except CredentialFocus as x:
         pass
-    print('\n\n== 13 == Anchor refused to create proof given multiple cred-briefs on a cred def')
+    print('\n\n== 13 == Anchor correctly refused to create proof given multiple cred-briefs on a cred def')
 
     # PSPC org book anchor gets creds, filters post-hoc, creates proof
     (cred_ids, creds_json) = await pspcoban.get_creds(proof_req_json)
@@ -2544,7 +2544,7 @@ async def test_anchors_cache_only(
 
     # SRI org book verifies proof (by filter)
     rc_json = await san.verify_proof(proof_req, proof)
-    print('\n\n== 18 == SRI anchor verifies multi-cred proof off-line as: {}'.format(ppjson(rc_json)))
+    print('\n\n== 18 == SRI anchor verifies multi-cred proof filtered post-hoc off-line as: {}'.format(ppjson(rc_json)))
     assert json.loads(rc_json)
 
     # SRI anchor builds proof req for single cred on IDENT cred-def
@@ -2575,7 +2575,7 @@ async def test_anchors_cache_only(
     assert any(brief['cred_info']['attrs'].get('ident', None) == raw(1)
         and brief['cred_info']['cred_def_id'] == cd_id[S_ID['FAV-NUM']] for brief in briefs_q)
     req_creds_q = proof_req_briefs2req_creds(proof_req, briefs_q)
-    print('\n\n== 22 == Proof req, briefs created req-creds: {}'.format(ppjson(req_creds_q)))
+    print('\n\n== 22 == Proof req and briefs created req-creds: {}'.format(ppjson(req_creds_q)))
     proof_q_json = await pspcoban.create_proof(proof_req, briefs_q, req_creds_q)
     print('\n\n== 23 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 1000)))
     proof_q = json.loads(proof_q_json, 1000)
@@ -2585,26 +2585,27 @@ async def test_anchors_cache_only(
     print('\n\n== 24 == SRI anchor verifies single-cred proof (by query) off-line as: {}'.format(ppjson(rc_json)))
     assert json.loads(rc_json)
 
-    # PSPC org book anchor gets cred-brief via query, creates single-cred proof for fav num 0, ident 0
+    # PSPC org book anchor gets cred-brief via query, creates single-cred proof for ident 0 and fav num 0
     wql_00 = {
-        refts[cd_id[S_ID['FAV-NUM']]]['ident']: {
-            'attr::ident::value': 0
-        },
-        refts[cd_id[S_ID['FAV-NUM']]]['num']: {
+        refts[cd_id[S_ID['FAV-NUM']]]['ident']: {  # any referent on the cred def will do,
+            'cred_def_id': cd_id[S_ID['FAV-NUM']],  # but need to specify the cred def id explicitly (indy-sdk bug?)
+            'attr::ident::value': 0,
             'attr::num::value': 0
         }
     }
-    print('\n\n== 25 == WQL to find single cred brief on ident=0, num=0 for fav-num cred def: {}'.format(
+    print('\n\n== 25 == WQL to find (unique) cred brief on ident=0, num=0 for fav-num cred def: {}'.format(
         ppjson(wql_00)))
     wql_00_json = json.dumps(wql_00)
     (cred_ids_q, briefs_q_json) = await pspcoban.get_cred_briefs_by_proof_req_q(
         proof_req_json,
         wql_00_json)
-    assert len(cred_ids_q) == 1
     briefs_q = json.loads(briefs_q_json)
-    print('\n\n== 26 == Found cred brief on ident=0 for fav-num cred def: cred-id list {}, brief list {}'.format(
+    print('\n\n== 26 == Found {} cred brief{} on fav-num cred def: cred-id list {}, brief list {}'.format(
+        len(cred_ids_q),
+        's' if len(cred_ids_q) > 1 else '',
         cred_ids_q,
         ppjson(briefs_q)))
+    assert len(cred_ids_q) == 1
     assert any(brief['cred_info']['attrs'].get('ident', None) == raw(0)
         and brief['cred_info']['cred_def_id'] == cd_id[S_ID['FAV-NUM']] for brief in briefs_q)
     assert any(brief['cred_info']['attrs'].get('num', None) == raw(0)
@@ -2619,6 +2620,44 @@ async def test_anchors_cache_only(
     rc_json = await san.verify_proof(proof_req, proof_q)
     print('\n\n== 29 == SRI anchor verifies single-cred proof (by query) off-line as: {}'.format(ppjson(rc_json)))
     assert json.loads(rc_json)
+
+    # PSPC org book anchor provides default intervals per cred def id, SRI anchor builds proof req
+    cd_id2spec = await pspcoban.offline_intervals([cd_id[S_ID['FAV-NUM']]])
+    # cd_id2spec[cd_id[S_ID['FAV-NUM']]]['attrs'] = schema_data[  # recall: can omit 'attrs' to pick up all attrs
+        # seq_no2schema_id[cred_def_id2seq_no(cd_id[S_ID['FAV-NUM']])]]['attr_names']
+    proof_req_json = await san.build_proof_req_json(cd_id2spec)
+    proof_req = json.loads(proof_req_json)
+    print('\n\n== 30 == Proof req from cache data on fav-num cred def attrs: {}'.format(ppjson(proof_req_json)))
+
+    # PSPC org book anchor gets cred-briefs via query for ident 23 or fav num 0
+    refts = proof_req_attr_referents(proof_req)
+    wql_230 = {
+        refts[cd_id[S_ID['FAV-NUM']]]['ident']: {  # any referent on the cred def will do,
+            '$or': [                               # but need to specify the cred def id explicitly (indy-sdk bug?)
+                {
+                    'attr::ident::value': 23,
+                    'cred_def_id': cd_id[S_ID['FAV-NUM']]
+                },
+                {
+                    'attr::num::value': 0,
+                    'cred_def_id': cd_id[S_ID['FAV-NUM']]
+                },
+            ]
+        },
+    }
+    print('\n\n== 31 WQL to find cred briefs on ident=23 or num=0 for fav-num cred def: {}'.format(
+        ppjson(wql_230)))
+    wql_230_json = json.dumps(wql_230)
+    (cred_ids_q, briefs_q_json) = await pspcoban.get_cred_briefs_by_proof_req_q(
+        proof_req_json,
+        wql_230_json)
+    briefs_q = json.loads(briefs_q_json)
+    print('\n\n== 32 == Found {} cred brief{} on fav-num cred def: cred-id list {}, brief list {}'.format(
+        len(cred_ids_q),
+        's' if len(cred_ids_q) > 1 else '',
+        cred_ids_q,
+        ppjson(briefs_q)))
+    assert len(cred_ids_q) == 5
 
     await san.close()
     await pspcoban.close()
