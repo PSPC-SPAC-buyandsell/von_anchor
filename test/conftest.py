@@ -267,10 +267,3 @@ def pool_handle(event_loop, pool_name, pool_ledger_config, pool_config, pool_han
     event_loop.run_until_complete(pool.close_pool_ledger(pool_handle)) if pool_handle_cleanup else None
 
     logger.debug("pool_handle: <<<")
-
-
-@pytest.fixture
-async def identity_trustee1(wallet_handle, seed_trustee1):
-    (trustee_did, trustee_verkey, _) = await signus.create_and_store_my_did(wallet_handle,
-                                                                            json.dumps({"seed": seed_trustee1}))
-    return (trustee_did, trustee_verkey)

@@ -91,6 +91,20 @@ class Verifier(_BaseAnchor):
 
         LOGGER.debug('Verifier.__init__ <<<')
 
+    @staticmethod
+    def role() -> str:
+        """
+        Return the indy-sdk null role for a verifier, which does not need write access.
+
+        :return: role string
+        """
+
+        LOGGER.debug('AnchorSmith.role >>>')
+
+        rv = None
+        LOGGER.debug('AnchorSmith.role <<< %s', rv)
+        return rv
+
     @property
     def cfg(self) -> dict:
         """

@@ -21,7 +21,43 @@ from von_anchor.anchor.smith import AnchorSmith
 from von_anchor.anchor.verifier import Verifier
 
 
-TrusteeAnchor = type('TrusteeAnchor', (AnchorSmith,), {})
-SRIAnchor = type('SRIAnchor', (Verifier, Issuer), {})
-BCRegistrarAnchor = type('BCRegistrarAnchor', (Issuer,), {})
-OrgBookAnchor = type('OrgBookAnchor', (HolderProver,), {})
+class TrusteeAnchor(AnchorSmith):
+    """
+    TrusteeAnchor demonstrator class acts as an anchor smith to forge new anchors.
+    """
+
+    pass
+
+
+class BCRegistrarAnchor(Issuer):
+    """
+    BCRegistrarAnchor demonstrator class acts as an issuer.
+    """
+
+    pass
+
+
+class OrgBookAnchor(HolderProver):
+    """
+    OrgBookAnchor demonstrator class acts as a holder-prover.
+    """
+
+    pass
+
+
+class SRIAnchor(Verifier, Issuer):
+    """
+    SRIAnchor demonstrator class acts as both an issuer of its own credentials and a verifier
+    of any holder-prover's.
+    """
+
+    @staticmethod
+    def role() -> str:
+        """
+        Return the indy-sdk role for SRI anchor.
+
+        :return: role string
+        """
+
+        rv = 'TRUST_ANCHOR'
+        return rv
