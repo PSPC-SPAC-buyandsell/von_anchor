@@ -1069,10 +1069,60 @@ class HolderProver(_BaseAnchor):
             x_queries_json: str = None) -> (Set[str], str):
         """
         Return cred-briefs from wallet by proof request and WQL queries by
-        proof request referent.  Return cred-briefs for all credentials for no WQL query.
+        proof request referent. Return no cred-briefs no WQL query - util.proof_req2wql_all()
+        builds WQL to retrieve all cred-briefs for some or all cred-def-ids in a proof request.
 
-        :param proof_req_json: proof request as per get_creds()
-        :param x_queries_json: json list of extra queries to apply to proof request attribute and predicate referents.
+        For each WQL query on an item referent, indy-sdk takes the WQL and the attribute name
+        and restrictions (e.g., cred def id, schema id, etc.) from its referent.  Note that
+        util.proof_req_attr_referents() maps cred defs and attr names to proof req item referents,
+        bridging the gap between attribute names and their corresponding item referents.
+
+        :param proof_req_json: proof request as per get_creds(); e.g.,
+
+        ::
+
+            {
+                "nonce": "1532429687",
+                "name": "proof_req",
+                "version": "0.0",
+                "requested_predicates": {},
+                "requested_attributes": {
+                    "17_name_uuid": {
+                        "restrictions": [
+                            {
+                                "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:0"
+                            }
+                        ],
+                        "name": "name"
+                    },
+                    "17_thing_uuid": {
+                        "restrictions": [
+                            {
+                                "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:0"
+                            }
+                        ],
+                        "name": "thing"
+                    }
+                }
+            }
+
+        :param x_queries_json: json list of extra queries to apply to proof request attribute and predicate
+            referents; e.g.,
+
+        ::
+            {
+                "17_thing_uuid": { # require attr presence on name 'thing', cred def id from proof req above
+                    "$or": [
+                        {
+                            "attr::name::value": "J.R. 'Bob' Dobbs"
+                        },
+                        {
+                            "attr::thing::value": "slack"
+                        },
+                    ]
+                },
+            }
+
         :return: tuple with set of wallet cred ids, json list of cred briefs;
             e.g.,
 

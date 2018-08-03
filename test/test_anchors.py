@@ -627,6 +627,7 @@ async def test_anchors_low_level_api(
     assert {info['attrs']['legalName'] for info in infos} == {'Flan Nebula', 'Tart City'}
 
     wql_json = json.dumps({
+        'cred_def_id': cd_id[S_ID['BC']],
         '$not': {
             '$or': [
                 {
@@ -640,8 +641,7 @@ async def test_anchors_low_level_api(
                     }
                 }
             ]
-        },
-        'cred_def_id': cd_id[S_ID['BC']]
+        }
     })  # cred def id, $not, $or, and, $in, attribute canonicalization in inner key
     infos = json.loads(await bcoban.get_cred_infos_by_q(wql_json))
     assert {info['attrs']['legalName'] for info in infos} == {'Planet Cake'}
@@ -758,8 +758,7 @@ async def test_anchors_low_level_api(
     '''
     nr_refts = proof_req_attr_referents(proof_req[S_ID['NON-REVO']])
     wql_get_briefs_json = json.dumps({
-        nr_refts[cd_id[S_ID['NON-REVO']]]['name']: {  # require attr presence on name 'name' ('thing' would do as well)
-            'cred_def_id': cd_id[S_ID['NON-REVO']],
+        nr_refts[cd_id[S_ID['NON-REVO']]]['name']: {  # require NON-REVO presence of attr 'name' ('thing' would also do)
             '$or': [
                 {
                     'attr::name::value': 'Chicken Hawk'
@@ -784,8 +783,7 @@ async def test_anchors_low_level_api(
     print('\n\n== 15 == box-ids for non-revo cred briefs via $or query: {}'.format(ppjson(nr_box_ids_q)))
 
     wql_get_briefs_json = json.dumps({
-        nr_refts[cd_id[S_ID['NON-REVO']]]['thing']: {  # AND, require attr presence on name 'thing'
-            'cred_def_id': cd_id[S_ID['NON-REVO']],
+        nr_refts[cd_id[S_ID['NON-REVO']]]['thing']: {  # AND, require presence of NON-REVO cred def attr 'thing'
             'attr::name::value': 'Chicken Hawk',
             'attr::thing::value': 'slack'  # (expect no match: Chicken Hawk's thing is chicken)
         }
@@ -805,7 +803,6 @@ async def test_anchors_low_level_api(
 
     wql_get_briefs_json = json.dumps({
         nr_refts[cd_id[S_ID['NON-REVO']]]['name']: {  # AND
-            'cred_def_id': cd_id[S_ID['NON-REVO']],
             'attr::name::value': 'Chicken Hawk',
             'attr::thing::value': 'chicken'  # (expect one match)
         }
@@ -827,7 +824,6 @@ async def test_anchors_low_level_api(
     print('\n\n== 20 == BC referents from proof req: {}'.format(ppjson(bc_refts)))
     wql_get_briefs_json = json.dumps({
         bc_refts[cd_id[S_ID['BC']]]['legalName']: {
-            'cred_def_id': cd_id[S_ID['BC']],
             'attr::legalName::value': 'Tart City'
         }
     })
@@ -942,7 +938,6 @@ async def test_anchors_low_level_api(
     # BC Registrar anchor creates proof (by query) for non-revocable cred, for verification
     wql_get_briefs_json = json.dumps({
         nr_refts[cd_id[S_ID['NON-REVO']]]['thing']: {
-            'cred_def_id': cd_id[S_ID['NON-REVO']],
             'attr::thing::value': 'slack'
         }
     })
@@ -1001,7 +996,6 @@ async def test_anchors_low_level_api(
     # BC Registrar anchor revokes Flan Nebula credential
     wql_get_briefs_json = json.dumps({
         bc_refts[cd_id[S_ID['BC']]]['legalName']: {
-            'cred_def_id': cd_id[S_ID['BC']],
             'attr::legalName::value': 'Flan Nebula'
         }
     })
@@ -1081,7 +1075,6 @@ async def test_anchors_low_level_api(
     x_refts = proof_req_attr_referents(x_proof_req)
     wql_get_briefs_json = json.dumps({
         x_refts[cd_id[S_ID['BC']]]['legalName']: {
-            'cred_def_id': cd_id[S_ID['BC']],
             'attr::legalName::value': 'Flan Nebula'
         }
     })
@@ -1446,7 +1439,6 @@ async def test_anchors_low_level_api(
     # PSPC Org Book anchor (as HolderProver) creates multi-cred proof (by query)
     wql_not_silver = proof_req2wql_all(proof_req_sri, [cd_id[S_ID['GREEN']]])
     wql_not_silver[sri_refts[cd_id[S_ID['GREEN']]]['greenLevel']] = {
-        'cred_def_id': cd_id[S_ID['GREEN']],
         '$not': {
             'attr::greenLevel::value': 'Silver'
         }
@@ -2484,8 +2476,7 @@ async def test_anchors_cache_only(
     # PSPC org book anchor gets cred-briefs via query, creates multi-cred proof
     refts = proof_req_attr_referents(proof_req)
     wql_id0 = {  # everything on ident=0, in all cred defs
-        refts[cd_id[s_id]]['ident']: {  # require attr presence on name 'ident'
-            'cred_def_id': cd_id[s_id],
+        refts[cd_id[s_id]]['ident']: {  # require presence of attr 'ident' of all cred defs
             'attr::ident::value': 0
         } for s_id in cd_id
     }
@@ -2568,7 +2559,6 @@ async def test_anchors_cache_only(
     refts = proof_req_attr_referents(proof_req)
     wql_1 = {
         refts[cd_id[S_ID['FAV-NUM']]]['ident']: {
-            'cred_def_id': cd_id[S_ID['FAV-NUM']],
             'attr::ident::value': 1
         }
     }
@@ -2597,8 +2587,7 @@ async def test_anchors_cache_only(
 
     # PSPC org book anchor gets cred-brief via query, creates single-cred proof for ident 0 and fav num 0
     wql_00 = {
-        refts[cd_id[S_ID['FAV-NUM']]]['ident']: {  # require attr presence on name 'ident' ('num' would do as well)
-            'cred_def_id': cd_id[S_ID['FAV-NUM']],
+        refts[cd_id[S_ID['FAV-NUM']]]['ident']: {  # require presence of FAV-NUM attr 'ident' ('num' would also do)
             'attr::ident::value': 0,
             'attr::num::value': 0
         }
@@ -2642,8 +2631,7 @@ async def test_anchors_cache_only(
     # PSPC org book anchor gets cred-briefs via query for ident 23 or fav num 0
     refts = proof_req_attr_referents(proof_req)
     wql_230 = {
-        refts[cd_id[S_ID['FAV-NUM']]]['ident']: {  # require attr presence on name 'ident' ('num' would do as well)
-            'cred_def_id': cd_id[S_ID['FAV-NUM']],
+        refts[cd_id[S_ID['FAV-NUM']]]['ident']: {  # require presence of FAV-NUM attr 'ident' ('num' would also do)
             '$or': [
                 {
                     'attr::ident::value': 23
