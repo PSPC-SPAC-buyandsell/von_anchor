@@ -699,6 +699,13 @@ class HolderProver(_BaseAnchor):
         LOGGER.debug('HolderProver.get_box_ids_json >>>')
 
         rr_ids = {basename(link) for link in Tails.links(self._dir_tails)}
+
+        un_rr_ids = set()
+        for rr_id in rr_ids:
+            if not json.loads(await self.get_cred_infos_by_q(json.dumps({'rev_reg_id': rr_id}), 1)):
+                un_rr_ids.add(rr_id)
+        rr_ids -= un_rr_ids
+
         cd_ids = {cd_id for cd_id in listdir(self._dir_tails)
             if isdir(join(self._dir_tails, cd_id)) and ok_cred_def_id(cd_id)}
         s_ids = set()
@@ -716,13 +723,6 @@ class HolderProver(_BaseAnchor):
             if not json.loads(await self.get_cred_infos_by_q(json.dumps({'schema_id': s_id}), 1)):
                 un_s_ids.add(s_id)
         s_ids -= un_s_ids
-
-        un_rr_ids = set()
-        schema_seq_nos = {cred_def_id2seq_no(cd_id) for cd_id in cd_ids}
-        for rr_id in rr_ids:
-            if cred_def_id2seq_no(rev_reg_id2cred_def_id(rr_id)) not in schema_seq_nos:
-                un_rr_ids.add(rr_id)
-        rr_ids -= un_rr_ids
 
         rv = json.dumps({
             'schema_id': list(s_ids),
