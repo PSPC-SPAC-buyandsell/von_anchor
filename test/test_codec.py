@@ -25,6 +25,7 @@ from von_anchor.codec import canon, canon_wql, cred_attr_value, encode, decode, 
 @pytest.mark.asyncio
 async def test_enco_deco():
     print('\n\n== Starting encode/decode for string of length up to 1024')
+
     for printable_len in range(0, 1025):
         orig = ''.join(choice(printable) for _ in range(printable_len))
         print('.', end='' if (printable_len + 1) % 100 else '{}\n'.format(printable_len), flush=True)
@@ -36,6 +37,12 @@ async def test_enco_deco():
 
     print('\n\n== Edge cases - (type) orig -> encoded -> (type) decoded:')
     for orig in (
+            chr(0),
+            chr(1),
+            chr(2),
+            'Alice',
+            'Bob',
+            'J.R. "Bob" Dobbs',
             None,
             True,
             False,
@@ -65,7 +72,12 @@ async def test_enco_deco():
             [0,1,2,3]):
         enc = encode(orig)
         dec = decode(enc)
-        print('  ({})({}) -> {} -> ({})({})'.format(type(orig).__name__, orig, enc, type(dec).__name__, dec))
+        print('  ({})({}) -> {} -> ({})({})'.format(
+            type(orig).__name__,
+            '0x{:02x}'.format(ord(orig)) if orig in (chr(0), chr(1), chr(2)) else orig,
+            enc,
+            type(dec).__name__,
+            '0x{:02x}'.format(ord(dec)) if dec in (chr(0), chr(1), chr(2)) else dec))
         assert cred_attr_value(orig) == {'raw': raw(orig), 'encoded': enc}
         assert raw(orig) == dec if isinstance(orig, list) else orig == dec
 
