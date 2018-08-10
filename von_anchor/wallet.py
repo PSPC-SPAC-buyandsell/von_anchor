@@ -18,6 +18,8 @@ limitations under the License.
 import json
 import logging
 
+from hashlib import sha256
+
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
 from von_anchor.error import AbsentWallet, CorruptWallet, JSONValidation
@@ -181,12 +183,14 @@ class Wallet:
 
     async def _seed2did(self) -> str:
         """
-        Derive DID, as per indy-sdk, from seed.
+        Derive DID, as per indy-sdk, from seed. Try metadata match first,
+        otherwise create temp wallet to compute DID.
 
         :return: DID
         """
 
         rv = None
+        seed_hash = sha256(self._seed.encode()).hexdigest()
         dids_with_meta = json.loads(await did.list_my_dids_with_meta(self.handle))  # list
 
         if dids_with_meta:
@@ -194,8 +198,9 @@ class Wallet:
                 if 'metadata' in did_with_meta:
                     try:
                         meta = json.loads(did_with_meta['metadata'])
-                        if isinstance(meta, dict) and meta.get('seed', None) == self._seed:
+                        if isinstance(meta, dict) and meta.get('seed_hash', None) == seed_hash:
                             rv = did_with_meta.get('did')
+                            break
                     except json.decoder.JSONDecodeError:
                         continue  # it's not one of ours, carry on
 
@@ -249,7 +254,12 @@ class Wallet:
                 self.handle,
                 json.dumps({'seed': self._seed}))
             LOGGER.debug('Wallet %s stored new DID %s, verkey %s from seed', self.name, self.did, self.verkey)
-            await did.set_did_metadata(self.handle, self.did, json.dumps({'seed': self._seed}))
+            await did.set_did_metadata(
+                self.handle,
+                self.did,
+                json.dumps({
+                    'seed_hash': sha256(self._seed.encode()).hexdigest()
+                }))
         else:
             self._created = True
             LOGGER.debug('Attempting to derive seed to did for wallet %s', self.name)
