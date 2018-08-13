@@ -55,7 +55,7 @@ def _prefix(orig: Any) -> Prefix:
     """
 
     if isinstance(orig, str):
-        return Prefix.JSON if orig == chr(0) else Prefix.STR
+        return Prefix.JSON if orig and all(orig[i] == chr(0) for i in range(len(orig))) else Prefix.STR
     if isinstance(orig, bool):
         return Prefix.BOOL
     if isinstance(orig, int):
@@ -74,12 +74,12 @@ def encode(orig: Any) -> str:
 
     To disambiguate for decoding, the operation reserves a sentinel for special values and otherwise adds
     2**31 to any non-trivial transform of a non-int32 input, then prepends a digit marking the input type:
-      * 1: string (except string chr(0))
+      * 1: string (except non-empty string with all characters chr(0))
       * 2: boolean
       * 3: positive non-32-bit integer
       * 4: negative non-32-bit integer
       * 5: floating point
-      * 9: other (JSON-encodable) - including string chr(0).
+      * 9: other (JSON-encodable) - including non-empty string with all characters chr(0).
 
     The original value must be JSON-encodable.
 
@@ -90,7 +90,7 @@ def encode(orig: Any) -> str:
     if orig is None:
         return str(I32_BOUND)  # sentinel
 
-    prefix = '{}'.format(_prefix(orig) or '')  # filter out 0 prefix for indy 32-bit ints
+    prefix = '{}'.format(_prefix(orig) or '')  # no prefix for indy 32-bit ints
 
     if isinstance(orig, bool):
         return '{}{}'.format(
@@ -102,7 +102,8 @@ def encode(orig: Any) -> str:
 
     rv = '{}{}'.format(
         prefix,
-        str(int.from_bytes(json.dumps(orig).encode(), 'big') + I32_BOUND))
+        str(int.from_bytes(
+            orig.encode() if int(prefix) == Prefix.STR else json.dumps(orig).encode(), 'big') + I32_BOUND))
 
     return rv
 
@@ -135,7 +136,10 @@ def decode(enc_value: str) -> Union[str, None, bool, int, float]:
     blen = max(ceil(log(ival, 16)/2), 1)
     ibytes = ival.to_bytes(blen, 'big')
 
-    return float(ibytes.decode()) if prefix == Prefix.FLOAT else json.loads(ibytes.decode())
+    if prefix == Prefix.FLOAT:
+        return float(ibytes.decode())
+
+    return ibytes.decode() if prefix == Prefix.STR else json.loads(ibytes.decode())
 
 
 def raw(orig: Any) -> dict:

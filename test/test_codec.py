@@ -83,6 +83,18 @@ async def test_enco_deco():
         assert cred_attr_value(orig) == {'raw': raw(orig), 'encoded': enc}
         assert orig == dec
 
+    for i in range(32):
+        orig = ''.join(map(chr, [0] * i))
+        enc = encode(orig)
+        dec = decode(enc)
+        print('Testing on (str)({} x chr(0)) -> {} -> ({})(length {})'.format(
+            i,
+            enc,
+            type(dec).__name__,
+            len(dec)))
+        assert cred_attr_value(orig) == {'raw': raw(orig), 'encoded': enc}
+        assert orig == dec
+
 
 @pytest.mark.asyncio
 async def test_canon():
