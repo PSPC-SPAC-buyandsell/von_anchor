@@ -18,56 +18,91 @@ limitations under the License.
 import json
 import re
 
-# from binascii import hexlify, unhexlify
+from enum import IntEnum
 from math import ceil, log
 from typing import Any, Union
 
 from von_anchor.error import BadWalletQuery
 
 
-ENCODE_PREFIX = {
-    str: 1,
-    bool: 2,
-    int: 3,
-    float: 4,
-    None: 9
-}
+class Prefix(IntEnum):
+    """
+    Prefixes for indy encoding to numeric strings. For indy-sdk, 32-bit integers must encode
+    to themselves to allow predicates to work.
 
-DECODE_PREFIX = {ENCODE_PREFIX[k]: k for k in ENCODE_PREFIX if k and k != str}
+    A single-digit prefix to identify original type allows the decode to return it, without
+    taking the encoding outside the space of numeric strings.
+    """
+
+    I32 = 0  # purely a formalism, no prefix for indy (32-bit) int values
+    STR = 1
+    BOOL = 2
+    POSINT = 3
+    NEGINT = 4
+    FLOAT = 5
+    JSON = 9
 
 
 I32_BOUND = 2**31
+
+
+def _prefix(orig: Any) -> Prefix:
+    """
+    Return the prefix for an original value to encode.
+
+    :param orig: input value to encode
+    :return: Prefix enum value
+    """
+
+    if isinstance(orig, str):
+        return Prefix.JSON if orig == chr(0) else Prefix.STR
+    if isinstance(orig, bool):
+        return Prefix.BOOL
+    if isinstance(orig, int):
+        if -I32_BOUND <= orig < I32_BOUND:
+            return Prefix.I32
+        return Prefix.POSINT if orig >= I32_BOUND else Prefix.NEGINT
+    if isinstance(orig, float):
+        return Prefix.FLOAT
+    return Prefix.JSON
+
+
 def encode(orig: Any) -> str:
     """
     Encode credential attribute value, leaving any (stringified) int32 alone: indy-sdk predicates
     operate on int32 values properly only when their encoded values match their raw values.
 
-    To disambiguate for decoding, the operation reserves a sentinel for the null value and otherwise adds
+    To disambiguate for decoding, the operation reserves a sentinel for special values and otherwise adds
     2**31 to any non-trivial transform of a non-int32 input, then prepends a digit marking the input type:
-    * 1: string (except string chr(0))
-    * 2: boolean
-    * 3: non-32-bit integer
-    * 4: floating point
-    * 9: other (stringifiable) - including string chr(0)
+      * 1: string (except string chr(0))
+      * 2: boolean
+      * 3: positive non-32-bit integer
+      * 4: negative non-32-bit integer
+      * 5: floating point
+      * 9: other (JSON-encodable) - including string chr(0).
 
-    :param orig: original value to encode
+    The original value must be JSON-encodable.
+
+    :param orig: original JSON-encodable value to encode
     :return: encoded value
     """
 
     if orig is None:
         return str(I32_BOUND)  # sentinel
 
-    stringified = str(orig)
+    prefix = '{}'.format(_prefix(orig) or '')  # filter out 0 prefix for indy 32-bit ints
+
     if isinstance(orig, bool):
         return '{}{}'.format(
-            ENCODE_PREFIX[bool],
-            I32_BOUND + 2 if orig else I32_BOUND + 1)  # sheesh: python bool('False') = True; just use 2 sentinels
-    if isinstance(orig, int) and -I32_BOUND <= orig < I32_BOUND:
-        return stringified  # it's an i32, leave it (as numeric string)
+            prefix,
+            I32_BOUND + 2 if orig else I32_BOUND + 1)  # python bool('False') = True; just use 2 sentinels
+
+    if isinstance(orig, int):
+        return '{}{}'.format(prefix, str(orig) if -I32_BOUND <= orig < I32_BOUND else str(abs(orig)))
 
     rv = '{}{}'.format(
-        ENCODE_PREFIX[None] if orig == chr(0) else ENCODE_PREFIX.get(type(orig), ENCODE_PREFIX[None]),
-        str(int.from_bytes(stringified.encode(), 'big') + I32_BOUND))
+        prefix,
+        str(int.from_bytes(json.dumps(orig).encode(), 'big') + I32_BOUND))
 
     return rv
 
@@ -85,22 +120,22 @@ def decode(enc_value: str) -> Union[str, None, bool, int, float]:
     if -I32_BOUND <= int(enc_value) < I32_BOUND:  # it's an i32: it is its own encoding
         return int(enc_value)
     if int(enc_value) == I32_BOUND:
-        return None
+        return None  # sentinel
 
     (prefix, payload) = (int(enc_value[0]), int(enc_value[1:]))
     ival = int(payload) - I32_BOUND
-    if prefix == ENCODE_PREFIX[str] and ival == 0:
+
+    if prefix == Prefix.STR and ival == 0:
         return ''  # special case: empty string encodes as 2**31
-    if prefix == ENCODE_PREFIX[None] and ival == 0:
-        return chr(0)  # special case: chr(0)
-    if prefix == ENCODE_PREFIX[bool] and ival == 1:
-        return False  # sentinel for bool False
-    if prefix == ENCODE_PREFIX[bool] and ival == 2:
-        return True  # sentinel for bool True
+    if prefix == Prefix.BOOL and ival in (1, 2):
+        return False if ival == 1 else True # sentinels
+    if prefix in (Prefix.POSINT, Prefix.NEGINT):
+        return int(payload) if prefix == Prefix.POSINT else -int(payload)
 
     blen = max(ceil(log(ival, 16)/2), 1)
     ibytes = ival.to_bytes(blen, 'big')
-    return DECODE_PREFIX.get(prefix, str)(ibytes.decode())
+
+    return float(ibytes.decode()) if prefix == Prefix.FLOAT else json.loads(ibytes.decode())
 
 
 def raw(orig: Any) -> dict:

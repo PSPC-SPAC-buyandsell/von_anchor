@@ -63,13 +63,15 @@ async def test_enco_deco():
             19234856120348165921835629183561023142.55,
             'Hello',
             '',
-            'Enjoy the process',
             'True',
             'False',
             '1234',
             '-12345',
             [],
-            [0,1,2,3]):
+            [0, 1, 2, 3],
+            {'a': 1, 'b': 2, 'c': 3},
+            [{}, {'a': [0, 1], 'b': [2, 3, 4]}, True],
+            ):
         enc = encode(orig)
         dec = decode(enc)
         print('  ({})({}) -> {} -> ({})({})'.format(
@@ -79,7 +81,7 @@ async def test_enco_deco():
             type(dec).__name__,
             '0x{:02x}'.format(ord(dec)) if dec in (chr(0), chr(1), chr(2)) else dec))
         assert cred_attr_value(orig) == {'raw': raw(orig), 'encoded': enc}
-        assert raw(orig) == dec if isinstance(orig, list) else orig == dec
+        assert orig == dec
 
 
 @pytest.mark.asyncio
