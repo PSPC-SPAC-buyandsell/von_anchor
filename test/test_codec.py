@@ -35,7 +35,7 @@ async def test_enco_deco():
         assert orig == dec
     print('\n\n== Random printable string test passed')
 
-    print('\n\n== Edge cases - (type) orig -> encoded -> (type) decoded:')
+    print('\n\n== Typical cases - (type) orig -> encoded -> (type) decoded:')
     for orig in (
             chr(0),
             chr(1),
@@ -72,7 +72,7 @@ async def test_enco_deco():
             [],
             [0, 1, 2, 3],
             {'a': 1, 'b': 2, 'c': 3},
-            [{}, {'a': [0, 1], 'b': [2, 3, 4]}, True],
+            [{}, {'a': [0, 0.1], 'b': [0.0, 19234856120348165921835629183561023142.55]}, True],
             ):
         enc = encode(orig)
         dec = decode(enc)
