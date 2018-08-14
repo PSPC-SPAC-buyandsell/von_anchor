@@ -59,6 +59,8 @@ async def test_enco_deco():
             '0.0',
             0.1,
             -0.1,
+            -1.9234856120348166e+37,
+            1.9234856120348166e+37,
             -19234856120348165921835629183561023142.55,
             19234856120348165921835629183561023142.55,
             'Hello',
@@ -76,24 +78,25 @@ async def test_enco_deco():
         dec = decode(enc)
         print('  ({})({}) -> {} -> ({})({})'.format(
             type(orig).__name__,
-            '0x{:02x}'.format(ord(orig)) if orig in (chr(0), chr(1), chr(2)) else orig,
+            '0x{:02x}'.format(ord(orig))
+                if orig in (chr(0), chr(1), chr(2))
+                else "%f" % orig if isinstance(orig, float)
+                else orig,
             enc,
             type(dec).__name__,
-            '0x{:02x}'.format(ord(dec)) if dec in (chr(0), chr(1), chr(2)) else dec))
-        assert cred_attr_value(orig) == {'raw': raw(orig), 'encoded': enc}
+            '0x{:02x}'.format(ord(dec))
+                if dec in (chr(0), chr(1), chr(2))
+                else "%f" % dec if isinstance(dec, float)
+                else dec))
         assert orig == dec
 
     for i in range(32):
         orig = ''.join(map(chr, [0] * i))
         enc = encode(orig)
         dec = decode(enc)
-        print('Testing on (str)({} x chr(0)) -> {} -> ({})(length {})'.format(
-            i,
-            enc,
-            type(dec).__name__,
-            len(dec)))
         assert cred_attr_value(orig) == {'raw': raw(orig), 'encoded': enc}
         assert orig == dec
+    print('Tests OK for (str)(chr(0) multiples)')
 
 
 @pytest.mark.asyncio
