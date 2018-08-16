@@ -28,3 +28,7 @@ The demonstration defines the following anchors:
 Design Document
 ===============
 The design document is available from the ``von_base`` repository (<https://github.com/PSPC-SPAC-buyandsell/von_base.git>) at ``doc/anchor-design.doc``.  The design document includes instructions for installation, configuration, and operation of ``von_anchor``.
+
+Pypi
+====
+The latest release of the ``von_anchor`` python package is available at <https://pypi.org/project/von-anchor/#history>.
