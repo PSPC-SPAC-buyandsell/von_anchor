@@ -211,13 +211,35 @@ class _BaseAnchor:
         LOGGER.debug('_BaseAnchor.role <<< %s', rv)
         return rv
 
-    async def _submit(self, req_json: str) -> str:
+    async def _ensure_txn_applied(self, seq_no: int) -> None:
+        """
+        Wait, a second at a time, until transaction on given sequence number appears on the ledger.
+        Time out after 16 seconds and raise BadLedgerTxn.
+
+        :param seq_no: transaction sequence number
+        """
+
+        LOGGER.debug('_BaseAnchor._ensure_txn_applied >>> seq_no: %s', seq_no)
+
+        for _ in range(16):
+            txn = json.loads(await self.get_txn(seq_no))
+
+            if txn:
+                LOGGER.debug('_BaseAnchor._ensure_txn_applied <<<')
+                return
+            await asyncio.sleep(1)
+
+        LOGGER.debug('_BaseAnchor._ensure_txn_applied <!< Timed out waiting on txn #%d', seq_no)
+        raise BadLedgerTxn('Timed out waiting on txn #{}'.format(seq_no))
+
+    async def _submit(self, req_json: str, wait: bool = True) -> str:
         """
         Submit (json) request to ledger; return (json) result.
 
         Raise ClosedPool if pool is not yet open, or BadLedgerTxn on failure.
 
         :param req_json: json of request to sign and submit
+        :param wait: whether to wait for the transaction to appear on the ledger before proceeding
         :return: json response
         """
 
@@ -235,14 +257,18 @@ class _BaseAnchor:
             LOGGER.debug('_BaseAnchor._submit: <!< ledger rejected request: %s', resp['reason'])
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
 
-        if 'reason' in resp and 'result' in resp and resp['result'].get('seqNo', None) is None:
+        txn = resp.get('result', {}).get('seqNo', None)
+        if 'reason' in resp and txn is None:
             LOGGER.debug('_BaseAnchor._submit: <!< response indicates no transaction: %s', resp['reason'])
             raise BadLedgerTxn('Response indicates no transaction: {}'.format(resp['reason']))
+
+        if wait and txn:  # only check if it's a legitimate transaction
+            await self._ensure_txn_applied(txn)
 
         LOGGER.debug('_BaseAnchor._submit <<< %s', rv_json)
         return rv_json
 
-    async def _sign_submit(self, req_json: str) -> str:
+    async def _sign_submit(self, req_json: str, wait: bool = True) -> str:
         """
         Sign and submit (json) request to ledger; return (json) result.
 
@@ -250,6 +276,7 @@ class _BaseAnchor:
         pool is no longer extant, or BadLedgerTxn on any other failure.
 
         :param req_json: json of request to sign and submit
+        :param wait: whether to wait for the transaction to appear on the ledger before proceeding
         :return: json response
         """
 
@@ -282,9 +309,13 @@ class _BaseAnchor:
             LOGGER.debug('_BaseAnchor._sign_submit: ledger rejected request: %s', resp['reason'])
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
 
-        if 'reason' in resp and 'result' in resp and resp['result'].get('seqNo', None) is None:
+        txn = resp.get('result', {}).get('seqNo', None)
+        if 'reason' in resp and txn is None:
             LOGGER.debug('_BaseAnchor._sign_submit: <!< response indicates no transaction: %s', resp['reason'])
             raise BadLedgerTxn('Response indicates no transaction: {}'.format(resp['reason']))
+
+        if wait and txn:  # only check if it's a legitimate transaction
+            await self._ensure_txn_applied(txn)
 
         LOGGER.debug('_BaseAnchor._sign_submit <<< %s', rv_json)
         return rv_json
@@ -444,19 +475,19 @@ class _BaseAnchor:
         LOGGER.debug('_BaseAnchor.get_schema <<< %s', rv_json)
         return rv_json
 
-    async def get_txn(self, txn: int) -> str:
+    async def get_txn(self, seq_no: int) -> str:
         """
         Find a transaction on the distributed ledger by its sequence number.
 
-        :param txn: transaction number
+        :param seq_no: transaction number
         :return: json sequence number of transaction, null for no match
         """
 
-        LOGGER.debug('_BaseAnchor.get_txn >>> txn: %s', txn)
+        LOGGER.debug('_BaseAnchor.get_txn >>> seq_no: %s', seq_no)
 
         rv_json = json.dumps({})
-        req_json = await ledger.build_get_txn_request(self.did, None, txn)
-        resp = json.loads(await self._submit(req_json))
+        req_json = await ledger.build_get_txn_request(self.did, None, seq_no)
+        resp = json.loads(await self._submit(req_json, False))
 
         rv_json = json.dumps((resp['result'].get('data', {}) or {}).get('txn', {}))  # "data": null for no such txn
         LOGGER.debug('_BaseAnchor.get_txn <<< %s', rv_json)

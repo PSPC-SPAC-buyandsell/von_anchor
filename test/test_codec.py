@@ -19,6 +19,7 @@ import pytest
 
 from random import choice
 from string import printable
+from sys import float_info
 from von_anchor.codec import canon, canon_wql, cred_attr_value, encode, decode, raw
 
 
@@ -63,7 +64,7 @@ async def test_enco_deco():
             1.9234856120348166e+37,
             -19234856120348165921835629183561023142.55,
             19234856120348165921835629183561023142.55,
-            1.7976931348623157e+308,
+            float_info.max,
             'Hello',
             '',
             'True',

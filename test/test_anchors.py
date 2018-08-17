@@ -27,6 +27,7 @@ from random import choice, randint, shuffle
 from shutil import copyfile, move, rmtree
 from threading import current_thread, Thread
 from time import sleep, time
+from sys import float_info
 
 from von_anchor import BCRegistrarAnchor, OrgBookAnchor, SRIAnchor, TrusteeAnchor
 from von_anchor.cache import Caches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
@@ -2438,7 +2439,10 @@ async def test_anchors_cache_only(
             },
             {
                 'ident': i//3,
-                'num': randint(1, 100) if (i//12) else 0  # set 4 fixed points for querying
+                'num': float_info.max if (i//len(cd_id)) == RR_PER_CD * RR_SIZE - 1  # set one max float last
+                    else randint(1, 100) if (i//12)
+                    else 0  # set 4 fixed points for querying
+                # 'num': randint(1, 100) if (i//12) else 0  # set 4 fixed points for querying
             },
             {
                 'ident': i//3,
@@ -2547,13 +2551,13 @@ async def test_anchors_cache_only(
     print('\n\n== 18 == SRI anchor verifies multi-cred proof filtered post-hoc off-line as: {}'.format(ppjson(rc_json)))
     assert json.loads(rc_json)
 
-    # SRI anchor builds proof req for single cred on IDENT cred-def
+    # SRI anchor builds proof req for single cred on FAV-NUM cred-def
     cd_id2spec = await pspcoban.offline_intervals([cd_id[S_ID['FAV-NUM']]])
     cd_id2spec[cd_id[S_ID['FAV-NUM']]]['attrs'] = schema_data[
         seq_no2schema_id[cred_def_id2seq_no(cd_id[S_ID['FAV-NUM']])]]['attr_names']  # request all attrs in schema
     proof_req_json = await san.build_proof_req_json(cd_id2spec)
     proof_req = json.loads(proof_req_json)
-    print('\n\n== 19 == Proof req for single ident cred from cache data: {}'.format(ppjson(proof_req_json)))
+    print('\n\n== 19 == Proof req for single fav-num cred from cache data: {}'.format(ppjson(proof_req_json)))
 
     # PSPC org book anchor gets cred-brief via query, creates single-cred proof
     refts = proof_req_attr_referents(proof_req)
@@ -2585,6 +2589,44 @@ async def test_anchors_cache_only(
     print('\n\n== 24 == SRI anchor verifies single-cred proof (by query) off-line as: {}'.format(ppjson(rc_json)))
     assert json.loads(rc_json)
 
+    # SRI anchor builds proof req for single cred on FAV-NUM cred-def
+    cd_id2spec = await pspcoban.offline_intervals([cd_id[S_ID['FAV-NUM']]])
+    cd_id2spec[cd_id[S_ID['FAV-NUM']]]['attrs'] = schema_data[
+        seq_no2schema_id[cred_def_id2seq_no(cd_id[S_ID['FAV-NUM']])]]['attr_names']  # request all attrs in schema
+    proof_req_json = await san.build_proof_req_json(cd_id2spec)
+    proof_req = json.loads(proof_req_json)
+    print('\n\n== 25 == Proof req for single fav-num cred from cache data: {}'.format(ppjson(proof_req_json)))
+
+    # PSPC org book anchor gets cred-brief via query, creates single-cred proof
+    refts = proof_req_attr_referents(proof_req)
+    wql_float_max = {
+        refts[cd_id[S_ID['FAV-NUM']]]['num']: {
+            'attr::num::value': float_info.max - 9.9792e291  # rounds to float_info.max but not for much more error
+        }
+    }
+    print('\n\n== 26 == WQL to find single cred brief on fav-num=max float: {}'.format(ppjson(wql_float_max)))
+    wql_float_max_json = json.dumps(wql_float_max)
+    (cred_ids_q, briefs_q_json) = await pspcoban.get_cred_briefs_by_proof_req_q(
+        proof_req_json,
+        wql_float_max_json)
+    assert len(cred_ids_q) == 1
+    briefs_q = json.loads(briefs_q_json)
+    print('\n\n== 27 == Found cred brief on fav-num=max float: cred-id list {}, brief list {}'.format(
+        cred_ids_q,
+        ppjson(briefs_q)))
+    assert any(brief['cred_info']['attrs'].get('num', None) == raw(float_info.max)
+        and brief['cred_info']['cred_def_id'] == cd_id[S_ID['FAV-NUM']] for brief in briefs_q)
+    req_creds_q = proof_req_briefs2req_creds(proof_req, briefs_q)
+    print('\n\n== 28 == Proof req and briefs created req-creds: {}'.format(ppjson(req_creds_q)))
+    proof_q_json = await pspcoban.create_proof(proof_req, briefs_q, req_creds_q)
+    print('\n\n== 29 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 1000)))
+    proof_q = json.loads(proof_q_json, 1000)
+
+    # SRI org book verifies single-cred proof (by query)
+    rc_json = await san.verify_proof(proof_req, proof_q)
+    print('\n\n== 30 == SRI anchor verifies single-cred proof (by query) off-line as: {}'.format(ppjson(rc_json)))
+    assert json.loads(rc_json)
+
     # PSPC org book anchor gets cred-brief via query, creates single-cred proof for ident 0 and fav num 0
     wql_00 = {
         refts[cd_id[S_ID['FAV-NUM']]]['ident']: {  # require presence of FAV-NUM attr 'ident' ('num' would also do)
@@ -2592,14 +2634,14 @@ async def test_anchors_cache_only(
             'attr::num::value': 0
         }
     }
-    print('\n\n== 25 == WQL to find (unique) cred brief on ident=0, num=0 for fav-num cred def: {}'.format(
+    print('\n\n== 31 == WQL to find (unique) cred brief on ident=0, num=0 for fav-num cred def: {}'.format(
         ppjson(wql_00)))
     wql_00_json = json.dumps(wql_00)
     (cred_ids_q, briefs_q_json) = await pspcoban.get_cred_briefs_by_proof_req_q(
         proof_req_json,
         wql_00_json)
     briefs_q = json.loads(briefs_q_json)
-    print('\n\n== 26 == Found {} cred brief{} on fav-num cred def: cred-id list {}, brief list {}'.format(
+    print('\n\n== 32 == Found {} cred brief{} on fav-num cred def: cred-id list {}, brief list {}'.format(
         len(cred_ids_q),
         's' if len(cred_ids_q) > 1 else '',
         cred_ids_q,
@@ -2610,14 +2652,14 @@ async def test_anchors_cache_only(
     assert any(brief['cred_info']['attrs'].get('num', None) == raw(0)
         and brief['cred_info']['cred_def_id'] == cd_id[S_ID['FAV-NUM']] for brief in briefs_q)
     req_creds_q = proof_req_briefs2req_creds(proof_req, briefs_q)
-    print('\n\n== 27 == Proof req, briefs created req-creds: {}'.format(ppjson(req_creds_q)))
+    print('\n\n== 33 == Proof req, briefs created req-creds: {}'.format(ppjson(req_creds_q)))
     proof_q_json = await pspcoban.create_proof(proof_req, briefs_q, req_creds_q)
-    print('\n\n== 28 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 1000)))
+    print('\n\n== 34 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 1000)))
     proof_q = json.loads(proof_q_json, 1000)
 
     # SRI org book verifies single-cred proof (by query)
     rc_json = await san.verify_proof(proof_req, proof_q)
-    print('\n\n== 29 == SRI anchor verifies single-cred proof (by query) off-line as: {}'.format(ppjson(rc_json)))
+    print('\n\n== 35 == SRI anchor verifies single-cred proof (by query) off-line as: {}'.format(ppjson(rc_json)))
     assert json.loads(rc_json)
 
     # PSPC org book anchor provides default intervals per cred def id, SRI anchor builds proof req
@@ -2626,7 +2668,7 @@ async def test_anchors_cache_only(
         # seq_no2schema_id[cred_def_id2seq_no(cd_id[S_ID['FAV-NUM']])]]['attr_names']
     proof_req_json = await san.build_proof_req_json(cd_id2spec)
     proof_req = json.loads(proof_req_json)
-    print('\n\n== 30 == Proof req from cache data on fav-num cred def attrs: {}'.format(ppjson(proof_req_json)))
+    print('\n\n== 36 == Proof req from cache data on fav-num cred def attrs: {}'.format(ppjson(proof_req_json)))
 
     # PSPC org book anchor gets cred-briefs via query for ident 23 or fav num 0
     refts = proof_req_attr_referents(proof_req)
@@ -2642,14 +2684,14 @@ async def test_anchors_cache_only(
             ]
         },
     }
-    print('\n\n== 31 WQL to find cred briefs on ident=23 or num=0 for fav-num cred def: {}'.format(
+    print('\n\n== 37 WQL to find cred briefs on ident=23 or num=0 for fav-num cred def: {}'.format(
         ppjson(wql_230)))
     wql_230_json = json.dumps(wql_230)
     (cred_ids_q, briefs_q_json) = await pspcoban.get_cred_briefs_by_proof_req_q(
         proof_req_json,
         wql_230_json)
     briefs_q = json.loads(briefs_q_json)
-    print('\n\n== 32 == Found {} cred brief{} on fav-num cred def: cred-id list {}, brief list {}'.format(
+    print('\n\n== 38 == Found {} cred brief{} on fav-num cred def: cred-id list {}, brief list {}'.format(
         len(cred_ids_q),
         's' if len(cred_ids_q) > 1 else '',
         cred_ids_q,
