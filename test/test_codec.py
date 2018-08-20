@@ -74,7 +74,7 @@ async def test_enco_deco():
             [],
             [0, 1, 2, 3],
             {'a': 1, 'b': 2, 'c': 3},
-            [{}, {'a': [0, 0.1], 'b': [0.0, 19234856120348165921835629183561023142.55]}, True],
+            [{}, {'a': [0, 0.1], 'b': [0.0, float_info.min]}, True],
             ):
         enc = encode(orig)
         dec = decode(enc)

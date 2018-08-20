@@ -2502,7 +2502,7 @@ async def test_anchors_cache_only(
     print('\n\n== 8 == Proof req and briefs created req-creds: {}'.format(ppjson(req_creds_q)))
     proof_q_json = await pspcoban.create_proof(proof_req, briefs_q, req_creds_q)
     print('\n\n== 9 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 1000)))
-    proof_q = json.loads(proof_q_json, 1000)
+    proof_q = json.loads(proof_q_json)
 
     # SRI anchor (as Verifier) verifies proof (by query)
     rc_json = await san.verify_proof(proof_req, proof_q)
@@ -2582,7 +2582,7 @@ async def test_anchors_cache_only(
     print('\n\n== 22 == Proof req and briefs created req-creds: {}'.format(ppjson(req_creds_q)))
     proof_q_json = await pspcoban.create_proof(proof_req, briefs_q, req_creds_q)
     print('\n\n== 23 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 1000)))
-    proof_q = json.loads(proof_q_json, 1000)
+    proof_q = json.loads(proof_q_json)
 
     # SRI org book verifies single-cred proof (by query)
     rc_json = await san.verify_proof(proof_req, proof_q)
@@ -2620,7 +2620,7 @@ async def test_anchors_cache_only(
     print('\n\n== 28 == Proof req and briefs created req-creds: {}'.format(ppjson(req_creds_q)))
     proof_q_json = await pspcoban.create_proof(proof_req, briefs_q, req_creds_q)
     print('\n\n== 29 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 1000)))
-    proof_q = json.loads(proof_q_json, 1000)
+    proof_q = json.loads(proof_q_json)
 
     # SRI org book verifies single-cred proof (by query)
     rc_json = await san.verify_proof(proof_req, proof_q)
@@ -2655,7 +2655,7 @@ async def test_anchors_cache_only(
     print('\n\n== 33 == Proof req, briefs created req-creds: {}'.format(ppjson(req_creds_q)))
     proof_q_json = await pspcoban.create_proof(proof_req, briefs_q, req_creds_q)
     print('\n\n== 34 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 1000)))
-    proof_q = json.loads(proof_q_json, 1000)
+    proof_q = json.loads(proof_q_json)
 
     # SRI org book verifies single-cred proof (by query)
     rc_json = await san.verify_proof(proof_req, proof_q)
