@@ -16,7 +16,7 @@ limitations under the License.
 
 from pathlib import Path
 from von_anchor.error import JSONValidation
-from von_anchor.nodepool import NodePool
+from von_anchor.nodepool import NodePool, Protocol
 
 import pytest
 import json
@@ -29,10 +29,21 @@ async def test_pool_open(
     pool_genesis_txn_path,
     pool_genesis_txn_file):
 
+    assert Protocol.V_13.indy() != Protocol.V_14.indy()
+    assert Protocol.V_14.indy() == Protocol.V_15.indy()
+    assert Protocol.V_15.indy() == Protocol.V_16.indy()
+    assert Protocol.V_16.indy() == Protocol.DEFAULT.indy()
+
     path = Path(path_home, 'pool', pool_name)
 
     try:
         NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': 'non-boolean'})
+        assert False
+    except JSONValidation:
+        pass
+
+    try:
+        NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True, 'protocol': '0.0a'})
         assert False
     except JSONValidation:
         pass
@@ -45,13 +56,13 @@ async def test_pool_open(
     except JSONValidation:
         assert False
 
-    pool = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
+    pool = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True, 'protocol': '1.6'})
     await pool.open()
     assert pool.handle is not None
     await pool.close()
     assert not path.exists(), 'Pool path {} still present'.format(path)
 
-    pool = NodePool(pool_name, pool_genesis_txn_path)  # auto-remove default: False
+    pool = NodePool(pool_name, pool_genesis_txn_path)  # auto-remove default: False, protocol default: latest
     await pool.open()
     assert pool.handle is not None
     await pool.close()

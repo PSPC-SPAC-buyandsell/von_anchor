@@ -24,7 +24,6 @@ from von_anchor.cache import SCHEMA_CACHE
 from von_anchor.error import AbsentSchema
 from von_anchor.util import schema_id, schema_key
 
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -72,11 +71,8 @@ class Origin(_BaseAnchor):
                 req_json = await ledger.build_schema_request(self.did, schema_json)
                 resp_json = await self._sign_submit(req_json)
                 resp = json.loads(resp_json)
-                resp_result_txn = resp['result']['txn']
-                rv_json = await self.get_schema(schema_key(schema_id(
-                    resp_result_txn['metadata']['from'],
-                    resp_result_txn['data']['data']['name'],
-                    resp_result_txn['data']['data']['version'])))  # add to cache en passant
+
+                rv_json = await self.get_schema(self.pool.protocol.txn_data2schema_key(resp['result']))  # adds to cache
 
         LOGGER.debug('Origin.send_schema <<< %s', rv_json)
         return rv_json

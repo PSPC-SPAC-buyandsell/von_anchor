@@ -17,13 +17,132 @@ limitations under the License.
 
 import json
 import logging
+from collections import namedtuple
+
+from enum import Enum
 
 from indy import pool
 from indy.error import IndyError, ErrorCode
+from von_anchor.schema_key import SchemaKey
 from von_anchor.validate_config import validate_config
 
 
+ProtocolMap = namedtuple('ProtocolMap', 'name indy')
+
+
 LOGGER = logging.getLogger(__name__)
+
+
+class Protocol(Enum):
+    """
+    Class encapsulating indy-node transaction particulars by protocol version.
+    """
+
+    V_13 = ProtocolMap('1.3', 1)
+    V_14 = ProtocolMap('1.4', 2)
+    V_15 = ProtocolMap('1.5', 2)
+    V_16 = ProtocolMap('1.6', 2)
+    DEFAULT = ProtocolMap('1.6', 2)
+
+    @classmethod
+    def value_of(cls, version: str) -> 'Protocol':
+        if version == cls.V_13.value.name:
+            return cls.V_13 
+        else:  # default, including None
+            return cls.DEFAULT
+
+    def __str__(self) -> str:
+        return self.name
+
+    def indy(self) -> int:
+        """
+        Return indy integer mapping for protocol.
+
+        :return: indy integer mapping for protocol
+        """
+
+        return self.value.indy
+
+    def cd_id_tag(self, for_box_id: bool = False) -> str:
+        """
+        Return (place-holder) credential definition identifier tag for current version of node protocol.
+        At present, von_anchor always uses the tag of '0' if the protocol calls for one.
+
+        :param for_box_id: whether to prefix a colon, if current protocol uses one, in constructing
+            a cred def id or rev reg id.
+        :return: cred def id tag
+        """
+
+        if for_box_id:
+            return '' if self == Protocol.V_13 else ':0'
+        else:
+            return '0'
+
+    def cred_def_id(self, issuer_did: str, schema_seq_no: int) -> str:
+        """
+        Return credential definition identifier for input issuer DID and schema sequence number.
+
+        :param issuer_did: DID of credential definition issuer
+        :param schema_seq_no: schema sequence number
+        :return: credential definition identifier
+        """
+
+        return '{}:3:CL:{}{}'.format(  # 3 marks indy cred def id, CL is sig type
+            issuer_did,
+            schema_seq_no,
+            self.cd_id_tag(True))
+
+    def txn_data2schema_key(self, txn: dict) -> SchemaKey:
+        """
+        Return schema key from ledger transaction data.
+
+        :param txn: get-schema transaction (by sequence number)
+        :return: schema key identified
+        """
+
+        rv = None
+        if self == Protocol.V_13:
+            rv = SchemaKey(txn['identifier'], txn['data']['name'], txn['data']['version'])
+        else:
+            txn_txn = txn.get('txn', None) or txn  # may have already run this txn through txn2data() below
+            rv = SchemaKey(
+                txn_txn['metadata']['from'],
+                txn_txn['data']['data']['name'],
+                txn_txn['data']['data']['version'])
+
+        return rv
+
+    def txn2data(self, txn: dict) -> str:
+        """
+        Given ledger transaction, return its data json.
+
+        :param txn: transaction by sequence number
+        :return: transaction data json
+        """
+
+        rv_json = json.dumps({})
+        if self == Protocol.V_13:
+            rv_json = json.dumps(txn['result'].get('data', {}))
+        else:
+            rv_json = json.dumps((txn['result'].get('data', {}) or {}).get('txn', {}))  # "data": null for no such txn
+
+        return rv_json
+
+    def txn2epoch(self, txn: dict) -> int:
+        """
+        Given ledger transaction, return its epoch time.
+
+        :param txn: transaction by sequence number
+        :return: transaction time
+        """
+
+        rv = None
+        if self == Protocol.V_13:
+            rv = txn['result']['txnTime']
+        else:
+            rv = txn['result']['txnMetadata']['txnTime']
+
+        return rv
 
 
 class NodePool:
@@ -40,6 +159,7 @@ class NodePool:
         :param cfg: configuration, None for default;
             i.e., {
                 'auto-remove': bool (default False), whether to remove serialized indy configuration data on close
+                'protocol': str ('1.3' or '1.4', default '1.4), indy protocol version
             }
         """
 
@@ -50,6 +170,7 @@ class NodePool:
 
         # pop and retain configuration specific to von_anchor.NodePool, extrinsic to indy-sdk
         self._auto_remove = self._cfg.pop('auto-remove') if self._cfg and 'auto-remove' in self._cfg else False
+        self._protocol = Protocol.value_of(self._cfg.pop('protocol', None))
         if 'refresh_on_open' not in self._cfg:
             self._cfg['refresh_on_open'] = True
         if 'auto_refresh_time' not in self._cfg:
@@ -111,6 +232,16 @@ class NodePool:
 
         return self._auto_remove
 
+    @property
+    def protocol(self) -> str:
+        """
+        Accessor for protocol version pool config setting.
+
+        :return: protocol version pool config setting
+        """
+
+        return self._protocol
+
     async def __aenter__(self) -> 'NodePool':
         """
         Context manager entry. Opens pool as configured, for closure on context manager exit.
@@ -139,7 +270,7 @@ class NodePool:
         LOGGER.debug('NodePool.open >>>')
 
         try:
-            await pool.set_protocol_version(2)  # 1 for indy-node 1.3, 2 for indy-node 1.4
+            await pool.set_protocol_version(self.protocol.indy())
             await pool.create_pool_ledger_config(self.name, json.dumps({'genesis_txn': str(self.genesis_txn_path)}))
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.PoolLedgerConfigAlreadyExistsError:

@@ -136,12 +136,13 @@ def _download_tails(rr_id):
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchors_low_level_api(
+        pool_ip,
         pool_name,
         pool_genesis_txn_path,
         pool_genesis_txn_file,
         seed_trustee1):
 
-    print('\n\n== Testing low-level API ==')
+    print('\n\n== Testing low-level API vs. IP {} =='.format(pool_ip))
 
     EPOCH_START = 1234567890  # guaranteed to be before any revocation registry creation
 
@@ -366,14 +367,15 @@ async def test_anchors_low_level_api(
 
     try:
         json.loads(await did2an[schema_key(S_ID['BC']).origin_did].send_schema(
-            json.dumps(schema_data[S_ID['BC']])))  # check idempotence
+            json.dumps(schema_data[s_id])))  # check idempotence
 
         _set_cache_state(False)
         s = json.loads(await tan.get_schema(seq_no))  # exercise get_schema() by seq num if not cached
         assert s['seqNo'] == seq_no
-        _set_cache_state(True)
     except Exception as x:
         assert False, x
+    finally:
+        _set_cache_state(True)
 
     # BC Registrar and SRI anchors (Issuers) create, store, publish cred definitions to ledger; create cred offers
     try:

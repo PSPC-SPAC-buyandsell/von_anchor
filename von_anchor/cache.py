@@ -26,8 +26,9 @@ from threading import RLock
 from time import time
 from typing import Awaitable, Callable, Tuple, Union
 from von_anchor.error import BadIdentifier, BadRevStateTime, CacheIndex
+from von_anchor.schema_key import SchemaKey
 from von_anchor.tails import Tails
-from von_anchor.util import ok_cred_def_id, ok_rev_reg_id, ok_schema_id, rev_reg_id2cred_def_id, SchemaKey, schema_key
+from von_anchor.util import ok_cred_def_id, ok_rev_reg_id, ok_schema_id, rev_reg_id2cred_def_id, schema_key
 
 
 LOGGER = logging.getLogger(__name__)

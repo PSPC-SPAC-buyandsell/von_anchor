@@ -27,6 +27,10 @@ CONFIG_JSON_SCHEMA = {
         'properties': {
             'auto-remove': {
                 'type': 'boolean'
+            },
+            'protocol': {
+                'type': 'string',
+                'enum': ['1.3', '1.4']
             }
         },
         'additionalProperties': True

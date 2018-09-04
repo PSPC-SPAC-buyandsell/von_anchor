@@ -140,7 +140,7 @@ class Verifier(_BaseAnchor):
         """
         Build rev reg state json at a given requested timestamp.
 
-        Return delta json and its transaction time on the distributed ledger,
+        Return rev reg state json and its transaction time on the distributed ledger,
         with upper bound at input timestamp of interest.
 
         Raise AbsentRevReg if no revocation registry exists on input rev reg id,
@@ -148,7 +148,7 @@ class Verifier(_BaseAnchor):
 
         :param rr_id: rev reg id
         :param timestamp: timestamp of interest (epoch seconds)
-        :return: rev reg delta json and ledger timestamp (epoch seconds)
+        :return: rev reg state json and ledger timestamp (epoch seconds)
         """
 
         LOGGER.debug('_Verifier._build_rr_state_json >>> rr_id: %s, timestamp: %s', rr_id, timestamp)

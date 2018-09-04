@@ -18,17 +18,14 @@ limitations under the License.
 import json
 import re
 
-from collections import namedtuple
 from copy import deepcopy
 from pprint import pformat
 from typing import Any, Union
+
 from von_anchor.codec import decode
+from von_anchor.nodepool import Protocol
+from von_anchor.schema_key import SchemaKey
 
-
-SchemaKey = namedtuple('SchemaKey', 'origin_did name version')
-
-
-CD_ID_TAG = '0'
 B58 = '1-9A-HJ-NP-Za-km-z'
 
 
@@ -100,28 +97,32 @@ def schema_key(s_id: str) -> SchemaKey:
     return SchemaKey(*s_key)
 
 
-def cred_def_id(issuer_did: str, schema_seq_no: int) -> str:
+def cred_def_id(issuer_did: str, schema_seq_no: int, protocol: Protocol = None) -> str:
     """
     Return credential definition identifier for input issuer DID and schema sequence number.
 
+    Implementation passes to NodePool Protocol.
+
     :param issuer_did: DID of credential definition issuer
     :param schema_seq_no: schema sequence number
+    :param protocol: indy protocol version
     :return: credential definition identifier
     """
 
-    return '{}:3:CL:{}:{}'.format(issuer_did, schema_seq_no, CD_ID_TAG)  # 3 marks indy-sdk cred def id, CL is sig type
+    return (protocol or Protocol.DEFAULT).cred_def_id(issuer_did, schema_seq_no)
 
 
 def ok_cred_def_id(token: str) -> bool:
     """
     Whether input token looks like a valid credential definition identifier; i.e.,
-    <issuer-did>:3:CL:<schema-seq-no>:<cred-def-id-tag>.
+    <issuer-did>:3:CL:<schema-seq-no>:<cred-def-id-tag> for protocol >= 1.4, or
+    <issuer-did>:3:CL:<schema-seq-no> for protocol == 1.3.
 
     :param token: candidate string
     :return: whether input token looks like a valid credential definition identifier
     """
 
-    return re.match('[{}]{{21,22}}:3:CL:[1-9][0-9]*:.+$'.format(B58), token) is not None
+    return re.match('[{}]{{21,22}}:3:CL:[1-9][0-9]*(:.+)?$'.format(B58), token) is not None
 
 
 def cred_def_id2seq_no(cd_id: str) -> int:
@@ -132,7 +133,7 @@ def cred_def_id2seq_no(cd_id: str) -> int:
     :return: sequence number
     """
 
-    return int(cd_id.split(':')[-2])  # sequence number is penultimate token
+    return int(cd_id.split(':')[3])  # sequence number is token at 0-based position 3
 
 
 def rev_reg_id(cd_id: str, tag: str) -> str:
@@ -152,14 +153,15 @@ def rev_reg_id(cd_id: str, tag: str) -> str:
 def ok_rev_reg_id(token: str) -> bool:
     """
     Whether input token looks like a valid revocation registry identifier; i.e.,
-    <issuer-did>:4:<issuer-did>:3:CL:<schema-seq-no>:<cred-def-id-tag>:CL_ACCUM:<rev-reg-id-tag>.
+    <issuer-did>:4:<issuer-did>:3:CL:<schema-seq-no>:<cred-def-id-tag>:CL_ACCUM:<rev-reg-id-tag> for protocol >= 1.4, or
+    <issuer-did>:4:<issuer-did>:3:CL:<schema-seq-no>:CL_ACCUM:<rev-reg-id-tag> for protocol == 1.3.
 
     :param token: candidate string
     :return: whether input token looks like a valid revocation registry identifier
     """
 
-    return (
-        re.match('[{}]{{21,22}}:4:[{}]{{21,22}}:3:CL:[1-9][0-9]*:.+:CL_ACCUM:.+$'.format(B58, B58), token) is not None)
+    return (re.match('[{}]{{21,22}}:4:[{}]{{21,22}}:3:CL:[1-9][0-9]*(:.+)?:CL_ACCUM:.+$'.format(B58, B58), token)
+        is not None)
 
 
 def rev_reg_id2cred_def_id(rr_id: str) -> str:

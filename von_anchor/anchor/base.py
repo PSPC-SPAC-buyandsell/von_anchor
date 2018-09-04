@@ -32,7 +32,8 @@ from von_anchor.error import (
     ClosedPool,
     CorruptWallet)
 from von_anchor.nodepool import NodePool
-from von_anchor.util import ok_cred_def_id, ok_did, ok_rev_reg_id, ok_schema_id, schema_id, SchemaKey, schema_key
+from von_anchor.schema_key import SchemaKey
+from von_anchor.util import ok_cred_def_id, ok_did, ok_rev_reg_id, ok_schema_id, schema_id, schema_key
 from von_anchor.wallet import Wallet
 
 
@@ -228,6 +229,7 @@ class _BaseAnchor:
                 LOGGER.debug('_BaseAnchor._ensure_txn_applied <<<')
                 return
             await asyncio.sleep(1)
+            # print('.')
 
         LOGGER.debug('_BaseAnchor._ensure_txn_applied <!< Timed out waiting on txn #%d', seq_no)
         raise BadLedgerTxn('Timed out waiting on txn #{}'.format(seq_no))
@@ -257,13 +259,15 @@ class _BaseAnchor:
             LOGGER.debug('_BaseAnchor._submit: <!< ledger rejected request: %s', resp['reason'])
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
 
-        txn = resp.get('result', {}).get('seqNo', None)
-        if 'reason' in resp and txn is None:
+        seq_no = resp.get('result', {}).get('seqNo', None)
+        if 'reason' in resp and seq_no is None:
             LOGGER.debug('_BaseAnchor._submit: <!< response indicates no transaction: %s', resp['reason'])
             raise BadLedgerTxn('Response indicates no transaction: {}'.format(resp['reason']))
 
-        if wait and txn:  # only check if it's a legitimate transaction
-            await self._ensure_txn_applied(txn)
+        if wait and seq_no:  # only check if it's a legitimate transaction
+            # print('\n\n>> awaiting signed submission txn #{}'.format(seq_no))
+            await self._ensure_txn_applied(seq_no)
+            # print('<< applied submission txn #{}'.format(seq_no))
 
         LOGGER.debug('_BaseAnchor._submit <<< %s', rv_json)
         return rv_json
@@ -309,13 +313,15 @@ class _BaseAnchor:
             LOGGER.debug('_BaseAnchor._sign_submit: ledger rejected request: %s', resp['reason'])
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
 
-        txn = resp.get('result', {}).get('seqNo', None)
-        if 'reason' in resp and txn is None:
+        seq_no = resp.get('result', {}).get('seqNo', None)
+        if 'reason' in resp and seq_no is None:
             LOGGER.debug('_BaseAnchor._sign_submit: <!< response indicates no transaction: %s', resp['reason'])
             raise BadLedgerTxn('Response indicates no transaction: {}'.format(resp['reason']))
 
-        if wait and txn:  # only check if it's a legitimate transaction
-            await self._ensure_txn_applied(txn)
+        if wait and seq_no:  # only check if it's a legitimate transaction
+            # print('\n\n>> awaiting submission txn #{}'.format(seq_no))
+            await self._ensure_txn_applied(seq_no)
+            # print('<< applied submission txn #{}'.format(seq_no))
 
         LOGGER.debug('_BaseAnchor._sign_submit <<< %s', rv_json)
         return rv_json
@@ -459,10 +465,7 @@ class _BaseAnchor:
                 txn_json = await self.get_txn(int(index))
                 txn = json.loads(txn_json)
                 if txn.get('type', None) == '101':  # {} for no such txn; 101 marks indy-sdk schema txn type
-                    rv_json = await self.get_schema(SchemaKey(
-                        txn['metadata']['from'],
-                        txn['data']['data']['name'],
-                        txn['data']['data']['version']))
+                    rv_json = await self.get_schema(self.pool.protocol.txn_data2schema_key(txn))
                 else:
                     LOGGER.info('_BaseAnchor.get_schema: no schema at seq #%s on ledger', index)
 
@@ -489,7 +492,8 @@ class _BaseAnchor:
         req_json = await ledger.build_get_txn_request(self.did, None, seq_no)
         resp = json.loads(await self._submit(req_json, False))
 
-        rv_json = json.dumps((resp['result'].get('data', {}) or {}).get('txn', {}))  # "data": null for no such txn
+        rv_json = self.pool.protocol.txn2data(resp)
+
         LOGGER.debug('_BaseAnchor.get_txn <<< %s', rv_json)
         return rv_json
 

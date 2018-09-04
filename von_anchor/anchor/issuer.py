@@ -34,10 +34,9 @@ from von_anchor.error import (
     BadRevocation,
     CorruptTails,
     CorruptWallet)
-from von_anchor.nodepool import NodePool
+from von_anchor.nodepool import NodePool, Protocol
 from von_anchor.tails import Tails
 from von_anchor.util import (
-    CD_ID_TAG,
     cred_def_id,
     cred_def_id2seq_no,
     ok_cred_def_id,
@@ -237,7 +236,8 @@ class Issuer(Origin):
         schema_json = await self.get_schema(schema_key(s_id))
         schema = json.loads(schema_json)
 
-        cd_id = cred_def_id(self.did, schema['seqNo'])
+        cd_id = cred_def_id(self.did, schema['seqNo'], self.pool.protocol)
+        print('\n\n!! send-cred-def schema seq-no {}, cred def id {}'.format(schema['seqNo'], cd_id))
         private_key_ok = True
         with CRED_DEF_CACHE.lock:
             try:
@@ -255,7 +255,7 @@ class Issuer(Origin):
                     self.wallet.handle,
                     self.did,  # issuer DID
                     schema_json,
-                    CD_ID_TAG,  # expect only one cred def per schema and issuer
+                    self.pool.protocol.cd_id_tag(False),  # expect only one cred def per schema and issuer
                     'CL',
                     json.dumps({'support_revocation': revocation}))
                 if json.loads(rv_json):
@@ -317,7 +317,7 @@ class Issuer(Origin):
         LOGGER.debug('Issuer.create_cred_offer >>> schema_seq_no: %s', schema_seq_no)
 
         rv = None
-        cd_id = cred_def_id(self.did, schema_seq_no)
+        cd_id = cred_def_id(self.did, schema_seq_no, self.pool.protocol)
         try:
             rv = await anoncreds.issuer_create_credential_offer(self.wallet.handle, cd_id)
         except IndyError as x_indy:
@@ -410,7 +410,7 @@ class Issuer(Origin):
                     assert rr_id == tails.rr_id
                     resp_json = await self._sign_submit(rre_req_json)
                     resp = json.loads(resp_json)
-                    rv = (cred_json, cred_revoc_id, resp['result']['txnMetadata']['txnTime'])
+                    rv = (cred_json, cred_revoc_id, self.pool.protocol.txn2epoch(resp))
 
                 except IndyError as x_indy:
                     if x_indy.error_code == ErrorCode.AnoncredsRevocationRegistryFullError:
@@ -487,7 +487,7 @@ class Issuer(Origin):
         resp_json = await self._sign_submit(rre_req_json)
         resp = json.loads(resp_json)
 
-        rv = resp['result']['txnMetadata']['txnTime']
+        rv = self.pool.protocol.txn2epoch(resp)
         LOGGER.debug('Issuer.revoke_cred <<< %s', rv)
         return rv
 
