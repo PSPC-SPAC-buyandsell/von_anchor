@@ -30,7 +30,7 @@ CONFIG_JSON_SCHEMA = {
             },
             'protocol': {
                 'type': 'string',
-                'enum': ['1.3', '1.4']
+                'enum': ['1.3', '1.4', '1.5', '1.6']
             }
         },
         'additionalProperties': True
