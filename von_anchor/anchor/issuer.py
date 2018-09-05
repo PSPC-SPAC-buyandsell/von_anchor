@@ -237,7 +237,6 @@ class Issuer(Origin):
         schema = json.loads(schema_json)
 
         cd_id = cred_def_id(self.did, schema['seqNo'], self.pool.protocol)
-        print('\n\n!! send-cred-def schema seq-no {}, cred def id {}'.format(schema['seqNo'], cd_id))
         private_key_ok = True
         with CRED_DEF_CACHE.lock:
             try:
