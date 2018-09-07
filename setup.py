@@ -14,12 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+
 import os
 from setuptools import setup, find_packages
 
 
 pkg_name = 'von_anchor'
-version = '1.6.19'
+version = '1.6.20'
 
 setup(
     name=pkg_name,
