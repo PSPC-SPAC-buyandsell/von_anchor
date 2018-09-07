@@ -74,9 +74,9 @@ class Protocol(Enum):
         """
 
         if for_box_id:
-            return '' if self == Protocol.V_13 else ':0'
+            return '' if self == Protocol.V_13 else ':tag'
         else:
-            return '0'
+            return 'tag'
 
     def cred_def_id(self, issuer_did: str, schema_seq_no: int) -> str:
         """
