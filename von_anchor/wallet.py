@@ -226,6 +226,9 @@ class Wallet:
         """
 
         LOGGER.debug('Wallet.create >>>')
+        println('Wallet.create >>>')
+        println("Config:", json.dumps(self.cfg))
+        println("Creds", json.dumps(self.access_creds))
 
         try:
             await wallet.create_wallet(
