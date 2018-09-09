@@ -226,7 +226,7 @@ class Wallet:
         """
 
         LOGGER.debug('Wallet.create >>>')
-        print('Wallet.create >>>')
+        print('Wallet.create >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
         print("Config:", json.dumps(self.cfg))
         print("Creds", json.dumps(self.access_creds))
 
