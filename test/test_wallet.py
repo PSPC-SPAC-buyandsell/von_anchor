@@ -88,3 +88,5 @@ async def test_wallet(path_home):
     except JSONValidation:
         pass
     print('\n\n== 4 == Error cases error as expected')
+
+    # X. Rekey operation tested via anchor, in test_anchors.py

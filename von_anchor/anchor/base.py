@@ -171,6 +171,22 @@ class _BaseAnchor:
 
         LOGGER.debug('_BaseAnchor.close <<<')
 
+    async def rekey(self, seed) -> None:
+        """
+        Begin key rotation for VON anchor: generate new key for submission via AnchorSmith.
+
+        :param seed: new seed for rekey
+        """
+
+        LOGGER.debug('_BaseAnchor.rekey_init >>> seed: [SEED]')
+
+        rekey = await self.wallet.rekey_init(seed)
+        req_json = await ledger.build_nym_request(self.did, self.did, rekey, self.wallet.name, self.role())
+        await self._sign_submit(req_json)
+        await self.wallet.rekey_apply()
+
+        LOGGER.debug('_BaseAnchor.rekey_init <<<')
+
     async def get_nym(self, did: str) -> str:
         """
         Get json cryptonym (including current verification key) for input (anchor) DID from ledger.
@@ -212,15 +228,13 @@ class _BaseAnchor:
         LOGGER.debug('_BaseAnchor.role <<< %s', rv)
         return rv
 
-    async def _ensure_txn_applied(self, seq_no: int) -> None:
+    async def _____ensure_txn_applied(self, seq_no: int) -> None:
         """
         Wait, a second at a time, until transaction on given sequence number appears on the ledger.
         Time out after 16 seconds and raise BadLedgerTxn.
 
         :param seq_no: transaction sequence number
         """
-
-        LOGGER.debug('_BaseAnchor._ensure_txn_applied >>> seq_no: %s', seq_no)
 
         for _ in range(16):
             txn = json.loads(await self.get_txn(seq_no))
@@ -229,12 +243,10 @@ class _BaseAnchor:
                 LOGGER.debug('_BaseAnchor._ensure_txn_applied <<<')
                 return
             await asyncio.sleep(1)
-            # print('.')
 
-        LOGGER.debug('_BaseAnchor._ensure_txn_applied <!< Timed out waiting on txn #%d', seq_no)
         raise BadLedgerTxn('Timed out waiting on txn #{}'.format(seq_no))
 
-    async def _submit(self, req_json: str, wait: bool = True) -> str:
+    async def _submit(self, req_json: str) -> str:
         """
         Submit (json) request to ledger; return (json) result.
 
@@ -264,15 +276,10 @@ class _BaseAnchor:
             LOGGER.debug('_BaseAnchor._submit: <!< response indicates no transaction: %s', resp['reason'])
             raise BadLedgerTxn('Response indicates no transaction: {}'.format(resp['reason']))
 
-        if wait and seq_no:  # only check if it's a legitimate transaction
-            # print('\n\n>> awaiting signed submission txn #{}'.format(seq_no))
-            await self._ensure_txn_applied(seq_no)
-            # print('<< applied submission txn #{}'.format(seq_no))
-
         LOGGER.debug('_BaseAnchor._submit <<< %s', rv_json)
         return rv_json
 
-    async def _sign_submit(self, req_json: str, wait: bool = True) -> str:
+    async def _sign_submit(self, req_json: str) -> str:
         """
         Sign and submit (json) request to ledger; return (json) result.
 
@@ -317,11 +324,6 @@ class _BaseAnchor:
         if 'reason' in resp and seq_no is None:
             LOGGER.debug('_BaseAnchor._sign_submit: <!< response indicates no transaction: %s', resp['reason'])
             raise BadLedgerTxn('Response indicates no transaction: {}'.format(resp['reason']))
-
-        if wait and seq_no:  # only check if it's a legitimate transaction
-            # print('\n\n>> awaiting submission txn #{}'.format(seq_no))
-            await self._ensure_txn_applied(seq_no)
-            # print('<< applied submission txn #{}'.format(seq_no))
 
         LOGGER.debug('_BaseAnchor._sign_submit <<< %s', rv_json)
         return rv_json
@@ -490,7 +492,7 @@ class _BaseAnchor:
 
         rv_json = json.dumps({})
         req_json = await ledger.build_get_txn_request(self.did, None, seq_no)
-        resp = json.loads(await self._submit(req_json, False))
+        resp = json.loads(await self._submit(req_json))
 
         rv_json = self.pool.protocol.txn2data(resp)
 

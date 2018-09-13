@@ -18,6 +18,7 @@ limitations under the License.
 import json
 import logging
 
+from asyncio import sleep
 from os import listdir, makedirs
 from os.path import basename, expanduser, isdir, join
 
@@ -31,10 +32,11 @@ from von_anchor.error import (
     AbsentSchema,
     AbsentTails,
     BadIdentifier,
+    BadLedgerTxn,
     BadRevocation,
     CorruptTails,
     CorruptWallet)
-from von_anchor.nodepool import NodePool, Protocol
+from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.util import (
     cred_def_id,
@@ -287,7 +289,17 @@ class Issuer(Origin):
             if not json.loads(rv_json):  # checking the ledger returned no cred def: send it
                 req_json = await ledger.build_cred_def_request(self.did, cred_def_json)
                 await self._sign_submit(req_json)
-                rv_json = await self.get_cred_def(cd_id)  # pick up from ledger and parse; add to cache
+
+                for _ in range(16):  # reasonable timeout
+                    try:
+                        rv_json = await self.get_cred_def(cd_id)  # adds to cache
+                    except AbsentCredDef:
+                        await sleep(1)
+                        LOGGER.info('Sent cred def %s to ledger, waiting 1s for its appearance', cd_id)
+
+                if not rv_json:
+                    LOGGER.debug('Issuer.send_cred_def <!< timed out waiting on sent cred_def %s', cd_id)
+                    raise BadLedgerTxn('Timed out waiting on sent cred_def {}'.format(cd_id))
 
                 if revocation:
                     await self._sync_revoc(rev_reg_id(cd_id, 0), rr_size)  # create new rev reg, tails file for tag 0

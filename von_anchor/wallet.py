@@ -22,7 +22,8 @@ from hashlib import sha256
 
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
-from von_anchor.error import AbsentWallet, CorruptWallet, JSONValidation
+from von_anchor.error import AbsentMetadata, AbsentWallet, CorruptWallet
+from von_anchor.validate_config import validate_config
 
 
 LOGGER = logging.getLogger(__name__)
@@ -67,20 +68,19 @@ class Wallet:
             access_creds)
 
         self._seed = seed
+        self._next_seed = None
         self._handle = None
 
         self._cfg = cfg or {}
-        if not isinstance(self.cfg.get('auto-remove', False), bool):
-            # enterprise wallet development was having trouble with validate_config.validate_config() - check manually
-            LOGGER.debug('Wallet.__init__ <!< Error on wallet configuration: auto-remove value must be boolean')
-            raise JSONValidation('Error on wallet configuration: auto-remove value must be boolean')
         self._cfg['id'] = name
         self._cfg['storage_type'] = wallet_type or 'default'
+        if 'freshness_time' not in self._cfg:
+            self._cfg['freshness_time'] = 0
+
+        validate_config('wallet', self._cfg)
 
         # pop and retain configuration specific to von_anchor.Wallet, extrinsic to indy-sdk
         self._auto_remove = self._cfg.pop('auto-remove') if self._cfg and 'auto-remove' in self._cfg else False
-        if 'freshness_time' not in self._cfg:
-            self._cfg['freshness_time'] = 0
 
         self._access_creds = access_creds or Wallet.DEFAULT_ACCESS_CREDS
         self._did = None
@@ -169,6 +169,16 @@ class Wallet:
 
         return self._verkey
 
+    @verkey.setter
+    def verkey(self, value: str) -> None:
+        """
+        Set verification key.
+
+        :param value: verification key
+        """
+
+        self._verkey = value
+
     @property
     def created(self) -> str:
         """
@@ -183,8 +193,7 @@ class Wallet:
 
     async def _seed2did(self) -> str:
         """
-        Derive DID, as per indy-sdk, from seed. Try metadata match first,
-        otherwise create temp wallet to compute DID.
+        Derive DID, as per indy-sdk, from seed, via metadata match by hash. Raise AbsentMetadata for no match.
 
         :return: DID
         """
@@ -204,15 +213,9 @@ class Wallet:
                     except json.decoder.JSONDecodeError:
                         continue  # it's not one of ours, carry on
 
-        if not rv:  # seed not in metadata, generate did again on temp wallet
-            temp_wallet = await Wallet(
-                self._seed,
-                '{}.seed2did'.format(self.name),
-                None,
-                {'auto-remove': True}).create()
-
-            rv = temp_wallet.did
-            await temp_wallet.remove()
+        if not rv:  # seed not in metadata
+            LOGGER.debug('Wallet._seed2did <!< no metadata match for seed in wallet %s', self.name)
+            raise AbsentMetadata('No metadata match for seed {} in wallet {}'.format(self._seed, self.name))
 
         return rv
 
@@ -238,7 +241,7 @@ class Wallet:
                 LOGGER.info('Wallet already exists: %s', self.name)
             else:
                 LOGGER.debug(
-                    'Wallet.create: <!< indy error code %s on creation of wallet %s',
+                    'Wallet.create <!< indy error code %s on creation of wallet %s',
                     x_indy.error_code,
                     self.name)
                 raise
@@ -250,7 +253,7 @@ class Wallet:
         LOGGER.info('Opened wallet %s on handle %s', self.name, self.handle)
 
         if self._created:
-            (self._did, self._verkey) = await did.create_and_store_my_did(
+            (self._did, self.verkey) = await did.create_and_store_my_did(
                 self.handle,
                 json.dumps({'seed': self._seed}))
             LOGGER.debug('Wallet %s stored new DID %s, verkey %s from seed', self.name, self.did, self.verkey)
@@ -260,15 +263,16 @@ class Wallet:
                 json.dumps({
                     'seed_hash': sha256(self._seed.encode()).hexdigest()
                 }))
+            LOGGER.info('Wallet %s set seed hash metadata for DID %s', self.name, self.did)
         else:
             self._created = True
             LOGGER.debug('Attempting to derive seed to did for wallet %s', self.name)
             self._did = await self._seed2did()
             try:
-                self._verkey = await did.key_for_local_did(self.handle, self.did)
+                self.verkey = await did.key_for_local_did(self.handle, self.did)
             except IndyError:
                 LOGGER.debug(
-                    'Wallet.create: <!< no verkey for DID %s on ledger, wallet %s may pertain to another',
+                    'Wallet.create <!< no verkey for DID %s on ledger, wallet %s may pertain to another',
                     self.did,
                     self.name)
                 raise CorruptWallet(
@@ -310,7 +314,7 @@ class Wallet:
         LOGGER.debug('Wallet.open >>>')
 
         if not self.created:
-            LOGGER.debug('Wallet.open: <!< absent wallet %s', self.name)
+            LOGGER.debug('Wallet.open <!< absent wallet %s', self.name)
             raise AbsentWallet('Cannot open wallet {}: not created'.format(self.name))
 
         self._handle = await wallet.open_wallet(
@@ -319,7 +323,7 @@ class Wallet:
         LOGGER.info('Opened wallet %s on handle %s', self.name, self.handle)
 
         self._did = await self._seed2did()
-        self._verkey = await did.key_for_local_did(self.handle, self.did)
+        self.verkey = await did.key_for_local_did(self.handle, self.did)
         LOGGER.info('Wallet %s got verkey %s for existing DID %s', self.name, self.verkey, self.did)
 
         LOGGER.debug('Wallet.open <<<')
@@ -360,6 +364,42 @@ class Wallet:
         self._handle = None
 
         LOGGER.debug('Wallet.close <<<')
+
+    async def rekey_init(self, seed) -> str:
+        """
+        Begin rekey operation: generate new key.
+
+        :return: new verification key
+        """
+
+        LOGGER.debug('Wallet.rekey_init >>>')
+
+        self._next_seed = seed
+        rv = await did.replace_keys_start(self.handle, self.did, json.dumps({'seed': seed}))
+        LOGGER.debug('Wallet.rekey_init <<< %s', rv)
+        return rv
+
+    async def rekey_apply(self) -> None:
+        """
+        Replace verification key with new verification key from rekey operation.
+        """
+
+        LOGGER.debug('Wallet.rekey_apply >>>')
+
+        await did.replace_keys_apply(self.handle, self.did)
+        self.verkey = await did.key_for_local_did(self.handle, self.did)
+        self._seed = self._next_seed
+        self._next_seed = None
+
+        await did.set_did_metadata(
+            self.handle,
+            self.did,
+            json.dumps({
+                'seed_hash': sha256(self._seed.encode()).hexdigest()
+            }))
+        LOGGER.info('Wallet %s set seed hash metadata for DID %s', self.name, self.did)
+
+        LOGGER.debug('Wallet.rekey_apply <<<')
 
     async def remove(self) -> None:
         """

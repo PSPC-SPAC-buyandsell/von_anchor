@@ -299,7 +299,7 @@ def proof_req_infos2briefs(proof_req: dict, infos: list) -> list:
         fro = None
         to = None
         for uuid in refts[info['cred_def_id']].values():
-            interval = proof_req['requested_attributes'][uuid]['non_revoked']
+            interval = proof_req['requested_attributes'][uuid].get('non_revoked', {})
             if 'from' in interval:
                 fro = min(fro or interval['from'], interval['from'])
             if 'to' in interval:
@@ -410,6 +410,8 @@ def proof_req_briefs2req_creds(proof_req: dict, briefs: list) -> dict:
         cred_info = brief['cred_info']
         timestamp = (brief['interval'] or {}).get('to', None)
         for attr in brief['cred_info']['attrs']:
+            if attr not in refts[cred_info['cred_def_id']]:
+                continue
             req_attr = {
                 'cred_id': cred_info['referent'],
                 'revealed': True,
@@ -627,7 +629,7 @@ def proof_req_attr_referents(proof_req: dict) -> dict:
     rv = {}
     for uuid, spec in proof_req['requested_attributes'].items():
         cd_id = None
-        for restriction in spec.get('restrictions', [{}]):
+        for restriction in spec.get('restrictions', []):
             cd_id = restriction.get('cred_def_id', None)
             if cd_id:
                 break
