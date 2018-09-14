@@ -80,6 +80,7 @@ class Origin(_BaseAnchor):
                 for _ in range(16):  # reasonable timeout
                     try:
                         rv_json = await self.get_schema(s_key)  # adds to cache
+                        break
                     except AbsentSchema:
                         await sleep(1)
                         LOGGER.info('Sent schema %s to ledger, waiting 1s for its appearance', s_id)

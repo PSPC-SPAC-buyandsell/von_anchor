@@ -17,8 +17,8 @@ limitations under the License.
 
 import json
 import logging
-from collections import namedtuple
 
+from collections import namedtuple
 from enum import Enum
 
 from indy import pool

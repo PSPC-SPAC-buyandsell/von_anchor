@@ -19,6 +19,7 @@ import json
 import re
 
 from copy import deepcopy
+from enum import IntEnum
 from pprint import pformat
 from typing import Any, Union
 
@@ -26,7 +27,32 @@ from von_anchor.codec import decode
 from von_anchor.nodepool import Protocol
 from von_anchor.schema_key import SchemaKey
 
+
 B58 = '1-9A-HJ-NP-Za-km-z'
+
+
+class Pen(IntEnum):
+    """
+    Class encapsulating pen colours for logging.
+    """
+
+    BLACK = 30
+    RED = 31
+    GREEN = 32
+    YELLOW = 33
+    BLUE = 34
+    MAGENTA = 35
+    CYAN = 36
+    WHITE = 37
+
+    def __call__(self, message: str) -> str:
+        """
+        Return input message in colour.
+
+        :return: input message in colour
+        """
+
+        return '\033[{}m{}\033[0m'.format(self.value, message)
 
 
 def ppjson(dumpit: Any, elide_to: int = None) -> str:

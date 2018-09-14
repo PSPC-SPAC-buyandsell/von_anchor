@@ -293,6 +293,7 @@ class Issuer(Origin):
                 for _ in range(16):  # reasonable timeout
                     try:
                         rv_json = await self.get_cred_def(cd_id)  # adds to cache
+                        break
                     except AbsentCredDef:
                         await sleep(1)
                         LOGGER.info('Sent cred def %s to ledger, waiting 1s for its appearance', cd_id)
