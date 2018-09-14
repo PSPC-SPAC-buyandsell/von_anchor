@@ -44,6 +44,7 @@ class ErrorCode(IntEnum):
     AbsentWallet = 3000
     BadWalletQuery = 3001
     AbsentCred = 3002
+    AbsentMetadata = 3003
 
     # Errors to do with node pool operation
     ClosedPool = 4000
@@ -53,6 +54,7 @@ class ErrorCode(IntEnum):
 
     # JSON validation
     JSONValidation = 9000
+
 
 class VonAnchorError(Exception):
     """
@@ -321,6 +323,21 @@ class AbsentCred(VonAnchorError):
         """
 
         super().__init__(ErrorCode.AbsentCred, message)
+
+
+class AbsentMetadata(VonAnchorError):
+    """
+    No such metadata.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.AbsentMetadata, message)
 
 
 class ClosedPool(VonAnchorError):

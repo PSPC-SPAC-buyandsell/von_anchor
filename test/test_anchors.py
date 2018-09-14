@@ -17,6 +17,7 @@ limitations under the License.
 
 from copy import deepcopy
 from indy import IndyError
+from indy import did
 from indy.error import ErrorCode
 from math import ceil
 from os import listdir, makedirs
@@ -236,8 +237,8 @@ async def test_anchors_low_level_api(
             'name': schema_key(S_ID['NON-REVO']).name,
             'version': schema_key(S_ID['NON-REVO']).version,
             'attr_names': [
-                'name',
-                'favouriteDrink'
+                'Preferred Name',
+                'Must Have'
             ]
         },
         S_ID['SRI-1.1']: {
@@ -278,8 +279,8 @@ async def test_anchors_low_level_api(
             'name': schema_key(S_ID['NON-REVO']).name,
             'version': schema_key(S_ID['NON-REVO']).version,
             'attr_names': [
-                'name',
-                'thing'
+                'Preferred Name',
+                'Must Have'
             ]
         },
         S_ID['SRI-1.0']: {
@@ -459,13 +460,9 @@ async def test_anchors_low_level_api(
     ''' 13
         S_ID['NON-REVO']: [
             {
-                'name': 'J.R. "Bob" Dobbs',
-                'thing': 'slack'
+                'Preferred Name': 'J.R. "Bob" Dobbs',
+                'Must Have': 'slack'
             },
-            {
-                'name': 'Chicken Hawk',
-                'thing': 'chicken'
-            }
         ],
         S_ID['SRI-1.0']: [],
         S_ID['SRI-1.1']: [],
@@ -521,12 +518,12 @@ async def test_anchors_low_level_api(
         ],
         S_ID['NON-REVO']: [
             {
-                'name': 'J.R. "Bob" Dobbs',
-                'thing': 'slack'
+                'Preferred Name': 'J.R. "Bob" Dobbs',
+                'Must Have': 'slack'
             },
             {
-                'name': 'Chicken Hawk',
-                'thing': 'chicken'
+                'Preferred Name': 'Chicken Hawk',
+                'Must Have': 'chicken'
             }
         ],
         S_ID['SRI-1.0']: [],
@@ -592,7 +589,7 @@ async def test_anchors_low_level_api(
         ppjson(bc_infos_wql_json, 1000)))
     wql_json = json.dumps({
         '$not': {
-            'attr::thing::value': 'slack'
+            'attr::must have::value': 'slack'  # exercise WQL canonicalization
         }
     })
     assert len(json.loads(await bcoban.get_cred_infos_by_q(wql_json))) == bc_all_card - 1
@@ -611,9 +608,9 @@ async def test_anchors_low_level_api(
     assert len(json.loads(await bcoban.get_cred_infos_by_q(wql_json))) == 1
 
     wql_json = json.dumps({
-        'attr::thing::marker': 1,
+        'attr::must have::marker': 1, # exercise WQL canonicalization
         '$not': {
-            'attr::thing::value': {
+            'attr::musthave::value': {  # exercise WQL canonicalization
                 '$neq': 'slack'
             }
         }
@@ -740,34 +737,35 @@ async def test_anchors_low_level_api(
         "version": "0.0",
         "requested_predicates": {},
         "requested_attributes": {
-            "17_name_uuid": {
+            "17_preferredname_uuid": {
                 "restrictions": [
                     {
                         "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:0"
                     }
                 ],
-                "name": "name"
+                "name": "Preferred Name"
             },
-            "17_thing_uuid": {
+            "17_musthave_uuid": {
                 "restrictions": [
                     {
                         "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:0"
                     }
                 ],
-                "name": "thing"
+                "name": "Must Have"
             }
         }
     }
     '''
     nr_refts = proof_req_attr_referents(proof_req[S_ID['NON-REVO']])
-    wql_get_briefs_json = json.dumps({
-        nr_refts[cd_id[S_ID['NON-REVO']]]['name']: {  # require NON-REVO presence of attr 'name' ('thing' would also do)
+
+    wql_get_briefs_json = json.dumps({  # require NON-REVO attr 'Preferred Name' ('Must Have' would also suffice)
+        nr_refts[cd_id[S_ID['NON-REVO']]]['Preferred Name']: {
             '$or': [
                 {
-                    'attr::name::value': 'Chicken Hawk'
+                    'attr::preferred name::value': 'Chicken Hawk'  # exercise WQL canonicalization
                 },
                 {
-                    'attr::thing::value': 'slack'
+                    'attr::Must Have::value': 'slack'
                 }
             ]
         }
@@ -786,9 +784,9 @@ async def test_anchors_low_level_api(
     print('\n\n== 15 == box-ids for non-revo cred briefs via $or query: {}'.format(ppjson(nr_box_ids_q)))
 
     wql_get_briefs_json = json.dumps({
-        nr_refts[cd_id[S_ID['NON-REVO']]]['thing']: {  # AND, require presence of NON-REVO cred def attr 'thing'
-            'attr::name::value': 'Chicken Hawk',
-            'attr::thing::value': 'slack'  # (expect no match: Chicken Hawk's thing is chicken)
+        nr_refts[cd_id[S_ID['NON-REVO']]]['Must Have']: {  # AND, require presence of this NON-REVO cred def attr
+            'attr::preferred name::value': 'Chicken Hawk',
+            'attr::must have::value': 'slack'  # (expect no match: Chicken Hawk's must-have is chicken)
         }
     })
     (nr_cred_ids_q, nr_briefs_q_json) = await bcoban.get_cred_briefs_by_proof_req_q(
@@ -805,9 +803,9 @@ async def test_anchors_low_level_api(
     print('\n\n== 17 == box-ids for non-revo cred briefs via no-match AND query: {}'.format(ppjson(nr_box_ids_q)))
 
     wql_get_briefs_json = json.dumps({
-        nr_refts[cd_id[S_ID['NON-REVO']]]['name']: {  # AND
-            'attr::name::value': 'Chicken Hawk',
-            'attr::thing::value': 'chicken'  # (expect one match)
+        nr_refts[cd_id[S_ID['NON-REVO']]]['Preferred Name']: {  # AND
+            'attr::preferred name::value': 'Chicken Hawk',
+            'attr::must have::value': 'chicken'  # (expect one match)
         }
     })
     (nr_cred_ids_q, nr_briefs_q_json) = await bcoban.get_cred_briefs_by_proof_req_q(
@@ -916,7 +914,7 @@ async def test_anchors_low_level_api(
     nr_filt_get_creds = {
         cd_id[S_ID['NON-REVO']]: {
             'attr-match': {
-                'thing': 'slack'
+                'Must Have': 'slack'
             }
         }
     }
@@ -940,8 +938,8 @@ async def test_anchors_low_level_api(
 
     # BC Registrar anchor creates proof (by query) for non-revocable cred, for verification
     wql_get_briefs_json = json.dumps({
-        nr_refts[cd_id[S_ID['NON-REVO']]]['thing']: {
-            'attr::thing::value': 'slack'
+        nr_refts[cd_id[S_ID['NON-REVO']]]['Must Have']: {
+            'attr::Must Have::value': 'slack'
         }
     })
     (nr_cred_ids_q, nr_briefs_q_json) = await bcoban.get_cred_briefs_by_proof_req_q(
@@ -1545,14 +1543,14 @@ async def test_anchors_low_level_api(
     x_sri_creds = json.loads(x_sri_creds_json)
     x_sri_req_creds = json.loads(await pspcoban.build_req_creds_json(x_sri_creds))
     x_sri_proof_json = await pspcoban.create_proof(x_proof_req_sri, x_sri_creds, x_sri_req_creds)
-    print('\n\n== 62 == Org Book proof pre-revoc on cred-ids {}, just before Silver cred creation {}'.format(
+    print('\n\n== 64 == Org Book proof pre-revoc on cred-ids {}, just before Silver cred creation {}'.format(
         sri_cred_ids_filt,
         ppjson(x_sri_proof_json, 1000)))
     x_sri_proof = json.loads(x_sri_proof_json)
 
     # SRI anchor (as Verifier) verifies proof
     rc_json = await san.verify_proof(x_proof_req_sri, x_sri_proof)
-    print('\n\n== 63 == SRI anchor verifies BC Org Book proof pre-revoc on cred_ids {} < Silver creation as: {}'.format(
+    print('\n\n== 65 == SRI anchor verifies BC Org Book proof pre-revoc on cred_ids {} < Silver creation as: {}'.format(
         x_cred_ids,
         ppjson(rc_json)))
     assert not json.loads(rc_json)
@@ -1589,14 +1587,14 @@ async def test_anchors_low_level_api(
 
     sleep(1)
     EPOCH_SRI_REVOC = await did2an[schema_key(S_ID['GREEN']).origin_did].revoke_cred(x_rr_id, x_cr_id)
-    print('\n\n== 64 == SRI anchor revoked ({}, {}) -> {} green level {}'.format(
+    print('\n\n== 66 == SRI anchor revoked ({}, {}) -> {} green level {}'.format(
         x_rr_id,
         x_cr_id,
         sri_revoc_info[(x_rr_id, x_cr_id)]['legalName'],
         sri_revoc_info[(x_rr_id, x_cr_id)]['greenLevel']))
     sleep(1)
     EPOCH_POST_SRI_REVOC = int(time())
-    print('\n\n== 65 == EPOCH times re: SRI Silver revocation: pre-revoc {}, revoc {}, post-revoc {}'.format(
+    print('\n\n== 67 == EPOCH times re: SRI Silver revocation: pre-revoc {}, revoc {}, post-revoc {}'.format(
         EPOCH_PRE_SRI_REVOC,
         EPOCH_SRI_REVOC,
         EPOCH_POST_SRI_REVOC))
@@ -1614,14 +1612,14 @@ async def test_anchors_low_level_api(
     x_sri_creds = json.loads(x_sri_creds_json)
     x_sri_req_creds = json.loads(await pspcoban.build_req_creds_json(x_sri_creds))
     x_sri_proof_json = await pspcoban.create_proof(x_proof_req_sri, x_sri_creds, x_sri_req_creds)
-    print('\n\n== 66 == PSPC Org Book proof on cred-ids {} post Silver revocation: {}'.format(
+    print('\n\n== 68 == PSPC Org Book proof on cred-ids {} post Silver revocation: {}'.format(
         x_cred_ids,
         ppjson(x_sri_proof_json, 1000)))
     x_sri_proof = json.loads(x_sri_proof_json)
 
     # SRI anchor (as Verifier) attempts to verify multi-cred proof with revoked cred
     rc_json = await san.verify_proof(x_proof_req_sri, x_sri_proof)
-    print('\n\n== 67 == SRI anchor verifies multi-cred proof (by filter) with Silver cred revoked as: {}'.format(
+    print('\n\n== 69 == SRI anchor verifies multi-cred proof (by filter) with Silver cred revoked as: {}'.format(
         ppjson(rc_json)))
     assert not json.loads(rc_json)
 
@@ -1638,14 +1636,14 @@ async def test_anchors_low_level_api(
     sri_creds = json.loads(sri_creds_json)
     sri_req_creds = json.loads(await pspcoban.build_req_creds_json(sri_creds))
     sri_proof_json = await pspcoban.create_proof(proof_req_sri, sri_creds, sri_req_creds)
-    print('\n\n== 68 == Org Book proof on cred-ids {} just before Silver cred revoc: {}'.format(
+    print('\n\n== 70 == Org Book proof on cred-ids {} just before Silver cred revoc: {}'.format(
         cred_ids,
         ppjson(sri_proof_json, 1000)))
     sri_proof = json.loads(sri_proof_json)
 
     # SRI anchor (as Verifier) attempts to verify multi-cred proof with revoked cred, back-dated pre-revocation
     rc_json = await san.verify_proof(proof_req_sri, sri_proof)
-    print('\n\n== 69 == SRI anchor verifies multi-cred proof (by filter) just before Silver cred revoc as: {}'.format(
+    print('\n\n== 71 == SRI anchor verifies multi-cred proof (by filter) just before Silver cred revoc as: {}'.format(
         ppjson(rc_json)))
     assert json.loads(rc_json)
 
@@ -1662,14 +1660,14 @@ async def test_anchors_low_level_api(
     x_sri_creds = json.loads(x_sri_creds_json)
     x_sri_req_creds = json.loads(await pspcoban.build_req_creds_json(x_sri_creds))
     x_sri_proof_json = await pspcoban.create_proof(x_proof_req_sri, x_sri_creds, x_sri_req_creds)
-    print('\n\n== 70 == Org Book proof on cred-ids {} just before Silver cred creation: {}'.format(
+    print('\n\n== 72 == Org Book proof on cred-ids {} just before Silver cred creation: {}'.format(
         x_cred_ids,
         ppjson(x_sri_proof_json, 1000)))
     x_sri_proof = json.loads(x_sri_proof_json)
 
     # SRI anchor (as Verifier) attempts to verify multi-cred proof with revoked cred
     rc_json = await san.verify_proof(x_proof_req_sri, x_sri_proof)
-    print('\n\n== 71 == SRI anchor verifies multi-cred proof (by filter) just before Silver cred creation as {}'.format(
+    print('\n\n== 73 == SRI anchor verifies multi-cred proof (by filter) just before Silver cred creation as {}'.format(
         ppjson(rc_json)))
     assert not json.loads(rc_json)
 
@@ -1688,14 +1686,14 @@ async def test_anchors_low_level_api(
     x_sri_proof_json = await pspcoban.create_proof(x_proof_req_sri, x_sri_creds, x_sri_req_creds)
 
     x_sri_proof_json = await pspcoban.create_proof(x_proof_req_sri, x_sri_creds, x_sri_req_creds)
-    print('\n\n== 72 == Org Book proof on cred-ids {} before any Green cred creation: {}'.format(
+    print('\n\n== 74 == Org Book proof on cred-ids {} before any Green cred creation: {}'.format(
         x_cred_ids,
         ppjson(x_sri_proof_json, 1000)))
     x_sri_proof = json.loads(x_sri_proof_json)
 
     # SRI anchor (as Verifier) attempts to verify multi-cred proof with revoked cred
     rc_json = await san.verify_proof(x_proof_req_sri, x_sri_proof)
-    print('\n\n== 73 == SRI anchor verifies multi-cred proof (by filter) before any Green cred creation as: {}'.format(
+    print('\n\n== 75 == SRI anchor verifies multi-cred proof (by filter) before any Green cred creation as: {}'.format(
         ppjson(rc_json)))
     assert not json.loads(rc_json)
 
@@ -1753,26 +1751,26 @@ async def test_anchors_low_level_api(
     assert len(sri_creds['predicates'])
     sri_req_creds = json.loads(await pspcoban.build_req_creds_json(sri_creds))
     sri_proof_json = await pspcoban.create_proof(proof_req_sri, sri_creds, sri_req_creds)
-    print('\n\n== 74 == PSPC Org Book multi-cred proof on cred-ids {} for Tart City on min jurisdictionId: {}'.format(
+    print('\n\n== 76 == PSPC Org Book multi-cred proof on cred-ids {} for Tart City on min jurisdictionId: {}'.format(
         cred_ids,
         ppjson(sri_proof_json, 1000)))
     sri_proof = json.loads(sri_proof_json)
 
     # SRI anchor (as Verifier) attempts to verify multi-cred proof with specification of one by pred
     rc_json = await san.verify_proof(proof_req_sri, sri_proof)
-    print('\n\n== 75 == SRI anchor verifies multi-cred proof (by pred) as: {}'.format(
+    print('\n\n== 77 == SRI anchor verifies multi-cred proof (by pred) as: {}'.format(
         ppjson(rc_json)))
     assert json.loads(rc_json)
 
     # Exercise helper GET calls
     txn_json = await san.get_txn(schema[S_ID['GREEN']]['seqNo'])
-    print('\n\n== 76 == GREEN schema by txn #{}: {}'.format(schema[S_ID['GREEN']]['seqNo'], ppjson(txn_json)))
+    print('\n\n== 78 == GREEN schema by txn #{}: {}'.format(schema[S_ID['GREEN']]['seqNo'], ppjson(txn_json)))
     assert json.loads(txn_json)
     txn_json = await san.get_txn(99999)  # ought not exist
     assert not json.loads(txn_json)
 
     bc_box_ids = json.loads(await bcran.get_box_ids_json())
-    print('\n\n== 77 == Box identifiers at BC registrar (issuer): {}'.format(ppjson(bc_box_ids)))
+    print('\n\n== 79 == Box identifiers at BC registrar (issuer): {}'.format(ppjson(bc_box_ids)))
     assert all(box_id.startswith(bcran.did) for ids in bc_box_ids.values() for box_id in ids)
     assert len(bc_box_ids['schema_id']) > 1  # bc-reg, non-revo
     assert len(bc_box_ids['cred_def_id']) > 1  # bc-reg, non-revo
@@ -1801,7 +1799,7 @@ async def test_anchors_low_level_api(
     remaining = listdir(pspcoban.dir_cache)
     assert len(remaining) == 0
 
-    print('\n\n== 78 == Caches archive, parse, load, purge OK')
+    print('\n\n== 80 == Caches archive, parse, load, purge OK')
 
     await bcran.close()
     await bcoban.close()
@@ -1945,7 +1943,7 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
         schema = json.loads(schema_json)
         assert schema
 
-        # Get cred def (should re-use existing), create cred offer
+        # Get cred def (should be present in cred def cache), create cred offer
         await san.send_cred_def(schema_id(*s_key))
         cd_id = cred_def_id(s_key.origin_did, schema['seqNo'])
         assert ([f for f in Tails.links(str(san._dir_tails), san.did)
@@ -2227,6 +2225,69 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
         elapsed = ceil(int(time()) - epoch_start)
 
         print('\n\n== 1 == Exercised cache locks, elapsed time: {} sec'.format(elapsed))
+
+
+@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.asyncio
+async def test_anchor_rekey(
+        pool_name,
+        pool_genesis_txn_path,
+        pool_genesis_txn_file,
+        seed_trustee1):
+
+    print('\n\n== Testing anchor rekey')
+
+    now = int(time())  # ten digits, unique and disposable each run
+    # Generate seeds (in case of re-run on existing ledger, use fresh disposable identity every time)
+    rk_seeds = ['Rekey-Org_Book-Anchor-{}'.format(now + i) for i in range(2)]  # makes 32 characters
+    print('\n\n== 1 == seeds: {}'.format(rk_seeds))
+
+    # Open pool, init anchors
+    async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
+        TrusteeAnchor(await Wallet(seed_trustee1, 'trust-anchor').create(), p)) as tan, (
+        OrgBookAnchor(await Wallet(rk_seeds[0], 'rekey-org-book', None, {'auto-remove': True}).create(), p)) as rkan:
+
+        assert p.handle
+
+        # Publish anchor particulars to ledger if not yet present
+        did2an = {}
+        for an in (tan, rkan):
+            did2an[an.did] = an
+            if not json.loads(await tan.get_nym(an.did)):
+                await tan.send_nym(an.did, an.verkey, an.wallet.name, an.role())
+
+        nyms = {
+            'tan': json.loads(await tan.get_nym(tan.did)),
+            'rkan': json.loads(await tan.get_nym(rkan.did))
+        }
+        print('\n\n== 2 == nyms: {}'.format(ppjson(nyms)))
+
+        for k in nyms:
+            assert 'dest' in nyms[k]
+
+        await rkan.create_link_secret('SecretLink')
+        await rkan.reset_wallet()
+        assert rkan.wallet.auto_remove  # make sure auto-remove configuration survives reset
+
+        # Anchor rekey
+        old_seed2did = await rkan.wallet._seed2did()
+        assert old_seed2did == rkan.did
+        verkey_in_wallet = await did.key_for_local_did(rkan.wallet.handle, rkan.did)
+        print('\n\n== 3 == PSPC Org Book anchor DID {}, verkey in wallet {}'.format(rkan.did, verkey_in_wallet))
+        nym_resp = json.loads(await rkan.get_nym(rkan.did))
+        print('\n\n== 4 == PSPC Org Book nym on ledger {}'.format(ppjson(nym_resp)))
+
+        old_verkey = rkan.verkey
+        await rkan.rekey(rk_seeds[1])
+        assert rkan.verkey != old_verkey
+        assert old_seed2did == await rkan.wallet._seed2did()
+        assert old_seed2did == rkan.did
+
+        verkey_in_wallet = await did.key_for_local_did(rkan.wallet.handle, rkan.did)
+        print('\n\n== 5 == PSPC Org Book anchor rekey operation retains DID {} on rekey from {} to {}'.format(    
+            rkan.did,
+            old_verkey,
+            rkan.verkey))
 
 
 @pytest.mark.skipif(False, reason='short-circuiting')

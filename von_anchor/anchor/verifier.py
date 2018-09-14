@@ -26,6 +26,7 @@ from indy import anoncreds, ledger
 from indy.error import IndyError
 from von_anchor.anchor.base import _BaseAnchor
 from von_anchor.cache import Caches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
+from von_anchor.codec import canon
 from von_anchor.error import AbsentRevReg, AbsentSchema, BadIdentifier, BadRevStateTime, ClosedPool
 from von_anchor.nodepool import NodePool
 from von_anchor.util import cred_def_id2seq_no, ok_cred_def_id, ok_rev_reg_id, ok_schema_id
@@ -86,7 +87,7 @@ class Verifier(_BaseAnchor):
         self._cfg = cfg or {}
         validate_config('verifier', self._cfg)
 
-        self._dir_cache = join(expanduser('~'), '.indy_client', 'wallet', self.wallet.name, 'cache')
+        self._dir_cache = join(expanduser('~'), '.indy_client', 'cache', self.wallet.name)
         makedirs(self._dir_cache, exist_ok=True)
 
         LOGGER.debug('Verifier.__init__ <<<')
@@ -260,7 +261,7 @@ class Verifier(_BaseAnchor):
 
             for attr in (cd_id2spec[cd_id].get('attrs', cd_id2schema[cd_id]['attrNames']) or []
                     if cd_id2spec[cd_id] else cd_id2schema[cd_id]['attrNames']):
-                attr_uuid = '{}_{}_uuid'.format(seq_no, attr)
+                attr_uuid = '{}_{}_uuid'.format(seq_no, canon(attr))
                 proof_req['requested_attributes'][attr_uuid] = {
                     'name': attr,
                     'restrictions': [{
@@ -271,7 +272,7 @@ class Verifier(_BaseAnchor):
                     proof_req['requested_attributes'][attr_uuid]['non_revoked'] = interval
 
             for attr in (cd_id2spec[cd_id].get('minima', {}) or {} if cd_id2spec[cd_id] else {}):
-                pred_uuid = '{}_{}_uuid'.format(seq_no, attr)
+                pred_uuid = '{}_{}_uuid'.format(seq_no, canon(attr))
                 try:
                     proof_req['requested_predicates'][pred_uuid] = {
                         'name': attr,

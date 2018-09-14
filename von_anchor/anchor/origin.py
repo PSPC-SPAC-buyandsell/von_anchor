@@ -18,10 +18,12 @@ limitations under the License.
 import json
 import logging
 
+from asyncio import sleep
+
 from indy import anoncreds, ledger
 from von_anchor.anchor.base import _BaseAnchor
 from von_anchor.cache import SCHEMA_CACHE
-from von_anchor.error import AbsentSchema
+from von_anchor.error import AbsentSchema, BadLedgerTxn
 from von_anchor.util import schema_id, schema_key
 
 LOGGER = logging.getLogger(__name__)
@@ -35,6 +37,8 @@ class Origin(_BaseAnchor):
     async def send_schema(self, schema_data_json: str) -> str:
         """
         Send schema to ledger, then retrieve it as written to the ledger and return it.
+        Raise BadLedgerTxn on failure.
+
         If schema already exists on ledger, log error and return schema.
 
         :param schema_data_json: schema data json with name, version, attribute names; e.g.,
@@ -53,7 +57,9 @@ class Origin(_BaseAnchor):
         LOGGER.debug('Origin.send_schema >>> schema_data_json: %s', schema_data_json)
 
         schema_data = json.loads(schema_data_json)
-        s_key = schema_key(schema_id(self.did, schema_data['name'], schema_data['version']))
+        s_id = schema_id(self.did, schema_data['name'], schema_data['version'])
+        s_key = schema_key(s_id)
+        rv_json = None
         with SCHEMA_CACHE.lock:
             try:
                 rv_json = await self.get_schema(s_key)
@@ -69,10 +75,19 @@ class Origin(_BaseAnchor):
                     schema_data['version'],
                     json.dumps(schema_data['attr_names']))
                 req_json = await ledger.build_schema_request(self.did, schema_json)
-                resp_json = await self._sign_submit(req_json)
-                resp = json.loads(resp_json)
+                await self._sign_submit(req_json)
 
-                rv_json = await self.get_schema(self.pool.protocol.txn_data2schema_key(resp['result']))  # adds to cache
+                for _ in range(16):  # reasonable timeout
+                    try:
+                        rv_json = await self.get_schema(s_key)  # adds to cache
+                        break
+                    except AbsentSchema:
+                        await sleep(1)
+                        LOGGER.info('Sent schema %s to ledger, waiting 1s for its appearance', s_id)
+
+                if not rv_json:
+                    LOGGER.debug('Origin.send_schema <!< timed out waiting on sent schema %s', s_id)
+                    raise BadLedgerTxn('Timed out waiting on sent schema {}'.format(s_id))
 
         LOGGER.debug('Origin.send_schema <<< %s', rv_json)
         return rv_json
