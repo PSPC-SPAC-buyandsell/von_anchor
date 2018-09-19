@@ -273,6 +273,8 @@ def proof_req_infos2briefs(proof_req: dict, infos: list) -> list:
     rv = []
     refts = proof_req_attr_referents(proof_req)
     for info in infos:
+        if info['cred_def_id'] not in refts:
+            continue
         brief = {
             'cred_info': info,
             'interval': {}
