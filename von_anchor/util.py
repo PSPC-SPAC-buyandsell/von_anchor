@@ -19,9 +19,7 @@ import json
 import re
 
 from copy import deepcopy
-from enum import IntEnum
-from pprint import pformat
-from typing import Any, Union
+from typing import Union
 
 from von_anchor.codec import decode
 from von_anchor.nodepool import Protocol
@@ -29,48 +27,6 @@ from von_anchor.schema_key import SchemaKey
 
 
 B58 = '1-9A-HJ-NP-Za-km-z'
-
-
-class Pen(IntEnum):
-    """
-    Class encapsulating pen colours for logging.
-    """
-
-    BLACK = 30
-    RED = 31
-    GREEN = 32
-    YELLOW = 33
-    BLUE = 34
-    MAGENTA = 35
-    CYAN = 36
-    WHITE = 37
-
-    def __call__(self, message: str) -> str:
-        """
-        Return input message in colour.
-
-        :return: input message in colour
-        """
-
-        return '\033[{}m{}\033[0m'.format(self.value, message)
-
-
-def ppjson(dumpit: Any, elide_to: int = None) -> str:
-    """
-    JSON pretty printer, whether already json-encoded or not
-
-    :param dumpit: object to pretty-print
-    :param elide_to: optional maximum length including ellipses ('...')
-    :return: json pretty-print
-    """
-
-    if elide_to is not None:
-        elide_to = max(elide_to, 3) # make room for ellipses '...'
-    try:
-        rv = json.dumps(json.loads(dumpit) if isinstance(dumpit, str) else dumpit, indent=4)
-    except TypeError:
-        rv = '{}'.format(pformat(dumpit, indent=4, width=120))
-    return rv if elide_to is None or len(rv) <= elide_to else '{}...'.format(rv[0 : elide_to - 3])
 
 
 def schema_id(origin_did: str, name: str, version: str) -> str:
@@ -94,7 +50,7 @@ def ok_did(token: str) -> bool:
     :return: whether input token looks like a valid schema identifier
     """
 
-    return re.match('[{}]{{21,22}}$'.format(B58), token) is not None
+    return bool(re.match('[{}]{{21,22}}$'.format(B58), token))
 
 
 def ok_schema_id(token: str) -> bool:
@@ -106,7 +62,7 @@ def ok_schema_id(token: str) -> bool:
     :return: whether input token looks like a valid schema identifier
     """
 
-    return re.match('[{}]{{21,22}}:2:.+:[0-9.]+$'.format(B58), token) is not None
+    return bool(re.match('[{}]{{21,22}}:2:.+:[0-9.]+$'.format(B58), token))
 
 
 def schema_key(s_id: str) -> SchemaKey:
@@ -148,7 +104,7 @@ def ok_cred_def_id(token: str) -> bool:
     :return: whether input token looks like a valid credential definition identifier
     """
 
-    return re.match('[{}]{{21,22}}:3:CL:[1-9][0-9]*(:.+)?$'.format(B58), token) is not None
+    return bool(re.match('[{}]{{21,22}}:3:CL:[1-9][0-9]*(:.+)?$'.format(B58), token))
 
 
 def cred_def_id2seq_no(cd_id: str) -> int:
@@ -186,8 +142,7 @@ def ok_rev_reg_id(token: str) -> bool:
     :return: whether input token looks like a valid revocation registry identifier
     """
 
-    return (re.match('[{}]{{21,22}}:4:[{}]{{21,22}}:3:CL:[1-9][0-9]*(:.+)?:CL_ACCUM:.+$'.format(B58, B58), token)
-        is not None)
+    return bool(re.match('[{}]{{21,22}}:4:[{}]{{21,22}}:3:CL:[1-9][0-9]*(:.+)?:CL_ACCUM:.+$'.format(B58, B58), token))
 
 
 def rev_reg_id2cred_def_id(rr_id: str) -> str:

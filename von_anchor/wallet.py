@@ -365,26 +365,26 @@ class Wallet:
 
         LOGGER.debug('Wallet.close <<<')
 
-    async def rekey_init(self, seed) -> str:
+    async def reseed_init(self, seed) -> str:
         """
-        Begin rekey operation: generate new key.
+        Begin reseed operation: generate new key.
 
         :return: new verification key
         """
 
-        LOGGER.debug('Wallet.rekey_init >>>')
+        LOGGER.debug('Wallet.reseed_init >>>')
 
         self._next_seed = seed
         rv = await did.replace_keys_start(self.handle, self.did, json.dumps({'seed': seed}))
-        LOGGER.debug('Wallet.rekey_init <<< %s', rv)
+        LOGGER.debug('Wallet.reseed_init <<< %s', rv)
         return rv
 
-    async def rekey_apply(self) -> None:
+    async def reseed_apply(self) -> None:
         """
-        Replace verification key with new verification key from rekey operation.
+        Replace verification key with new verification key from reseed operation.
         """
 
-        LOGGER.debug('Wallet.rekey_apply >>>')
+        LOGGER.debug('Wallet.reseed_apply >>>')
 
         await did.replace_keys_apply(self.handle, self.did)
         self.verkey = await did.key_for_local_did(self.handle, self.did)
@@ -399,7 +399,7 @@ class Wallet:
             }))
         LOGGER.info('Wallet %s set seed hash metadata for DID %s', self.name, self.did)
 
-        LOGGER.debug('Wallet.rekey_apply <<<')
+        LOGGER.debug('Wallet.reseed_apply <<<')
 
     async def remove(self) -> None:
         """

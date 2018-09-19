@@ -171,21 +171,21 @@ class _BaseAnchor:
 
         LOGGER.debug('_BaseAnchor.close <<<')
 
-    async def rekey(self, seed) -> None:
+    async def reseed(self, seed) -> None:
         """
         Begin key rotation for VON anchor: generate new key for submission via AnchorSmith.
 
-        :param seed: new seed for rekey
+        :param seed: new seed for ed25519 key pair
         """
 
-        LOGGER.debug('_BaseAnchor.rekey_init >>> seed: [SEED]')
+        LOGGER.debug('_BaseAnchor.reseed_init >>> seed: [SEED]')
 
-        rekey = await self.wallet.rekey_init(seed)
-        req_json = await ledger.build_nym_request(self.did, self.did, rekey, self.wallet.name, self.role())
+        reseed = await self.wallet.reseed_init(seed)
+        req_json = await ledger.build_nym_request(self.did, self.did, reseed, self.wallet.name, self.role())
         await self._sign_submit(req_json)
-        await self.wallet.rekey_apply()
+        await self.wallet.reseed_apply()
 
-        LOGGER.debug('_BaseAnchor.rekey_init <<<')
+        LOGGER.debug('_BaseAnchor.reseed_init <<<')
 
     async def get_nym(self, did: str) -> str:
         """

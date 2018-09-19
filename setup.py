@@ -20,7 +20,7 @@ from setuptools import setup, find_packages
 
 
 pkg_name = 'von_anchor'
-version = '1.6.22'
+version = '1.6.23'
 
 setup(
     name=pkg_name,

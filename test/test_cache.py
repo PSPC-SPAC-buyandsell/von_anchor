@@ -26,7 +26,8 @@ from threading import Thread
 from time import time as epoch
 from von_anchor.cache import CRED_DEF_CACHE, SCHEMA_CACHE
 from von_anchor.error import CacheIndex
-from von_anchor.util import cred_def_id, ppjson, schema_id, SchemaKey
+from von_anchor.frill import ppjson
+from von_anchor.util import cred_def_id, schema_id, SchemaKey
 
 
 @pytest.mark.asyncio

@@ -49,6 +49,7 @@ from von_anchor.error import (
     ClosedPool,
     CredentialFocus,
     JSONValidation)
+from von_anchor.frill import ppjson
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.util import (
@@ -56,7 +57,6 @@ from von_anchor.util import (
     cred_def_id,
     cred_def_id2seq_no,
     creds_display,
-    ppjson,
     proof_req2wql_all,
     proof_req_attr_referents,
     proof_req_briefs2req_creds,
@@ -1842,7 +1842,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
         schema[s_id] = json.loads(await pspcoban.get_schema(s_id))
         cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
 
-    cd_id2spec = await pspcoban.offline_intervals([   
+    cd_id2spec = await pspcoban.offline_intervals([
         cd_id[S_ID['SRI-1.0']],
         cd_id[S_ID['SRI-1.1']]
     ])
@@ -2229,65 +2229,65 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
 
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
-async def test_anchor_rekey(
+async def test_anchor_reseed(
         pool_name,
         pool_genesis_txn_path,
         pool_genesis_txn_file,
         seed_trustee1):
 
-    print('\n\n== Testing anchor rekey')
+    print('\n\n== Testing anchor reseed')
 
     now = int(time())  # ten digits, unique and disposable each run
     # Generate seeds (in case of re-run on existing ledger, use fresh disposable identity every time)
-    rk_seeds = ['Rekey-Org_Book-Anchor-{}'.format(now + i) for i in range(2)]  # makes 32 characters
-    print('\n\n== 1 == seeds: {}'.format(rk_seeds))
+    seeds = ['Reseed-Org-Book-Anchor{}'.format(now + i) for i in range(2)]  # makes 32 characters
+    print('\n\n== 1 == seeds: {}'.format(seeds))
 
     # Open pool, init anchors
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
         TrusteeAnchor(await Wallet(seed_trustee1, 'trust-anchor').create(), p)) as tan, (
-        OrgBookAnchor(await Wallet(rk_seeds[0], 'rekey-org-book', None, {'auto-remove': True}).create(), p)) as rkan:
+        OrgBookAnchor(await Wallet(seeds[0], 'reseed-org-book', None, {'auto-remove': True}).create(), p)) as rsan:
 
         assert p.handle
 
         # Publish anchor particulars to ledger if not yet present
         did2an = {}
-        for an in (tan, rkan):
+        for an in (tan, rsan):
             did2an[an.did] = an
             if not json.loads(await tan.get_nym(an.did)):
                 await tan.send_nym(an.did, an.verkey, an.wallet.name, an.role())
 
         nyms = {
             'tan': json.loads(await tan.get_nym(tan.did)),
-            'rkan': json.loads(await tan.get_nym(rkan.did))
+            'rkan': json.loads(await tan.get_nym(rsan.did))
         }
         print('\n\n== 2 == nyms: {}'.format(ppjson(nyms)))
 
         for k in nyms:
             assert 'dest' in nyms[k]
 
-        await rkan.create_link_secret('SecretLink')
-        await rkan.reset_wallet()
-        assert rkan.wallet.auto_remove  # make sure auto-remove configuration survives reset
+        await rsan.create_link_secret('SecretLink')
+        await rsan.reset_wallet()
+        assert rsan.wallet.auto_remove  # make sure auto-remove configuration survives reset
 
-        # Anchor rekey
-        old_seed2did = await rkan.wallet._seed2did()
-        assert old_seed2did == rkan.did
-        verkey_in_wallet = await did.key_for_local_did(rkan.wallet.handle, rkan.did)
-        print('\n\n== 3 == PSPC Org Book anchor DID {}, verkey in wallet {}'.format(rkan.did, verkey_in_wallet))
-        nym_resp = json.loads(await rkan.get_nym(rkan.did))
+        # Anchor reseed
+        old_seed2did = await rsan.wallet._seed2did()
+        assert old_seed2did == rsan.did
+        verkey_in_wallet = await did.key_for_local_did(rsan.wallet.handle, rsan.did)
+        print('\n\n== 3 == PSPC Org Book anchor DID {}, verkey in wallet {}'.format(rsan.did, verkey_in_wallet))
+        nym_resp = json.loads(await rsan.get_nym(rsan.did))
         print('\n\n== 4 == PSPC Org Book nym on ledger {}'.format(ppjson(nym_resp)))
 
-        old_verkey = rkan.verkey
-        await rkan.rekey(rk_seeds[1])
-        assert rkan.verkey != old_verkey
-        assert old_seed2did == await rkan.wallet._seed2did()
-        assert old_seed2did == rkan.did
+        old_verkey = rsan.verkey
+        await rsan.reseed(seeds[1])
+        assert rsan.verkey != old_verkey
+        assert old_seed2did == await rsan.wallet._seed2did()
+        assert old_seed2did == rsan.did
 
-        verkey_in_wallet = await did.key_for_local_did(rkan.wallet.handle, rkan.did)
-        print('\n\n== 5 == PSPC Org Book anchor rekey operation retains DID {} on rekey from {} to {}'.format(    
-            rkan.did,
+        verkey_in_wallet = await did.key_for_local_did(rsan.wallet.handle, rsan.did)
+        print('\n\n== 5 == PSPC Org Book anchor reseed operation retains DID {} on rekey from {} to {}'.format(
+            rsan.did,
             old_verkey,
-            rkan.verkey))
+            rsan.verkey))
 
 
 @pytest.mark.skipif(False, reason='short-circuiting')
@@ -2452,7 +2452,7 @@ async def test_anchors_cache_only(
         i += 1
 
     try:  # exercise non-buildability of cache-only proof req when there is no cache data
-        cd_id2spec = await pspcoban.offline_intervals([   
+        cd_id2spec = await pspcoban.offline_intervals([
             cd_id[s_id] for s_id in cd_id
         ])
         print('\n\n** cd_id2spec {}'.format(ppjson(cd_id2spec)))
