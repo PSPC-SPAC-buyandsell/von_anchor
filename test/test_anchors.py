@@ -49,7 +49,7 @@ from von_anchor.error import (
     ClosedPool,
     CredentialFocus,
     JSONValidation)
-from von_anchor.frill import ppjson
+from von_anchor.frill import Ink, ppjson
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.util import (
@@ -143,7 +143,7 @@ async def test_anchors_low_level_api(
         pool_genesis_txn_file,
         seed_trustee1):
 
-    print('\n\n== Testing low-level API vs. IP {} =='.format(pool_ip))
+    print(Ink.YELLOW('\n\n== Testing low-level API vs. IP {} =='.format(pool_ip)))
 
     EPOCH_START = 1234567890  # guaranteed to be before any revocation registry creation
 
@@ -1813,7 +1813,7 @@ async def test_anchors_low_level_api(
 @pytest.mark.asyncio
 async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_home):
 
-    print('\n\n== Testing offline anchor operation ==')
+    print(Ink.YELLOW('\n\n== Testing offline anchor operation =='))
 
     # Open PSPC Org Book anchor and create proof without opening node pool
     path = Path(path_home, 'pool', pool_name)
@@ -1914,7 +1914,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
 @pytest.mark.asyncio
 async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_home):
 
-    print('\n\n== Testing anchor survival on node pool restart ==')
+    print(Ink.YELLOW('\n\n== Testing anchor survival on node pool restart =='))
 
     # Open pool, close and auto-remove it
     path = Path(path_home, 'pool', pool_name)
@@ -1968,7 +1968,7 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
 @pytest.mark.asyncio
 async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_path, pool_genesis_txn_file):
 
-    print('\n\n== Testing anchor revocation cache reg update maintenance ==')
+    print(Ink.YELLOW('\n\n== Testing anchor revocation cache reg update maintenance =='))
 
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
         OrgBookAnchor(
@@ -2154,7 +2154,7 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
     THREADS = 256
     threads = []
 
-    print('\n\n== Testing anchor cache locking ==')
+    print(Ink.YELLOW('\n\n== Testing anchor cache locking =='))
 
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
         OrgBookAnchor(
@@ -2235,7 +2235,7 @@ async def test_anchor_reseed(
         pool_genesis_txn_file,
         seed_trustee1):
 
-    print('\n\n== Testing anchor reseed')
+    print(Ink.YELLOW('\n\n== Testing anchor reseed'))
 
     now = int(time())  # ten digits, unique and disposable each run
     # Generate seeds (in case of re-run on existing ledger, use fresh disposable identity every time)
@@ -2298,7 +2298,7 @@ async def test_anchors_cache_only(
         pool_genesis_txn_file,
         seed_trustee1):
 
-    print('\n\n== Testing proof/verification from cache only ==')
+    print(Ink.YELLOW('\n\n== Testing proof/verification from cache only =='))
 
     _set_cache_state(False)
 

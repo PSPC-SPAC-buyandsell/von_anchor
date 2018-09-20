@@ -26,12 +26,13 @@ from threading import Thread
 from time import time as epoch
 from von_anchor.cache import CRED_DEF_CACHE, SCHEMA_CACHE
 from von_anchor.error import CacheIndex
-from von_anchor.frill import ppjson
+from von_anchor.frill import Ink, ppjson
 from von_anchor.util import cred_def_id, schema_id, SchemaKey
 
 
 @pytest.mark.asyncio
 async def test_schema_cache():
+    print(Ink.YELLOW('\n\n== Testing Schema Cache =='))
     N = 32
     s_key = []
     schema = []
@@ -128,6 +129,9 @@ def _dot():
 @pytest.mark.asyncio
 async def test_cache_multithread():
     global cache_test_done
+
+    print(Ink.YELLOW('\n\n== Testing Cache Multithreading =='))
+
     THREADS = 64
     MODULUS = 5
     epoch_start = epoch()

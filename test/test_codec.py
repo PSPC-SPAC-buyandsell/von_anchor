@@ -20,12 +20,14 @@ import pytest
 from random import choice
 from string import printable
 from sys import float_info
+
 from von_anchor.codec import canon, canon_wql, cred_attr_value, encode, decode, raw
+from von_anchor.frill import Ink
 
 
 @pytest.mark.asyncio
 async def test_enco_deco():
-    print('\n\n== Starting encode/decode for string of length up to 1024')
+    print(Ink.YELLOW('\n\n== Testing encode/decode for string of length up to 1024'))
 
     for printable_len in range(0, 1025):
         orig = ''.join(choice(printable) for _ in range(printable_len))
@@ -103,6 +105,7 @@ async def test_enco_deco():
 
 @pytest.mark.asyncio
 async def test_canon():
+    print(Ink.YELLOW('\n\n== Testing Attribute Canonicalization =='))
     assert canon('testAttr') == 'testattr'
     assert canon(' test Attr ') == 'testattr'
     assert canon('testattr') == 'testattr'
@@ -112,6 +115,7 @@ async def test_canon():
 
 @pytest.mark.asyncio
 async def test_canon_wql():
+    print(Ink.YELLOW('\n\n== Testing WQL Canonicalization =='))
     invariant = [
         {},
         {

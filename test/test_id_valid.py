@@ -19,12 +19,16 @@ import pytest
 
 from random import choice
 from string import printable
+
+from von_anchor.frill import Ink
 from von_anchor.tails import Tails
 from von_anchor.util import ok_cred_def_id, ok_did, ok_rev_reg_id, ok_schema_id
 
 
 @pytest.mark.asyncio
 async def test_box_ids():
+    print(Ink.YELLOW('\n\n== Testing Box Identifier Checks =='))
+    
     assert ok_did('Q4zqM7aXqm7gDQkUVLng9h')  # quibble: not technically a box id
     assert not ok_did('Q4zqM7aXqm7gDQkUVLng9I')
     assert not ok_did('Q4zqM7aXqm7gDQkUVLng')
