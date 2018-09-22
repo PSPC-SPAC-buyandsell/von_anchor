@@ -49,7 +49,6 @@ from von_anchor.util import (
     ok_rev_reg_id,
     ok_schema_id,
     prune_creds_json,
-    rev_reg_id2cred_def_id,
     rev_reg_id2cred_def_id_tag)
 from von_anchor.validate_config import validate_config
 from von_anchor.wallet import Wallet
@@ -93,7 +92,7 @@ class HolderProver(_BaseAnchor):
         self._cfg = cfg or {}
         validate_config('holder-prover', self._cfg)
 
-        self._dir_cache = join(expanduser('~'), '.indy_client', 'wallet', self.wallet.name, 'cache')
+        self._dir_cache = join(expanduser('~'), '.indy_client', 'cache', self.wallet.name)
         makedirs(self._dir_cache, exist_ok=True)
 
         LOGGER.debug('HolderProver.__init__ <<<')
@@ -1383,12 +1382,15 @@ class HolderProver(_BaseAnchor):
 
         seed = self.wallet._seed
         wallet_name = self.wallet.name
+        wallet_auto_remove = self.wallet.auto_remove
         wallet_cfg = self.wallet.cfg
+        wallet_cfg['auto-remove'] = wallet_auto_remove
         wallet_xtype = self.wallet.xtype
         wallet_access_creds = self.wallet.access_creds
 
         await self.wallet.close()
-        await self.wallet.remove()
+        if not self.wallet.auto_remove:
+            await self.wallet.remove()
         self.wallet = await Wallet(
             seed,
             wallet_name,

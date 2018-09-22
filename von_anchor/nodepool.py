@@ -17,8 +17,8 @@ limitations under the License.
 
 import json
 import logging
-from collections import namedtuple
 
+from collections import namedtuple
 from enum import Enum
 
 from indy import pool
@@ -46,10 +46,11 @@ class Protocol(Enum):
 
     @classmethod
     def value_of(cls, version: str) -> 'Protocol':
-        if version == cls.V_13.value.name:
-            return cls.V_13 
-        else:  # default, including None
-            return cls.DEFAULT
+        """
+        Return enum instance corresponding to input version value ('1.6' etc.)
+        """
+
+        return cls.V_13 if version == cls.V_13.value.name else cls.DEFAULT  # default case includes version None
 
     def __str__(self) -> str:
         return self.name
@@ -66,7 +67,7 @@ class Protocol(Enum):
     def cd_id_tag(self, for_box_id: bool = False) -> str:
         """
         Return (place-holder) credential definition identifier tag for current version of node protocol.
-        At present, von_anchor always uses the tag of '0' if the protocol calls for one.
+        At present, von_anchor always uses the tag of 'tag' if the protocol calls for one.
 
         :param for_box_id: whether to prefix a colon, if current protocol uses one, in constructing
             a cred def id or rev reg id.
@@ -75,8 +76,7 @@ class Protocol(Enum):
 
         if for_box_id:
             return '' if self == Protocol.V_13 else ':tag'
-        else:
-            return 'tag'
+        return 'tag'
 
     def cred_def_id(self, issuer_did: str, schema_seq_no: int) -> str:
         """
@@ -271,6 +271,7 @@ class NodePool:
 
         try:
             await pool.set_protocol_version(self.protocol.indy())
+            LOGGER.info('Pool ledger %s set protocol %s', self.name, self.protocol)
             await pool.create_pool_ledger_config(self.name, json.dumps({'genesis_txn': str(self.genesis_txn_path)}))
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.PoolLedgerConfigAlreadyExistsError:

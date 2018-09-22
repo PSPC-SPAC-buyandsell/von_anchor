@@ -19,6 +19,7 @@ import json
 import re
 
 from copy import deepcopy
+from enum import IntEnum
 from pprint import pformat
 from typing import Any, Union
 
@@ -26,7 +27,32 @@ from von_anchor.codec import decode
 from von_anchor.nodepool import Protocol
 from von_anchor.schema_key import SchemaKey
 
+
 B58 = '1-9A-HJ-NP-Za-km-z'
+
+
+class Pen(IntEnum):
+    """
+    Class encapsulating pen colours for logging.
+    """
+
+    BLACK = 30
+    RED = 31
+    GREEN = 32
+    YELLOW = 33
+    BLUE = 34
+    MAGENTA = 35
+    CYAN = 36
+    WHITE = 37
+
+    def __call__(self, message: str) -> str:
+        """
+        Return input message in colour.
+
+        :return: input message in colour
+        """
+
+        return '\033[{}m{}\033[0m'.format(self.value, message)
 
 
 def ppjson(dumpit: Any, elide_to: int = None) -> str:
@@ -292,6 +318,8 @@ def proof_req_infos2briefs(proof_req: dict, infos: list) -> list:
     rv = []
     refts = proof_req_attr_referents(proof_req)
     for info in infos:
+        if info['cred_def_id'] not in refts:
+            continue
         brief = {
             'cred_info': info,
             'interval': {}
@@ -299,7 +327,7 @@ def proof_req_infos2briefs(proof_req: dict, infos: list) -> list:
         fro = None
         to = None
         for uuid in refts[info['cred_def_id']].values():
-            interval = proof_req['requested_attributes'][uuid]['non_revoked']
+            interval = proof_req['requested_attributes'][uuid].get('non_revoked', {})
             if 'from' in interval:
                 fro = min(fro or interval['from'], interval['from'])
             if 'to' in interval:
@@ -410,6 +438,8 @@ def proof_req_briefs2req_creds(proof_req: dict, briefs: list) -> dict:
         cred_info = brief['cred_info']
         timestamp = (brief['interval'] or {}).get('to', None)
         for attr in brief['cred_info']['attrs']:
+            if attr not in refts[cred_info['cred_def_id']]:
+                continue
             req_attr = {
                 'cred_id': cred_info['referent'],
                 'revealed': True,
@@ -627,7 +657,7 @@ def proof_req_attr_referents(proof_req: dict) -> dict:
     rv = {}
     for uuid, spec in proof_req['requested_attributes'].items():
         cd_id = None
-        for restriction in spec.get('restrictions', [{}]):
+        for restriction in spec.get('restrictions', []):
             cd_id = restriction.get('cred_def_id', None)
             if cd_id:
                 break
