@@ -263,10 +263,12 @@ class _BaseAnchor:
             LOGGER.debug('_BaseAnchor._submit <!< closed pool %s', self.pool.name)
             raise ClosedPool('Cannot submit request to closed pool {}'.format(self.pool.name))
 
+        print("_submit:", req_json)
         rv_json = await ledger.submit_request(self.pool.handle, req_json)
         await asyncio.sleep(0)
 
         resp = json.loads(rv_json)
+        print("resp:", resp)
         if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
             LOGGER.debug('_BaseAnchor._submit: <!< ledger rejected request: %s', resp['reason'])
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
@@ -403,8 +405,12 @@ class _BaseAnchor:
                 LOGGER.debug('_BaseAnchor.get_cred_def <<< %s', rv_json)
                 return rv_json
 
+            print('self.did:', self.did)
+            print('cd_id:', cd_id)
             req_json = await ledger.build_get_cred_def_request(self.did, cd_id)
+            print('req_json:', req_json)
             resp_json = await self._submit(req_json)
+            print('resp_json:', resp_json)
             resp = json.loads(resp_json)
             if not ('result' in resp and resp['result'].get('data', None)):
                 LOGGER.debug('_BaseAnchor.get_cred_def: <!< no cred def exists on %s', cd_id)
