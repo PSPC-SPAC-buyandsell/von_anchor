@@ -134,7 +134,7 @@ def _download_tails(rr_id):
     assert len(Tails.unlinked(DIR_TAILS)) == 1
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchors_api(
         pool_ip,
@@ -1807,7 +1807,7 @@ async def test_anchors_api(
     await p.close()
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_home):
 
@@ -1908,7 +1908,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     assert len(remaining) == 0
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_home):
 
@@ -1962,7 +1962,7 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
             ppjson(cred_offer_json)))
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_path, pool_genesis_txn_file):
 
@@ -2146,7 +2146,7 @@ def _get_cacheable(anchor, schema_key, seq_no, issuer_did):
         print('.. Thread {} got rev reg def {}'.format(current_thread().name, rr_id))
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_file):
     THREADS = 256
@@ -2225,7 +2225,7 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
         print('\n\n== 1 == Exercised cache locks, elapsed time: {} sec'.format(elapsed))
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchor_reseed(
         pool_name,
@@ -2288,7 +2288,7 @@ async def test_anchor_reseed(
             rsan.verkey))
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchors_cache_only(
         pool_name,
