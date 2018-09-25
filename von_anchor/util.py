@@ -240,15 +240,15 @@ def prune_creds_json(creds: dict, cred_ids: set) -> str:
     return json.dumps(rv)
 
 
-def proof_req_infos2briefs(proof_req: dict, infos: list) -> list:
+def proof_req_infos2briefs(proof_req: dict, infos: Union[dict, tuple, list]) -> list:
     """
-    Given a proof request and list of corresponding cred-infos, return a list of cred-briefs
+    Given a proof request and corresponding cred-info(s), return a list of cred-briefs
     (i.e., cred-info plus interval).
 
     The proof request must have cred def id restrictions on all requested attribute specifications.
 
     :param proof_req: proof request json
-    :param infos: list of cred-infos; e.g.,
+    :param infos: cred-info, or list/tuple thereof; e.g.,
 
     ::
         [
@@ -272,7 +272,7 @@ def proof_req_infos2briefs(proof_req: dict, infos: list) -> list:
 
     rv = []
     refts = proof_req_attr_referents(proof_req)
-    for info in infos:
+    for info in [infos] if isinstance(infos, dict) else infos:
         if info['cred_def_id'] not in refts:
             continue
         brief = {
@@ -299,14 +299,14 @@ def proof_req_infos2briefs(proof_req: dict, infos: list) -> list:
 
     return rv
 
-def proof_req_briefs2req_creds(proof_req: dict, briefs: list) -> dict:
+def proof_req_briefs2req_creds(proof_req: dict, briefs: Union[dict, tuple, list]) -> dict:
     """
-    Given a proof request and a list of cred-briefs, return a requested-creds structure.
+    Given a proof request and cred-brief(s), return a requested-creds structure.
 
     The proof request must have cred def id restrictions on all requested attribute specifications.
 
     :param proof_req_json: proof request json
-    :param briefs: list of credential briefs as indy-sdk wallet credential search returns; e.g.,
+    :param briefs: credential brief or list/tuple thereof, as indy-sdk wallet credential search returns; e.g.,
 
     ::
         [
@@ -389,7 +389,7 @@ def proof_req_briefs2req_creds(proof_req: dict, briefs: list) -> dict:
     }
 
     refts = proof_req_attr_referents(proof_req)
-    for brief in briefs:
+    for brief in [briefs] if isinstance(briefs, dict) else briefs:
         cred_info = brief['cred_info']
         timestamp = (brief['interval'] or {}).get('to', None)
         for attr in brief['cred_info']['attrs']:

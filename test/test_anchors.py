@@ -134,16 +134,16 @@ def _download_tails(rr_id):
     assert len(Tails.unlinked(DIR_TAILS)) == 1
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
-async def test_anchors_low_level_api(
+async def test_anchors_api(
         pool_ip,
         pool_name,
         pool_genesis_txn_path,
         pool_genesis_txn_file,
         seed_trustee1):
 
-    print(Ink.YELLOW('\n\n== Testing low-level API vs. IP {} =='.format(pool_ip)))
+    print(Ink.YELLOW('\n\n== Testing API vs. IP {} =='.format(pool_ip)))
 
     EPOCH_START = 1234567890  # guaranteed to be before any revocation registry creation
 
@@ -1184,9 +1184,7 @@ async def test_anchors_low_level_api(
 
     # BC Org Book anchor (as HolderProver) creates proof for cred specified by cred-id
     bc_briefs = proof_req_infos2briefs(proof_req[S_ID['BC']], [bc_info_by_cred_id])
-    print('bc briefs: {}'.format(ppjson(bc_briefs)))
     bc_req_creds = proof_req_briefs2req_creds(proof_req[S_ID['BC']], bc_briefs)
-    print('bc req creds: {}'.format(ppjson(bc_req_creds)))
     bc_proof_json = await bcoban.create_proof(
         proof_req[S_ID['BC']],
         bc_briefs,
@@ -1809,7 +1807,7 @@ async def test_anchors_low_level_api(
     await p.close()
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_home):
 
@@ -1910,7 +1908,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     assert len(remaining) == 0
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_home):
 
@@ -1964,7 +1962,7 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
             ppjson(cred_offer_json)))
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_path, pool_genesis_txn_file):
 
@@ -2148,7 +2146,7 @@ def _get_cacheable(anchor, schema_key, seq_no, issuer_did):
         print('.. Thread {} got rev reg def {}'.format(current_thread().name, rr_id))
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_file):
     THREADS = 256
@@ -2227,7 +2225,7 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
         print('\n\n== 1 == Exercised cache locks, elapsed time: {} sec'.format(elapsed))
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchor_reseed(
         pool_name,
@@ -2258,7 +2256,7 @@ async def test_anchor_reseed(
 
         nyms = {
             'tan': json.loads(await tan.get_nym(tan.did)),
-            'rkan': json.loads(await tan.get_nym(rsan.did))
+            'rsan': json.loads(await tan.get_nym(rsan.did))
         }
         print('\n\n== 2 == nyms: {}'.format(ppjson(nyms)))
 
@@ -2290,7 +2288,7 @@ async def test_anchor_reseed(
             rsan.verkey))
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchors_cache_only(
         pool_name,
@@ -2766,3 +2764,342 @@ async def test_anchors_cache_only(
 
     _set_cache_state(True)
     Caches.purge_archives(pspcoban.dir_cache, False)
+
+
+@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.asyncio
+async def test_util_wranglers(
+        pool_ip,
+        pool_name,
+        pool_genesis_txn_path,
+        pool_genesis_txn_file,
+        seed_trustee1):
+
+    print(Ink.YELLOW('\n\n== Testing utility wranglers =='))
+
+    # Open pool, init anchors
+    async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
+        SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p)) as san, (
+        OrgBookAnchor(
+            await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
+            p)) as pspcoban:
+
+        assert p.handle is not None
+
+        nyms = {
+            'san': json.loads(await san.get_nym(san.did)),
+            'pspcoban': json.loads(await san.get_nym(pspcoban.did))
+        }
+        print('\n\n== 1 == nyms: {}'.format(ppjson(nyms)))
+
+        for k in nyms:
+            assert 'dest' in nyms[k]
+
+        # Publish schema to ledger if not yet present; get from ledger
+        S_ID = {
+            'NON-REVO-X': schema_id(san.did, 'non-revo-x', '1.0'),
+            'REVO-X': schema_id(san.did, 'revo-x', '1.0')
+        }
+
+        schema_data = {
+            S_ID['NON-REVO-X']: {
+                'name': schema_key(S_ID['NON-REVO-X']).name,
+                'version': schema_key(S_ID['NON-REVO-X']).version,
+                'attr_names': [
+                    'ident',
+                    'role',
+                    'epochExpiry'
+                ]
+            },
+            S_ID['REVO-X']: {
+                'name': schema_key(S_ID['REVO-X']).name,
+                'version': schema_key(S_ID['REVO-X']).version,
+                'attr_names': [
+                    'ident',
+                    'r',
+                    'g',
+                    'b'
+                ]
+            }
+        }
+
+        # index by transaction number
+        seq_no2schema = {}
+        seq_no2schema_id = {}
+
+        # index by schema id
+        schema_json = {}
+        schema = {}
+        cred_offer_json = {}
+        cred_offer = {}
+        cred_def_json = {}
+        cred_def = {}
+        cd_id = {}
+        cred_data = {}
+        cred_id = {}
+        cred_info = {}
+        cred_brief = {}
+        cred_req_json = {}
+        cred_req = {}
+        cred_json = {}
+        cred_req_metadata_json = {}
+        cred = {}
+
+        i = 0
+        seq_no = None
+        for s_id in schema_data:
+            s_key = schema_key(s_id)
+            try:
+                swab_json = await san.get_schema(s_key)  # may exist
+            except AbsentSchema:
+                await san.send_schema(json.dumps(schema_data[s_id]))
+            schema_json[s_id] = await san.get_schema(s_key)
+            assert json.loads(schema_json[s_id])  # should exist now
+
+            schema[s_id] = json.loads(schema_json[s_id])
+            seq_no2schema_id[schema[s_id]['seqNo']] = s_id
+            print('\n\n== 2.{} == SCHEMA [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
+            assert schema[s_id]
+            i += 1
+
+        # SRI anchor creates, stores, publishes cred definitions to ledger; creates cred offers
+        i = 0
+        for s_id in schema_data:
+            s_key = schema_key(s_id)
+
+            await san.send_cred_def(
+                s_id,
+                s_id != S_ID['NON-REVO-X'],
+                4 if s_id == S_ID['REVO-X'] else None)
+            cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
+
+            assert (s_id == S_ID['NON-REVO-X']) or (
+                [f for f in Tails.links(str(san._dir_tails), san.did)
+                    if cd_id[s_id] in f] and not Tails.unlinked(str(san._dir_tails)))
+
+            cred_def_json[s_id] = await san.get_cred_def(cd_id[s_id])  # ought to exist now
+            cred_def[s_id] = json.loads(cred_def_json[s_id])
+            print('\n\n== 3.{}.0 == Cred def [{} v{}]: {}'.format(
+                i,
+                s_key.name,
+                s_key.version,
+                ppjson(json.loads(cred_def_json[s_id]))))
+            assert cred_def[s_id].get('schemaId', None) == str(schema[s_id]['seqNo'])
+
+            cred_offer_json[s_id] = await san.create_cred_offer(schema[s_id]['seqNo'])
+            cred_offer[s_id] = json.loads(cred_offer_json[s_id])
+            print('\n\n== 3.{}.1 == Credential offer [{} v{}]: {}'.format(
+                i,
+                s_key.name,
+                s_key.version,
+                ppjson(cred_offer_json[s_id])))
+            i += 1
+
+        # Setup link secret, cred reqs at HolderProver anchor
+        await pspcoban.create_link_secret('SecretLink')
+
+        i = 0
+        for s_id in schema_data:
+            s_key = schema_key(s_id)
+            (cred_req_json[s_id], cred_req_metadata_json[s_id]) = await pspcoban.create_cred_req(
+                cred_offer_json[s_id],
+                cd_id[s_id])
+            cred_req[s_id] = json.loads(cred_req_json[s_id])
+            print('\n\n== 4.{} == Credential request [{} v{}]: metadata {}, cred {}'.format(
+                i,
+                s_key.name,
+                s_key.version,
+                ppjson(cred_req_metadata_json[s_id]),
+                ppjson(cred_req_json[s_id])))
+            assert json.loads(cred_req_json[s_id])
+            i += 1
+
+        # Issuer issues creds and stores at HolderProver: get cred req, create cred, store cred
+        cred_data = {
+            S_ID['NON-REVO-X']: {
+                'ident': 'GC-12345',
+                'role': 'supervisor',
+                'epochExpiry': int(time()) + (8 * 60 * 60)
+            },
+            S_ID['REVO-X']: {
+                'ident': 'GC-12345',
+                'r': choice(range(256)),
+                'g': choice(range(256)),
+                'b': choice(range(256))
+            }
+        }
+
+        EPOCH_CRED_CREATE = {}
+        i = 0
+        for s_id in cred_data:
+            (cred_json[s_id], cred_revoc_id, epoch_creation) = await san.create_cred(
+                cred_offer_json[s_id],
+                cred_req_json[s_id],
+                cred_data[s_id])
+            EPOCH_CRED_CREATE[s_id] = epoch_creation
+            assert json.loads(cred_json[s_id])
+            print('\n\n== 5.{} == Issuer created cred (revoc id {}) at epoch {}: {}'.format(
+                i,
+                cred_revoc_id,
+                epoch_creation,
+                ppjson(cred_json[s_id])))
+            cred = json.loads(cred_json[s_id])
+
+            cred_id[s_id] = await pspcoban.store_cred(
+                cred_json[s_id],
+                cred_req_metadata_json[s_id])
+            assert (s_id == S_ID['NON-REVO-X'] or
+                len(Tails.unlinked(DIR_TAILS)) == 0)  # storage should get rev reg def from ledger and link its id
+
+            print('\n\n== 5.{}.1 == Cred id on {} in wallet: {}'.format(i, s_id, cred_id[s_id]))
+            i += 1
+
+
+        max_proof_req_json = await san.build_proof_req_json({
+            cd_id[s_id]: {
+                'attrs': schema_data[s_id]['attr_names']
+            } for s_id in schema_data
+        })
+        max_proof_req = json.loads(max_proof_req_json)
+        print('\n\n== 6 == Built maximal proof request: {}'.format(ppjson(max_proof_req)))
+        assert (len(max_proof_req['requested_attributes']) ==
+            sum([len(schema_data[s_id]['attr_names']) for s_id in schema_data]))
+
+        # Get cred info by cred def
+        i = 0
+        for s_id in cred_data:
+            cred_info[s_id] = json.loads(await pspcoban.get_cred_info_by_id(cred_id[s_id]))
+            print('\n\n== 7.{}.0 == Cred info on {} by cred_id={}: {}'.format(
+                i,
+                s_id,
+                cred_id[s_id],
+                ppjson(cred_info[s_id])))
+            assert cred_info[s_id]
+            assert cred_info[s_id]['attrs']
+
+            briefs = proof_req_infos2briefs(max_proof_req, cred_info[s_id])
+            print('\n\n== 7.{}.1 == Cred briefs for cred info on {} against maximal proof req: {}'.format(
+                i,
+                s_id,
+                ppjson(briefs)))
+            assert len(briefs) == 1
+            assert bool(cred_def[s_id]['value'].get('revocation', None)) == bool(briefs[0]['interval'])
+            i += 1
+
+        briefs = proof_req_infos2briefs(max_proof_req, [cred_info[s_id] for s_id in cred_info])
+        print('\n\n== 8 == Cred briefs for all cred infos against maximal proof req: {}'.format(ppjson(briefs)))
+        assert len(briefs) == len(cred_info)
+        assert all(bool(cred_def[briefs[i]['cred_info']['schema_id']]['value'].get('revocation', None)) ==
+            bool(briefs[i]['interval']) for i in range(len(briefs)))
+
+        req_creds = proof_req_briefs2req_creds(max_proof_req, briefs)
+        print('\n\n== 9 == Req creds for all cred briefs against maximal proof req: {}'.format(ppjson(req_creds)))
+        assert len(req_creds['requested_attributes']) == sum([len(cred_info[s_id]['attrs']) for s_id in cred_info])
+
+        proof_req_json = await san.build_proof_req_json({
+            cd_id[s_id]: {
+                'attrs': [schema_data[s_id]['attr_names'][0]]
+            } for s_id in schema_data
+        })
+        proof_req = json.loads(proof_req_json)
+        print('\n\n== 10 == Built proof request on first attrs: {}'.format(ppjson(proof_req)))
+        assert len(proof_req['requested_attributes']) == len(schema_data)
+        assert ({cd_id[s_id] for s_id in cd_id} ==
+            {proof_req['requested_attributes'][uuid]['restrictions'][0]['cred_def_id']
+                for uuid in proof_req['requested_attributes']})
+
+        briefs = proof_req_infos2briefs(proof_req, [cred_info[s_id] for s_id in cred_info])
+        print('\n\n== 11 == Cred briefs for all cred infos against first-attrs proof req: {}'.format(ppjson(briefs)))
+        assert len(briefs) == len(cred_info)
+        assert all(bool(cred_def[briefs[i]['cred_info']['schema_id']]['value'].get('revocation', None)) ==
+            bool(briefs[i]['interval']) for i in range(len(briefs)))
+
+        req_creds = proof_req_briefs2req_creds(proof_req, briefs)
+        print('\n\n== 12 == Req creds for all cred briefs against first-attrs proof req: {}'.format(ppjson(req_creds)))
+        assert len(req_creds['requested_attributes']) == len(cred_info)  # one attr per cred def
+
+        proof_req_json = await san.build_proof_req_json({
+            cd_id[S_ID['REVO-X']]: {
+                'attrs': schema_data[S_ID['REVO-X']]['attr_names']
+            }
+        })
+        proof_req = json.loads(proof_req_json)
+        print('\n\n== 13 == Built proof request for {}: {}'.format(S_ID['REVO-X'], ppjson(proof_req)))
+        assert len(proof_req['requested_attributes']) == len(schema_data[S_ID['REVO-X']]['attr_names'])
+        assert ({cd_id[S_ID['REVO-X']]} ==
+            {proof_req['requested_attributes'][uuid]['restrictions'][0]['cred_def_id']
+                for uuid in proof_req['requested_attributes']})
+
+        briefs = proof_req_infos2briefs(proof_req, [cred_info[s_id] for s_id in cred_info])
+        print('\n\n== 14 == Cred briefs for all cred infos against {} proof req: {}'.format(
+            S_ID['REVO-X'],
+            ppjson(briefs)))
+        assert len(briefs) == 1
+        assert all(bool(cred_def[briefs[i]['cred_info']['schema_id']]['value'].get('revocation', None)) ==
+            bool(briefs[i]['interval']) for i in range(len(briefs)))
+
+        req_creds = proof_req_briefs2req_creds(proof_req, briefs)
+        print('\n\n== 15 == Req creds for all cred briefs against {} proof req: {}'.format(
+            S_ID['REVO-X'],
+            ppjson(req_creds)))
+        assert len(req_creds['requested_attributes']) == len(schema_data[S_ID['REVO-X']]['attr_names'])
+        
+        briefs = proof_req_infos2briefs(proof_req, cred_info[S_ID['REVO-X']])
+        print('\n\n== 16 == Cred briefs for {} cred info against {} proof req: {}'.format(
+            S_ID['REVO-X'],
+            S_ID['REVO-X'],
+            ppjson(briefs)))
+        assert len(briefs) == 1
+        assert all(bool(cred_def[briefs[i]['cred_info']['schema_id']]['value'].get('revocation', None)) ==
+            bool(briefs[i]['interval']) for i in range(len(briefs)))
+
+        req_creds = proof_req_briefs2req_creds(proof_req, briefs)
+        print('\n\n== 17 == Req creds for {} cred brief against {} proof req: {}'.format(
+            S_ID['REVO-X'],
+            S_ID['REVO-X'],
+            ppjson(req_creds)))
+        assert len(req_creds['requested_attributes']) == len(schema_data[S_ID['REVO-X']]['attr_names'])
+
+        briefs = proof_req_infos2briefs(proof_req, cred_info[S_ID['NON-REVO-X']])
+        print('\n\n== 18 == Cred briefs for {} cred info against {} proof req: {}'.format(
+            S_ID['NON-REVO-X'],
+            S_ID['REVO-X'],
+            ppjson(briefs)))
+        assert len(briefs) == 0
+        assert all(bool(cred_def[briefs[i]['cred_info']['schema_id']]['value'].get('revocation', None)) ==
+            bool(briefs[i]['interval']) for i in range(len(briefs)))
+
+        req_creds = proof_req_briefs2req_creds(proof_req, briefs)
+        print('\n\n== 19 == Req creds for {} cred brief against {} proof req: {}'.format(
+            S_ID['NON-REVO-X'],
+            S_ID['REVO-X'],
+            ppjson(req_creds)))
+        assert len(req_creds['requested_attributes']) == 0
+
+        proof_req_json = await san.build_proof_req_json({
+            cd_id[S_ID['NON-REVO-X']]: {
+                'attrs': [schema_data[S_ID['NON-REVO-X']]['attr_names'][0]]
+            }
+        })
+        proof_req = json.loads(proof_req_json)
+        print('\n\n== 20 == Built proof request on {} first attr: {}'.format(S_ID['NON-REVO-X'], ppjson(proof_req)))
+        assert len(proof_req['requested_attributes']) == 1
+        assert ({cd_id[S_ID['NON-REVO-X']]} ==
+            {proof_req['requested_attributes'][uuid]['restrictions'][0]['cred_def_id']
+                for uuid in proof_req['requested_attributes']})
+
+        briefs = proof_req_infos2briefs(proof_req, [cred_info[s_id] for s_id in cred_info])
+        print('\n\n== 21 == Cred briefs for {} cred info against first-attr {} proof req: {}'.format(
+            S_ID['NON-REVO-X'],
+            S_ID['NON-REVO-X'],
+            ppjson(briefs)))
+        assert len(briefs) == 1
+        assert all(bool(cred_def[briefs[i]['cred_info']['schema_id']]['value'].get('revocation', None)) ==
+            bool(briefs[i]['interval']) for i in range(len(briefs)))
+
+        req_creds = proof_req_briefs2req_creds(proof_req, briefs)
+        print('\n\n== 22 == Req creds for {} cred brief against first-attr {} proof req: {}'.format(
+            S_ID['NON-REVO-X'],
+            S_ID['NON-REVO-X'],
+            ppjson(req_creds)))
+        assert len(req_creds['requested_attributes']) == 1
