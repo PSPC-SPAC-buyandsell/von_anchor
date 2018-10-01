@@ -309,9 +309,7 @@ class Issuer(Origin):
             for tag in [str(t) for t in range(int(Tails.next_tag(self._dir_tails, cd_id)[0]))]:  # '0' to str(next-1)
                 await self._sync_revoc(rev_reg_id(cd_id, tag), rr_size if tag == 0 else None)
 
-        dir_cred_def = join(self._dir_tails, cd_id)
-        if not isdir(dir_cred_def):  # make sure a directory exists for box id collection when required, revo or not
-            makedirs(dir_cred_def, exist_ok=True)
+        makedirs(join(self._dir_tails, cd_id), exist_ok=True)  # make sure dir exists for box id collection, revo or not
 
         LOGGER.debug('Issuer.send_cred_def <<< %s', rv_json)
         return rv_json

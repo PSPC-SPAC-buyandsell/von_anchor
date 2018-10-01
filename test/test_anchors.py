@@ -38,6 +38,7 @@ from von_anchor.error import (
     AbsentCredDef,
     AbsentInterval,
     AbsentLinkSecret,
+    AbsentMetadata,
     AbsentSchema,
     AbsentTails,
     AbsentWallet,
@@ -336,6 +337,16 @@ async def test_anchors_api(
     holder_prover = {
         bcran.did: bcoban,
         san.did: pspcoban
+    }
+
+    x_schema_data = {
+        'name': 'x-schema',
+        'version': 'x-version-bad.chars',
+        'attr_names': [
+            'a',
+            'b',
+            'c'
+        ]
     }
 
     try:
@@ -2242,9 +2253,8 @@ async def test_anchor_reseed(
 
     # Open pool, init anchors
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-        TrusteeAnchor(await Wallet(seed_trustee1, 'trust-anchor').create(), p)) as tan, (
-        OrgBookAnchor(await Wallet(seeds[0], 'reseed-org-book', None, {'auto-remove': True}).create(), p)) as rsan:
-
+            TrusteeAnchor(await Wallet(seed_trustee1, 'trust-anchor').create(), p)) as tan, (
+            OrgBookAnchor(await Wallet(seeds[0], 'reseed-org-book').create(), p)) as rsan:
         assert p.handle
 
         # Publish anchor particulars to ledger if not yet present
@@ -2264,16 +2274,14 @@ async def test_anchor_reseed(
             assert 'dest' in nyms[k]
 
         await rsan.create_link_secret('SecretLink')
-        await rsan.reset_wallet()
-        assert rsan.wallet.auto_remove  # make sure auto-remove configuration survives reset
 
-        # Anchor reseed
+        # Anchor reseed wallet
         old_seed2did = await rsan.wallet._seed2did()
         assert old_seed2did == rsan.did
         verkey_in_wallet = await did.key_for_local_did(rsan.wallet.handle, rsan.did)
-        print('\n\n== 3 == PSPC Org Book anchor DID {}, verkey in wallet {}'.format(rsan.did, verkey_in_wallet))
+        print('\n\n== 3 == Anchor DID {}, verkey in wallet {}'.format(rsan.did, verkey_in_wallet))
         nym_resp = json.loads(await rsan.get_nym(rsan.did))
-        print('\n\n== 4 == PSPC Org Book nym on ledger {}'.format(ppjson(nym_resp)))
+        print('\n\n== 4 == Anchor nym on ledger {}'.format(ppjson(nym_resp)))
 
         old_verkey = rsan.verkey
         await rsan.reseed(seeds[1])
@@ -2282,11 +2290,28 @@ async def test_anchor_reseed(
         assert old_seed2did == rsan.did
 
         verkey_in_wallet = await did.key_for_local_did(rsan.wallet.handle, rsan.did)
-        print('\n\n== 5 == PSPC Org Book anchor reseed operation retains DID {} on rekey from {} to {}'.format(
+        print('\n\n== 5 == Anchor reseed operation retains DID {} on rekey from {} to {}'.format(
             rsan.did,
             old_verkey,
             rsan.verkey))
 
+    # Fail to re-open on old seed
+    try:
+        async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
+                OrgBookAnchor(await Wallet(seeds[0], 'reseed-org-book').create(), p)) as rsan:
+            assert False  # should have failed to open wallet on old seed
+    except AbsentMetadata:
+        print('\n\n== 6 == Anchor failed to re-open wallet on old seed as expected')
+
+    # Re-open on new seed
+    async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
+            OrgBookAnchor(await Wallet(seeds[1], 'reseed-org-book', None, {'auto-remove': True}).create(), p)) as rsan:
+        assert p.handle
+
+        print('\n\n== 7 == Re-opened anchor wallet on new seed: using verkey {}'.format(rsan.verkey))
+        await rsan.create_link_secret('SecretLink')
+        await rsan.reset_wallet()
+        assert rsan.wallet.auto_remove  # make sure auto-remove configuration survives reset
 
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio

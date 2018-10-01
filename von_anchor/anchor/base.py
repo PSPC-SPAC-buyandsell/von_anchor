@@ -228,24 +228,6 @@ class _BaseAnchor:
         LOGGER.debug('_BaseAnchor.role <<< %s', rv)
         return rv
 
-    async def _____ensure_txn_applied(self, seq_no: int) -> None:
-        """
-        Wait, a second at a time, until transaction on given sequence number appears on the ledger.
-        Time out after 16 seconds and raise BadLedgerTxn.
-
-        :param seq_no: transaction sequence number
-        """
-
-        for _ in range(16):
-            txn = json.loads(await self.get_txn(seq_no))
-
-            if txn:
-                LOGGER.debug('_BaseAnchor._ensure_txn_applied <<<')
-                return
-            await asyncio.sleep(1)
-
-        raise BadLedgerTxn('Timed out waiting on txn #{}'.format(seq_no))
-
     async def _submit(self, req_json: str) -> str:
         """
         Submit (json) request to ledger; return (json) result.
@@ -253,7 +235,6 @@ class _BaseAnchor:
         Raise ClosedPool if pool is not yet open, or BadLedgerTxn on failure.
 
         :param req_json: json of request to sign and submit
-        :param wait: whether to wait for the transaction to appear on the ledger before proceeding
         :return: json response
         """
 
@@ -287,7 +268,6 @@ class _BaseAnchor:
         pool is no longer extant, or BadLedgerTxn on any other failure.
 
         :param req_json: json of request to sign and submit
-        :param wait: whether to wait for the transaction to appear on the ledger before proceeding
         :return: json response
         """
 

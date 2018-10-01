@@ -225,6 +225,9 @@ class Wallet:
         Operation sequence create/store-DID/close does not auto-remove the wallet on close,
         even if so configured.
 
+        Raise AbsentMetadata on attempt to re-use configuration for wallet initialized
+        with seed not corresponding to DID in metadata.
+
         :return: current object
         """
 
@@ -252,36 +255,37 @@ class Wallet:
             json.dumps(self.access_creds))
         LOGGER.info('Opened wallet %s on handle %s', self.name, self.handle)
 
-        if self._created:
-            (self._did, self.verkey) = await did.create_and_store_my_did(
-                self.handle,
-                json.dumps({'seed': self._seed}))
-            LOGGER.debug('Wallet %s stored new DID %s, verkey %s from seed', self.name, self.did, self.verkey)
-            await did.set_did_metadata(
-                self.handle,
-                self.did,
-                json.dumps({
-                    'seed_hash': sha256(self._seed.encode()).hexdigest()
-                }))
-            LOGGER.info('Wallet %s set seed hash metadata for DID %s', self.name, self.did)
-        else:
-            self._created = True
-            LOGGER.debug('Attempting to derive seed to did for wallet %s', self.name)
-            self._did = await self._seed2did()
-            try:
-                self.verkey = await did.key_for_local_did(self.handle, self.did)
-            except IndyError:
-                LOGGER.debug(
-                    'Wallet.create <!< no verkey for DID %s on ledger, wallet %s may pertain to another',
+        try:
+            if self._created:
+                (self._did, self.verkey) = await did.create_and_store_my_did(
+                    self.handle,
+                    json.dumps({'seed': self._seed}))
+                LOGGER.debug('Wallet %s stored new DID %s, verkey %s from seed', self.name, self.did, self.verkey)
+                await did.set_did_metadata(
+                    self.handle,
                     self.did,
-                    self.name)
-                raise CorruptWallet(
-                    'No verkey for DID {} on ledger, wallet {} may pertain to another'.format(
+                    json.dumps({
+                        'seed_hash': sha256(self._seed.encode()).hexdigest()
+                    }))
+                LOGGER.info('Wallet %s set seed hash metadata for DID %s', self.name, self.did)
+            else:
+                self._created = True
+                LOGGER.debug('Attempting to derive seed to did for wallet %s', self.name)
+                self._did = await self._seed2did()
+                try:
+                    self.verkey = await did.key_for_local_did(self.handle, self.did)
+                except IndyError:
+                    LOGGER.debug(
+                        'Wallet.create <!< no verkey for DID %s on ledger, wallet %s may pertain to another',
                         self.did,
-                        self.name))
-            LOGGER.info('Wallet %s got verkey %s for existing DID %s', self.name, self.verkey, self.did)
-
-        await wallet.close_wallet(self.handle)
+                        self.name)
+                    raise CorruptWallet(
+                        'No verkey for DID {} on ledger, wallet {} may pertain to another'.format(
+                            self.did,
+                            self.name))
+                LOGGER.info('Wallet %s got verkey %s for existing DID %s', self.name, self.verkey, self.did)
+        finally:
+            await wallet.close_wallet(self.handle)
 
         LOGGER.debug('Wallet.create <<<')
         return self
@@ -292,7 +296,8 @@ class Wallet:
         For use in monolithic call opening, using, and closing wallet.
 
         Raise any IndyError causing failure to open wallet, or AbsentWallet on attempt to enter wallet
-        not yet created.
+        not yet created. Raise AbsentMetadata on attempt to open wallet initialized with seed not
+        corresponding to DID in metadata.
 
         :return: current object
         """
@@ -307,6 +312,10 @@ class Wallet:
         """
         Explicit entry. Open wallet as configured, for later closure via close().
         For use when keeping wallet open across multiple calls.
+
+        Raise any IndyError causing failure to open wallet, or AbsentWallet on attempt to enter wallet
+        not yet created. Raise AbsentMetadata on attempt to open wallet initialized with seed not
+        corresponding to DID in metadata.
 
         :return: current object
         """
