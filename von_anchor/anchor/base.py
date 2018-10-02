@@ -248,14 +248,9 @@ class _BaseAnchor:
         await asyncio.sleep(0)
 
         resp = json.loads(rv_json)
-        if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
+        if resp.get('op', '') in ('REQNACK', 'REJECT'):
             LOGGER.debug('_BaseAnchor._submit: <!< ledger rejected request: %s', resp['reason'])
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
-
-        seq_no = resp.get('result', {}).get('seqNo', None)
-        if 'reason' in resp and seq_no is None:
-            LOGGER.debug('_BaseAnchor._submit: <!< response indicates no transaction: %s', resp['reason'])
-            raise BadLedgerTxn('Response indicates no transaction: {}'.format(resp['reason']))
 
         LOGGER.debug('_BaseAnchor._submit <<< %s', rv_json)
         return rv_json
@@ -296,14 +291,9 @@ class _BaseAnchor:
                     x_indy.error_code))
 
         resp = json.loads(rv_json)
-        if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
+        if resp.get('op', '') in ('REQNACK', 'REJECT'):
             LOGGER.debug('_BaseAnchor._sign_submit: ledger rejected request: %s', resp['reason'])
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
-
-        seq_no = resp.get('result', {}).get('seqNo', None)
-        if 'reason' in resp and seq_no is None:
-            LOGGER.debug('_BaseAnchor._sign_submit: <!< response indicates no transaction: %s', resp['reason'])
-            raise BadLedgerTxn('Response indicates no transaction: {}'.format(resp['reason']))
 
         LOGGER.debug('_BaseAnchor._sign_submit <<< %s', rv_json)
         return rv_json
