@@ -37,9 +37,10 @@ class BCRegistrarAnchor(Issuer):
     pass
 
 
-class OrgBookAnchor(HolderProver):
+class OrgBookAnchor(HolderProver, Issuer):
     """
-    OrgBookAnchor demonstrator class acts as a holder-prover.
+    OrgBookAnchor demonstrator class acts as an issuer for its own credentials (principally metadata),
+    and as a holder-prover for its own and any of its registrars' credentials.
     """
 
     pass

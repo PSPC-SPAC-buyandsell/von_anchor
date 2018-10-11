@@ -435,6 +435,16 @@ async def test_anchors_api(
             ppjson(cred_offer_json[s_id])))
         i += 1
 
+    try:
+        await pspcoban.send_cred_def(
+            S_ID['NON-REVO'],
+            False,
+            None)  # Make sure org book agents are also fully fledged issuers: issue a cred def
+    except:
+        assert False
+
+    cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
+
     big_proof_req_json = await san.build_proof_req_json({
         cd_id[s_id]: {
             'attrs': schema_data[seq_no2schema_id[cred_def_id2seq_no(cd_id[s_id])]]['attr_names'][0:2]
