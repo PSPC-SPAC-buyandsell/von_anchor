@@ -515,12 +515,12 @@ class Issuer(Origin):
                     ...
                 ],
                 "cred_def_id": [
-                    "R17v42T4pk...:3:CL:19:0",
+                    "R17v42T4pk...:3:CL:19:tag",
                     ...
                 ]
                 "rev_reg_id": [
-                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:0",
-                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:1",
+                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:tag:CL_ACCUM:0",
+                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:tag:CL_ACCUM:1",
                     ...
                 ]
             }

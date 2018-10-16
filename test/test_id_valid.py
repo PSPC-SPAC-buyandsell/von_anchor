@@ -49,24 +49,24 @@ async def test_box_ids():
     assert not ok_schema_id('Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0a')
     assert not ok_schema_id('Q4zqM7aXqm7gDQkUVLng9I:2:bc-reg:1.0')  # I is not in base58
 
-    assert ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:0')  # protocol >= 1.4
+    assert ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:tag')  # protocol >= 1.4
     assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:4:CL:18:0')
     assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h::CL:18:0')
-    assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9I:3:CL:18:0')
-    assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3::18:0')
-    assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:18:0')
-    assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:18z:0')
+    assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9I:3:CL:18:tag')
+    assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3::18:tag')
+    assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:18:tag')
+    assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:18z:tag')
     assert ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:18')  # protocol == 1.3
 
-    assert ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:0:CL_ACCUM:1')  # protocol >= 1.4
-    assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:5:LjgpST2rjsoxYegQDRm7EL:3:CL:20:0:CL_ACCUM:1')
+    assert ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:tag:CL_ACCUM:1')  # protocol >= 1.4
+    assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:5:LjgpST2rjsoxYegQDRm7EL:3:CL:20:tag:CL_ACCUM:1')
     assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:4:CL:20:0:CL_ACCUM:1')
     assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL::CL:20:0:CL_ACCUM:1')
-    assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:NOT_CL:20:0:CL_ACCUM:1')
-    assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20z:0:CL_ACCUM:1')
+    assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:NOT_CL:20:tag:CL_ACCUM:1')
+    assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20z:tag:CL_ACCUM:1')
     assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20::CL_ACCUM:1')
-    assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:0::1')
-    assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:0:1')
-    assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:0:CL_ACCUM:')
-    assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:0:CL_ACCUM')
+    assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:tag::1')
+    assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:tag:1')
+    assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:tag:CL_ACCUM:')
+    assert not ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:tag:CL_ACCUM')
     assert ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:CL_ACCUM:1')  # protocol == 1.3

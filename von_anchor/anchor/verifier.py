@@ -53,8 +53,8 @@ class Verifier(_BaseAnchor):
         ::
 
             {
-                'parse-cache-on-open': True,
-                'archive-on-close': {
+                'parse-caches-on-open': True,
+                'archive-verifier-caches-on-close': {
                     'schema_id': [
                         'R17v42T4pk...:2:tombstone:1.2',
                         '9cHbp54C8n...:2:business:2.0',
@@ -62,17 +62,17 @@ class Verifier(_BaseAnchor):
                         ...
                     ],
                     'cred_def_id': [
-                        'R17v42T4pk...:3:CL:19:0',
-                        '9cHbp54C8n...:3:CL:37:0',
-                        'Pcq76cx6jE...:3:CL:51:0',
+                        'R17v42T4pk...:3:CL:19:tag',
+                        '9cHbp54C8n...:3:CL:37:tag',
+                        'Pcq76cx6jE...:3:CL:51:tag',
                         ...
                     ]
                     'rev_reg_id': [
-                        'R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:0',
-                        'R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:1',
-                        '9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:0',
-                        '9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:1',
-                        '9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:2',
+                        'R17v42T4pk...:4:R17v42T4pk...:3:CL:19:tag:CL_ACCUM:0',
+                        'R17v42T4pk...:4:R17v42T4pk...:3:CL:19:tag:CL_ACCUM:1',
+                        '9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:tag:CL_ACCUM:0',
+                        '9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:tag:CL_ACCUM:1',
+                        '9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:tag:CL_ACCUM:2',
                         ...
                     ]
                 }
@@ -197,7 +197,7 @@ class Verifier(_BaseAnchor):
         ::
 
             {
-                'Vx4E82R17q...:3:CL:16:0': {
+                'Vx4E82R17q...:3:CL:16:tag': {
                     'attrs': [  # request attrs 'name' and 'favouriteDrink' from this cred def's schema
                         'name',
                         'favouriteDrink'
@@ -207,19 +207,19 @@ class Verifier(_BaseAnchor):
                     }
                     'interval': 1528116008  # same instant for all attrs and preds of corresponding schema
                 },
-                'R17v42T4pk...:3:CL:19:0': None,  # request all attrs, no preds, default intervals on all attrs
-                'e3vc5K168n...:3:CL:23:0': {},  # request all attrs, no preds, default intervals on all attrs
-                'Z9ccax812j...:3:CL:27:0': {  # request all attrs, no preds, this interval on all attrs
+                'R17v42T4pk...:3:CL:19:tag': None,  # request all attrs, no preds, default intervals on all attrs
+                'e3vc5K168n...:3:CL:23:tag': {},  # request all attrs, no preds, default intervals on all attrs
+                'Z9ccax812j...:3:CL:27:tag': {  # request all attrs, no preds, this interval on all attrs
                     'interval': (1528112408, 1528116008)
                 },
-                '9cHbp54C8n...:3:CL:37:0': {  # request no attrs, one pred, specify interval on pred
+                '9cHbp54C8n...:3:CL:37:tag': {  # request no attrs, one pred, specify interval on pred
                     'attrs': [],  # or equivalently, 'attrs': None
                     'minima': {
                         'employees': '50'  # nicety: implementation converts to int for caller
                     },
                     'interval': (1528029608, 1528116008)
                 },
-                '6caBcmLi33...:3:CL:41:0': {  # all attrs, one pred, default intervals to now on attrs & pred
+                '6caBcmLi33...:3:CL:41:tag': {  # all attrs, one pred, default intervals to now on attrs & pred
                     'minima': {
                         'regEpoch': 1514782800
                     }
@@ -295,34 +295,36 @@ class Verifier(_BaseAnchor):
         LOGGER.debug('Verifier.build_proof_req_json <<< %s', rv_json)
         return rv_json
 
-    async def load_cache(self, archive: bool = False) -> int:
+    async def load_cache_for_verification(self, archive: bool = False) -> int:
         """
-        Load caches and archive enough to go offline and be able to verify proof
+        Load caches and optionally archive enough to go offline and be able to verify proof
         on content marked of interest in configuration.
 
         Return timestamp (epoch seconds) of cache load event, also used as subdirectory
         for cache archives.
 
-        :param archive: whether to archive caches to disk
+        :param archive: True to archive now or False to demur (subclasses may still need to augment caches further)
         :return: cache load event timestamp (epoch seconds)
         """
 
-        LOGGER.debug('Verifier.load_cache >>> archive: %s', archive)
+        LOGGER.debug('Verifier.load_cache_for_verification >>> archive: %s', archive)
+
+        # Once indy-sdk supports get-cred-def by schema-id, get-rev-reg by schema-id/cred-def-id, should cascade
 
         rv = int(time())
-        for s_id in self.cfg.get('archive-on-close', {}).get('schema_id', {}):
+        for s_id in self.cfg.get('archive-verifier-caches-on-close', {}).get('schema_id', {}):
             if ok_schema_id(s_id):
                 with SCHEMA_CACHE.lock:
                     await self.get_schema(s_id)
             else:
                 LOGGER.info('Not archiving schema for specified bad id %s', s_id)
-        for cd_id in self.cfg.get('archive-on-close', {}).get('cred_def_id', {}):
+        for cd_id in self.cfg.get('archive-verifier-caches-on-close', {}).get('cred_def_id', {}):
             if ok_cred_def_id(cd_id):
                 with CRED_DEF_CACHE.lock:
                     await self.get_cred_def(cd_id)
             else:
                 LOGGER.info('Not archiving cred def for specified bad id %s', cd_id)
-        for rr_id in self.cfg.get('archive-on-close', {}).get('rev_reg_id', {}):
+        for rr_id in self.cfg.get('archive-verifier-caches-on-close', {}).get('rev_reg_id', {}):
             if ok_rev_reg_id(rr_id):
                 await self._get_rev_reg_def(rr_id)
                 with REVO_CACHE.lock:
@@ -342,7 +344,7 @@ class Verifier(_BaseAnchor):
 
         if archive:
             Caches.archive(self.dir_cache)
-        LOGGER.debug('Verifier.load_cache <<< %s', rv)
+        LOGGER.debug('Verifier.load_cache_for_verification <<< %s', rv)
         return rv
 
     async def open(self) -> 'Verifier':
@@ -357,7 +359,7 @@ class Verifier(_BaseAnchor):
         LOGGER.debug('Verifier.open >>>')
 
         await super().open()
-        if self.cfg.get('parse-cache-on-open', False):
+        if self.cfg.get('parse-caches-on-open', False):
             Caches.parse(self.dir_cache)
 
         LOGGER.debug('Verifier.open <<<')
@@ -374,8 +376,8 @@ class Verifier(_BaseAnchor):
 
         LOGGER.debug('Verifier.close >>>')
 
-        if self.cfg.get('archive-on-close', {}):
-            await self.load_cache(True)
+        if self.cfg.get('archive-verifier-caches-on-close', {}):
+            await self.load_cache_for_verification(True)
             Caches.purge_archives(self.dir_cache, True)
 
         await super().close()

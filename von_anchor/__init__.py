@@ -20,4 +20,4 @@ from .anchor.origin import Origin
 from .anchor.issuer import Issuer
 from .anchor.holder_prover import HolderProver
 from .anchor.verifier import Verifier
-from .anchor.demo import TrusteeAnchor, SRIAnchor, BCRegistrarAnchor, OrgBookAnchor
+from .anchor.demo import BCRegistrarAnchor, OrgBookAnchor, OrgHubAnchor, SRIAnchor, TrusteeAnchor
