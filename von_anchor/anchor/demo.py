@@ -122,7 +122,7 @@ class OrgHubAnchor(OrgBookAnchor, Issuer, Verifier):
     @staticmethod
     def role() -> str:
         """
-        Return the indy-sdk role for SRI anchor.
+        Return the indy-sdk role for Org Hub anchor.
 
         :return: role string
         """
