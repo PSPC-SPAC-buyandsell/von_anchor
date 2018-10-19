@@ -28,6 +28,29 @@ from von_anchor.validate_config import validate_config
 
 LOGGER = logging.getLogger(__name__)
 
+
+
+"""
+Utility function for loading a wallet storage plug-in
+This is implemented as a shared library, and must be explicitely loaded before creating or opening a wallet
+Corresponds to the indy-sdk wallet api function:
+async def register_wallet_storage_library(storage_type: str, c_library: str, fn_pfx: str):
+"""
+async def register_wallet_storage_library(storage_type: str, c_library: str, fn_pfx: str=""):
+    try:
+        await wallet.register_wallet_storage_library(
+            storage_type=storage_type,
+            c_library=c_library,
+            fn_pfx=fn_pfx)
+        LOGGER.info('Loaded wallet library type %s (%s)', storage_type, c_library)
+    except IndyError as x_indy:
+        LOGGER.error(
+            'Wallet.register <!< indy error code %s on load of wallet storage %s %s',
+            x_indy.error_code,
+            storage_type, c_library)
+        raise
+
+
 class Wallet:
     """
     Class encapsulating indy-sdk wallet.
