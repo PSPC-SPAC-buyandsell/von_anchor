@@ -49,10 +49,10 @@ CONFIG_JSON_SCHEMA = {
         '$schema': 'http://json-schema.org/draft-04/schema',
         'type': 'object',
         'properties': {
-            'parse-cache-on-open': {
+            'parse-caches-on-open': {
                 'type': 'boolean'
             },
-            'archive-cache-on-close': {
+            'archive-holder-prover-caches-on-close': {
                 'type': 'boolean'
             }
         },
@@ -62,10 +62,49 @@ CONFIG_JSON_SCHEMA = {
         '$schema': 'http://json-schema.org/draft-04/schema',
         'type': 'object',
         'properties': {
-            'parse-cache-on-open': {
+            'parse-caches-on-open': {
                 'type': 'boolean'
             },
-            'archive-on-close': {
+            'archive-verifier-caches-on-close': {
+                'type': 'object',
+                'properties': {
+                    'schema_id': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'string',
+                            'uniqueItems': True
+                        }
+                    },
+                    'cred_def_id': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'string',
+                            'uniqueItems': True
+                        }
+                    },
+                    'rev_reg_id': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'string',
+                            'uniqueItems': True
+                        }
+                    }
+                }
+            }
+        },
+        'additionalProperties': False
+    },
+    'org-hub': {
+        '$schema': 'http://json-schema.org/draft-04/schema',
+        'type': 'object',
+        'properties': {
+            'parse-caches-on-open': {
+                'type': 'boolean'
+            },
+            'archive-holder-prover-caches-on-close': {
+                'type': 'boolean'
+            },
+            'archive-verifier-caches-on-close': {
                 'type': 'object',
                 'properties': {
                     'schema_id': {

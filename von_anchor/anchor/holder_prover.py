@@ -75,8 +75,8 @@ class HolderProver(_BaseAnchor):
         ::
 
             {
-                'parse-cache-on-open': True
-                'archive-cache-on-close': True,
+                'parse-caches-on-open': True,
+                'archive-holder-prover-caches-on-close': True
             }
 
         """
@@ -260,7 +260,7 @@ class HolderProver(_BaseAnchor):
         ::
 
             {
-                'Vx4E82R17q...:3:CL:16:0': {
+                'Vx4E82R17q...:3:CL:16:tag': {
                     'attr-match': {
                         'name': 'Alex',
                         'sex': 'M',
@@ -271,16 +271,16 @@ class HolderProver(_BaseAnchor):
                         'score': 100  # if more than one minimum present, combined conjunctively (i.e., via AND)
                     }
                 },
-                'R17v42T4pk...:3:CL:19:0': {
+                'R17v42T4pk...:3:CL:19:tag': {
                     'attr-match': {
                         'height': 175,
                         'birthdate': '1975-11-15'  # combined conjunctively (i.e., via AND)
                     }
                 },
-                'Z9ccax812j...:3:CL:27:0': {
+                'Z9ccax812j...:3:CL:27:tag': {
                     'attr-match': {}  # match all attributes on this cred def
                 },
-                '9cHbp54C8n...:3:CL:37:0': {
+                '9cHbp54C8n...:3:CL:37:tag': {
                     'minima': {  # request all attributes on this cred def, request preds specifying employees>=50
                         'employees' : 50,
                     }
@@ -406,7 +406,7 @@ class HolderProver(_BaseAnchor):
         LOGGER.debug('HolderProver.open >>>')
 
         await super().open()
-        if self.cfg.get('parse-cache-on-open', False):
+        if self.cfg.get('parse-caches-on-open', False):
             Caches.parse(self.dir_cache)
 
         for path_rr_id in Tails.links(self._dir_tails):
@@ -425,8 +425,8 @@ class HolderProver(_BaseAnchor):
 
         LOGGER.debug('HolderProver.close >>>')
 
-        if self.cfg.get('archive-cache-on-close', False):
-            await self.load_cache(True)
+        if self.cfg.get('archive-holder-prover-caches-on-close', False):
+            await self.load_cache_for_proof(True)
             Caches.purge_archives(self.dir_cache, True)
 
         await super().close()
@@ -473,17 +473,17 @@ class HolderProver(_BaseAnchor):
         ::
 
             {
-                'Vx4E82R17q...:3:CL:16:0': {
+                'Vx4E82R17q...:3:CL:16:tag': {
                     'interval': (1528111730, 1528115832)
                 },
-                'R17v42T4pk...:3:CL:19:0': {},
-                'Z9ccax812j...:3:CL:27:0': {
+                'R17v42T4pk...:3:CL:19:tag': {},
+                'Z9ccax812j...:3:CL:27:tag': {
                     'interval': (1528112408, 1528116008)
                 },
-                '9cHbp54C8n...:3:CL:37:0': {
+                '9cHbp54C8n...:3:CL:37:tag': {
                     'interval': 1528116426
                 },
-                '6caBcmLi33...:3:CL:41:0': {},
+                '6caBcmLi33...:tag:CL:41:tag': {},
                 ...
             }
         """
@@ -618,18 +618,19 @@ class HolderProver(_BaseAnchor):
         LOGGER.debug('HolderProver.store_cred <<< %s', rv)
         return rv
 
-    async def load_cache(self, archive: bool = False) -> int:
+    async def load_cache_for_proof(self, archive: bool = False) -> int:
         """
-        Load caches and archive enough to go offline and be able to generate proof
+        Load caches and optionally archive enough to go offline and be able to generate proof
         on all credentials in wallet.
 
         Return timestamp (epoch seconds) of cache load event, also used as subdirectory
         for cache archives.
 
+        :param archive: True to archive now or False to demur (subclasses may still need to augment caches further)
         :return: cache load event timestamp (epoch seconds)
         """
 
-        LOGGER.debug('HolderProver.load_cache >>> archive: %s', archive)
+        LOGGER.debug('HolderProver.load_cache_for_proof >>> archive: %s', archive)
 
         rv = int(time())
         box_ids = json.loads(await self.get_box_ids_json())
@@ -648,7 +649,7 @@ class HolderProver(_BaseAnchor):
                         await revo_cache_entry.get_delta_json(self._build_rr_delta_json, rv, rv)
                     except ClosedPool:
                         LOGGER.warning(
-                            'Holder-Prover %s is offline from pool %s, cannot update revo cache reg delta for %s to %s',
+                            'HolderProver %s is offline from pool %s, cannot update revo cache reg delta for %s to %s',
                             self.wallet.name,
                             self.pool.name,
                             rr_id,
@@ -656,7 +657,7 @@ class HolderProver(_BaseAnchor):
 
         if archive:
             Caches.archive(self.dir_cache)
-        LOGGER.debug('HolderProver.load_cache <<< %s', rv)
+        LOGGER.debug('HolderProver.load_cache_for_proof <<< %s', rv)
         return rv
 
     async def get_box_ids_json(self) -> str:
@@ -678,16 +679,16 @@ class HolderProver(_BaseAnchor):
                     ...
                 ],
                 "cred_def_id": [
-                    "R17v42T4pk...:3:CL:19:0",
-                    "9cHbp54C8n...:3:CL:37:0",
+                    "R17v42T4pk...:3:CL:19:tag",
+                    "9cHbp54C8n...:3:CL:37:tag",
                     ...
                 ]
                 "rev_reg_id": [
-                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:0",
-                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:0:CL_ACCUM:1",
-                    "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:0",
-                    "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:1",
-                    "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:0:CL_ACCUM:2",
+                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:tag:CL_ACCUM:0",
+                    "R17v42T4pk...:4:R17v42T4pk...:3:CL:19:tag:CL_ACCUM:1",
+                    "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:tag:CL_ACCUM:0",
+                    "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:tag:CL_ACCUM:1",
+                    "9cHbp54C8n...:4:9cHbp54C8n...:3:CL:37:tag:CL_ACCUM:2",
                     ...
                 ]
             }
@@ -983,7 +984,7 @@ class HolderProver(_BaseAnchor):
         ::
 
             {
-                'Vx4E82R17q...:3:CL:16:0': {
+                'Vx4E82R17q...:3:CL:16:tag': {
                     'attr-match': {
                         'name': 'Alex',
                         'sex': 'M',
@@ -994,13 +995,13 @@ class HolderProver(_BaseAnchor):
                         'score': '100'  # nicety: implementation converts to int for caller
                     },
                 },
-                'R17v42T4pk...:3:CL:19:0': {
+                'R17v42T4pk...:3:CL:19:tag': {
                     'attr-match': {
                         'height': 175,
                         'birthdate': '1975-11-15'  # combined conjunctively (i.e., via AND)
                     }
                 },
-                'Z9ccax812j...:3:CL:27:0': {
+                'Z9ccax812j...:3:CL:27:tag': {
                     'attr-match': {}  # match all attributes on this cred def
                 }
                 ...
@@ -1089,7 +1090,7 @@ class HolderProver(_BaseAnchor):
                     "17_name_uuid": {
                         "restrictions": [
                             {
-                                "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:0"
+                                "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:tag"
                             }
                         ],
                         "name": "name"
@@ -1097,7 +1098,7 @@ class HolderProver(_BaseAnchor):
                     "17_thing_uuid": {
                         "restrictions": [
                             {
-                                "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:0"
+                                "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:tag"
                             }
                         ],
                         "name": "thing"
@@ -1143,7 +1144,7 @@ class HolderProver(_BaseAnchor):
                             },
                             "cred_rev_id": null,
                             "referent": "d773434a-0080-4e3e-a03b-f2033eae7d75",
-                            "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:0"
+                            "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:tag"
                         }
                     },
                     {
@@ -1157,7 +1158,7 @@ class HolderProver(_BaseAnchor):
                             },
                             "cred_rev_id": null,
                             "referent": "b42ce5bc-b690-43cd-9493-6fe86ad25e85",
-                            "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:0"
+                            "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:tag"
                         }
                     }
                 ]'

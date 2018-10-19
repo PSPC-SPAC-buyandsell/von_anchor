@@ -171,21 +171,21 @@ class _BaseAnchor:
 
         LOGGER.debug('_BaseAnchor.close <<<')
 
-    async def rekey(self, seed) -> None:
+    async def reseed(self, seed) -> None:
         """
         Begin key rotation for VON anchor: generate new key for submission via AnchorSmith.
 
-        :param seed: new seed for rekey
+        :param seed: new seed for ed25519 key pair
         """
 
-        LOGGER.debug('_BaseAnchor.rekey_init >>> seed: [SEED]')
+        LOGGER.debug('_BaseAnchor.reseed_init >>> seed: [SEED]')
 
-        rekey = await self.wallet.rekey_init(seed)
-        req_json = await ledger.build_nym_request(self.did, self.did, rekey, self.wallet.name, self.role())
+        reseed = await self.wallet.reseed_init(seed)
+        req_json = await ledger.build_nym_request(self.did, self.did, reseed, self.wallet.name, self.role())
         await self._sign_submit(req_json)
-        await self.wallet.rekey_apply()
+        await self.wallet.reseed_apply()
 
-        LOGGER.debug('_BaseAnchor.rekey_init <<<')
+        LOGGER.debug('_BaseAnchor.reseed_init <<<')
 
     async def get_nym(self, did: str) -> str:
         """
@@ -228,24 +228,6 @@ class _BaseAnchor:
         LOGGER.debug('_BaseAnchor.role <<< %s', rv)
         return rv
 
-    async def _____ensure_txn_applied(self, seq_no: int) -> None:
-        """
-        Wait, a second at a time, until transaction on given sequence number appears on the ledger.
-        Time out after 16 seconds and raise BadLedgerTxn.
-
-        :param seq_no: transaction sequence number
-        """
-
-        for _ in range(16):
-            txn = json.loads(await self.get_txn(seq_no))
-
-            if txn:
-                LOGGER.debug('_BaseAnchor._ensure_txn_applied <<<')
-                return
-            await asyncio.sleep(1)
-
-        raise BadLedgerTxn('Timed out waiting on txn #{}'.format(seq_no))
-
     async def _submit(self, req_json: str) -> str:
         """
         Submit (json) request to ledger; return (json) result.
@@ -253,7 +235,6 @@ class _BaseAnchor:
         Raise ClosedPool if pool is not yet open, or BadLedgerTxn on failure.
 
         :param req_json: json of request to sign and submit
-        :param wait: whether to wait for the transaction to appear on the ledger before proceeding
         :return: json response
         """
 
@@ -268,15 +249,9 @@ class _BaseAnchor:
         await asyncio.sleep(0)
 
         resp = json.loads(rv_json)
-        print("resp:", resp)
-        if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
+        if resp.get('op', '') in ('REQNACK', 'REJECT'):
             LOGGER.debug('_BaseAnchor._submit: <!< ledger rejected request: %s', resp['reason'])
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
-
-        seq_no = resp.get('result', {}).get('seqNo', None)
-        if 'reason' in resp and seq_no is None:
-            LOGGER.debug('_BaseAnchor._submit: <!< response indicates no transaction: %s', resp['reason'])
-            raise BadLedgerTxn('Response indicates no transaction: {}'.format(resp['reason']))
 
         LOGGER.debug('_BaseAnchor._submit <<< %s', rv_json)
         return rv_json
@@ -289,7 +264,6 @@ class _BaseAnchor:
         pool is no longer extant, or BadLedgerTxn on any other failure.
 
         :param req_json: json of request to sign and submit
-        :param wait: whether to wait for the transaction to appear on the ledger before proceeding
         :return: json response
         """
 
@@ -318,14 +292,9 @@ class _BaseAnchor:
                     x_indy.error_code))
 
         resp = json.loads(rv_json)
-        if ('op' in resp) and (resp['op'] in ('REQNACK', 'REJECT')):
+        if resp.get('op', '') in ('REQNACK', 'REJECT'):
             LOGGER.debug('_BaseAnchor._sign_submit: ledger rejected request: %s', resp['reason'])
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
-
-        seq_no = resp.get('result', {}).get('seqNo', None)
-        if 'reason' in resp and seq_no is None:
-            LOGGER.debug('_BaseAnchor._sign_submit: <!< response indicates no transaction: %s', resp['reason'])
-            raise BadLedgerTxn('Response indicates no transaction: {}'.format(resp['reason']))
 
         LOGGER.debug('_BaseAnchor._sign_submit <<< %s', rv_json)
         return rv_json

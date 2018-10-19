@@ -15,7 +15,9 @@ limitations under the License.
 """
 
 from pathlib import Path
+
 from von_anchor.error import JSONValidation
+from von_anchor.frill import Ink
 from von_anchor.nodepool import NodePool, Protocol
 
 import pytest
@@ -28,6 +30,8 @@ async def test_pool_open(
     pool_name,
     pool_genesis_txn_path,
     pool_genesis_txn_file):
+
+    print(Ink.YELLOW('\n\n== Testing Pool Config =='))
 
     assert Protocol.V_13.indy() != Protocol.V_14.indy()
     assert Protocol.V_14.indy() == Protocol.V_15.indy()

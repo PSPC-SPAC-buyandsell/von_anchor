@@ -18,14 +18,18 @@ limitations under the License.
 from indy import IndyError
 from indy.error import ErrorCode
 from pathlib import Path
-from von_anchor.wallet import Wallet
+
 from von_anchor.error import JSONValidation
+from von_anchor.frill import Ink
+from von_anchor.wallet import Wallet
 
 import pytest
 
 
 @pytest.mark.asyncio
 async def test_wallet(path_home):
+
+    print(Ink.YELLOW('\n\n== Testing Wallet Configuration + Context =='))
 
     seed = '00000000000000000000000000000000'
     name = 'my-wallet'

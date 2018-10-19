@@ -30,7 +30,7 @@ from threading import current_thread, Thread
 from time import sleep, time
 from sys import float_info
 
-from von_anchor import BCRegistrarAnchor, OrgBookAnchor, SRIAnchor, TrusteeAnchor
+from von_anchor import BCRegistrarAnchor, OrgBookAnchor, OrgHubAnchor, SRIAnchor, TrusteeAnchor
 from von_anchor.cache import Caches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.codec import canon, raw
 from von_anchor.error import (
@@ -38,6 +38,7 @@ from von_anchor.error import (
     AbsentCredDef,
     AbsentInterval,
     AbsentLinkSecret,
+    AbsentMetadata,
     AbsentSchema,
     AbsentTails,
     AbsentWallet,
@@ -49,6 +50,7 @@ from von_anchor.error import (
     ClosedPool,
     CredentialFocus,
     JSONValidation)
+from von_anchor.frill import Ink, ppjson
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.util import (
@@ -56,7 +58,6 @@ from von_anchor.util import (
     cred_def_id,
     cred_def_id2seq_no,
     creds_display,
-    ppjson,
     proof_req2wql_all,
     proof_req_attr_referents,
     proof_req_briefs2req_creds,
@@ -136,14 +137,14 @@ def _download_tails(rr_id):
 
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
-async def test_anchors_low_level_api(
+async def test_anchors_api(
         pool_ip,
         pool_name,
         pool_genesis_txn_path,
         pool_genesis_txn_file,
         seed_trustee1):
 
-    print('\n\n== Testing low-level API vs. IP {} =='.format(pool_ip))
+    print(Ink.YELLOW('\n\n== Testing API vs. IP {} =='.format(pool_ip)))
 
     EPOCH_START = 1234567890  # guaranteed to be before any revocation registry creation
 
@@ -161,10 +162,23 @@ async def test_anchors_low_level_api(
         await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
         p,
         {
-            'parse-cache-on-open': True,
-            'archive-cache-on-close': True
+            'parse-caches-on-open': True,
+            'archive-holder-prover-caches-on-close': True
         })
-    bcoban = OrgBookAnchor(await Wallet('BC-Org-Book-Anchor-0000000000000', 'bc-org-book').create(), p)
+    bcohan = OrgHubAnchor(
+        await Wallet('BC-Org-Book-Anchor-0000000000000', 'bc-org-hub').create(),
+        p,
+        {
+            'parse-caches-on-open': True,
+            'archive-holder-prover-caches-on-close': True,
+            'archive-verifier-caches-on-close': {
+                'schema_id': [  # only schema identifiers are known on close at this point
+                    schema_id(san.did, 'sri', '1.0'),
+                    schema_id(san.did, 'sri', '1.1'),
+                    schema_id(san.did, 'green', '1.0')
+                ]
+            }
+        })
     bcran = BCRegistrarAnchor(await Wallet('BC-Registrar-Anchor-000000000000', 'bc-registrar').create(), p)
 
     await tan.open()
@@ -180,18 +194,18 @@ async def test_anchors_low_level_api(
 
     await san.open()
     await pspcoban.open()
-    await bcoban.open()
+    await bcohan.open()
     await bcran.open()
 
     # print('TAN DID {}'.format(tan.did))            # V4SG...
     # print('SAN DID {}'.format(san.did))            # WgWx...
     # print('PSPCOBAN DID {}'.format(pspcoban.did))  # CwM7...
-    # print('BCOBAN DID {}'.format(bcoban.did))      # Rhd3...
+    # print('BCOHAN DID {}'.format(bcohan.did))      # Rhd3...
     # print('BCRAN DID {}'.format(bcran.did))        # Ljgp...
 
     # Publish anchor particulars to ledger if not yet present
     did2an = {}
-    for an in (tan, san, pspcoban, bcoban, bcran):
+    for an in (tan, san, pspcoban, bcohan, bcran):
         did2an[an.did] = an
         if not json.loads(await tan.get_nym(an.did)):
             await tan.send_nym(an.did, an.verkey, an.wallet.name, an.role())
@@ -200,7 +214,7 @@ async def test_anchors_low_level_api(
         'tan': json.loads(await tan.get_nym(tan.did)),
         'san': json.loads(await tan.get_nym(san.did)),
         'pspcoban': json.loads(await tan.get_nym(pspcoban.did)),
-        'bcoban': json.loads(await tan.get_nym(bcoban.did)),
+        'bcohan': json.loads(await tan.get_nym(bcohan.did)),
         'bcran': json.loads(await tan.get_nym(bcran.did))
     }
     print('\n\n== 1 == nyms: {}'.format(ppjson(nyms)))
@@ -208,16 +222,17 @@ async def test_anchors_low_level_api(
     for k in nyms:
         assert 'dest' in nyms[k]
 
+    
     # Publish schema to ledger if not yet present; get from ledger
     ''' 4
-        'NON-REVO': schema_id(bcran.did, 'non-revo', '1.0'),
+        'NON-REVO': schema_id(bcran.did, 'non-revo', '{}.0'.format(int(time()))),  # new version: bcohan resets wallet
         'SRI-1.0': schema_id(san.did, 'sri', '1.0'),
         'SRI-1.1': schema_id(san.did, 'sri', '1.1'),
         'GREEN': schema_id(san.did, 'green', '1.0'),
     '''
     S_ID = {
         'BC': schema_id(bcran.did, 'bc-reg', '1.0'),
-        'NON-REVO': schema_id(bcran.did, 'non-revo', '1.0'),
+        'NON-REVO': schema_id(bcran.did, 'non-revo', '{}.0'.format(int(time()))),  # new version: bcohan resets wallet
         'SRI-1.0': schema_id(san.did, 'sri', '1.0'),
         'SRI-1.1': schema_id(san.did, 'sri', '1.1'),
         'GREEN': schema_id(san.did, 'green', '1.0'),
@@ -334,8 +349,18 @@ async def test_anchors_low_level_api(
     proof_req = {}
 
     holder_prover = {
-        bcran.did: bcoban,
+        bcran.did: bcohan,
         san.did: pspcoban
+    }
+
+    x_schema_data = {
+        'name': 'x-schema',
+        'version': 'x-version-bad.chars',
+        'attr_names': [
+            'a',
+            'b',
+            'c'
+        ]
     }
 
     try:
@@ -378,9 +403,17 @@ async def test_anchors_low_level_api(
     finally:
         _set_cache_state(True)
 
+    # Setup link secrets, cred reqs at HolderProver anchors
+    await bcohan.create_link_secret('LinkSecret')
+    await pspcoban.create_link_secret('SecretLink')
+
+    for an in (bcohan, pspcoban):
+        wallet_name = an.wallet.name
+        assert (await an.reset_wallet()) == wallet_name
+
     # BC Registrar and SRI anchors (Issuers) create, store, publish cred definitions to ledger; create cred offers
     try:
-        x_cred_def_json = await bcoban.get_cred_def(cred_def_id(bcran.did, 99999))  # ought not exist
+        x_cred_def_json = await bcohan.get_cred_def(cred_def_id(bcran.did, 99999))  # ought not exist
         assert False
     except AbsentCredDef:
         pass
@@ -424,6 +457,8 @@ async def test_anchors_low_level_api(
             ppjson(cred_offer_json[s_id])))
         i += 1
 
+    cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
+
     big_proof_req_json = await san.build_proof_req_json({
         cd_id[s_id]: {
             'attrs': schema_data[seq_no2schema_id[cred_def_id2seq_no(cd_id[s_id])]]['attr_names'][0:2]
@@ -432,14 +467,6 @@ async def test_anchors_low_level_api(
     print('\n\n== 4 == Built sample proof request: {}'.format(ppjson(big_proof_req_json)))
     assert len(json.loads(big_proof_req_json)['requested_attributes']) == 2 * len(schema_data)
 
-    # Setup link secrets, cred reqs at HolderProver anchors
-    await bcoban.create_link_secret('LinkSecret')
-    await pspcoban.create_link_secret('SecretLink')
-
-    for an in (bcoban, pspcoban):
-        wallet_name = an.wallet.name
-        assert (await an.reset_wallet()) == wallet_name
-
     i = 0
     for s_id in schema_data:
         s_key = schema_key(s_id)
@@ -447,7 +474,7 @@ async def test_anchors_low_level_api(
             cred_offer_json[s_id],
             cd_id[s_id])
         cred_req[s_id] = json.loads(cred_req_json[s_id])
-        print('\n\n== 5.{} == Credential request [{} v{}]: metadata {}, cred {}'.format(
+        print('\n\n== 5.{} == Credential request [{} v{}]: metadata {}, cred req {}'.format(
             i,
             s_key.name,
             s_key.version,
@@ -578,7 +605,7 @@ async def test_anchors_low_level_api(
             i += 1
 
     # BC Org Book anchor (as HolderProver) exercises finding cred-infos by query, WQL canonicalization
-    bc_infos_wql_json = await bcoban.get_cred_infos_by_q(json.dumps({
+    bc_infos_wql_json = await bcohan.get_cred_infos_by_q(json.dumps({
         '$not': {
             'schema_id': ''
         }
@@ -586,26 +613,26 @@ async def test_anchors_low_level_api(
     bc_all_card = len(json.loads(bc_infos_wql_json))
     print('\n\n== 7 == All ({}) BC cred infos by vacuous query: {}'.format(
         bc_all_card,
-        ppjson(bc_infos_wql_json, 1000)))
+        ppjson(bc_infos_wql_json, 4096)))
     wql_json = json.dumps({
         '$not': {
             'attr::must have::value': 'slack'  # exercise WQL canonicalization
         }
     })
-    assert len(json.loads(await bcoban.get_cred_infos_by_q(wql_json))) == bc_all_card - 1
+    assert len(json.loads(await bcohan.get_cred_infos_by_q(wql_json))) == bc_all_card - 1
 
     wql_json = json.dumps({
         'attr::id::marker': 1,
         'attr::id::value': 5
     })  # and, equals
-    assert len(json.loads(await bcoban.get_cred_infos_by_q(wql_json))) == 1
+    assert len(json.loads(await bcohan.get_cred_infos_by_q(wql_json))) == 1
 
     wql_json = json.dumps({
         'attr::id::value': {
             '$in': [5, 999999]
         }
     })  # $in
-    assert len(json.loads(await bcoban.get_cred_infos_by_q(wql_json))) == 1
+    assert len(json.loads(await bcohan.get_cred_infos_by_q(wql_json))) == 1
 
     wql_json = json.dumps({
         'attr::must have::marker': 1, # exercise WQL canonicalization
@@ -615,7 +642,7 @@ async def test_anchors_low_level_api(
             }
         }
     })  # and, $not, $neq
-    assert len(json.loads(await bcoban.get_cred_infos_by_q(wql_json))) == 1
+    assert len(json.loads(await bcohan.get_cred_infos_by_q(wql_json))) == 1
 
     wql_json = json.dumps({
         'attr::legalName::value': {
@@ -623,7 +650,7 @@ async def test_anchors_low_level_api(
         },
         'schema_id': S_ID['BC']
     })  # schema_id, $in, attribute name canonicalization in outer key
-    infos = json.loads(await bcoban.get_cred_infos_by_q(wql_json))
+    infos = json.loads(await bcohan.get_cred_infos_by_q(wql_json))
     assert {info['attrs']['legalName'] for info in infos} == {'Flan Nebula', 'Tart City'}
 
     wql_json = json.dumps({
@@ -643,7 +670,7 @@ async def test_anchors_low_level_api(
             ]
         }
     })  # cred def id, $not, $or, and, $in, attribute canonicalization in inner key
-    infos = json.loads(await bcoban.get_cred_infos_by_q(wql_json))
+    infos = json.loads(await bcohan.get_cred_infos_by_q(wql_json))
     assert {info['attrs']['legalName'] for info in infos} == {'Planet Cake'}
 
     try:
@@ -658,23 +685,23 @@ async def test_anchors_low_level_api(
             },
             'cred_def_id': cd_id[S_ID['BC']]
         })  # $or value wrong: not a list
-        infos = json.loads(await bcoban.get_cred_infos_by_q(wql_json))
+        infos = json.loads(await bcohan.get_cred_infos_by_q(wql_json))
         assert False
     except BadWalletQuery:
         pass
 
     # BC Org Book anchor (as HolderProver) finds cred-infos by filter
-    bc_infos_filt_json = await bcoban.get_cred_infos_by_filter()
+    bc_infos_filt_json = await bcohan.get_cred_infos_by_filter()
     print('\n\n== 8 == All BC cred infos by vacuous filter: {}'.format(ppjson(bc_infos_filt_json)))
     assert len(json.loads(bc_infos_filt_json)) == len(cred_data[S_ID['BC']]) + len(cred_data[S_ID['NON-REVO']])
 
     for s_id in cred_data:
         s_key = schema_key(s_id)
-        assert (len(json.loads(await bcoban.get_cred_infos_by_filter(
+        assert (len(json.loads(await bcohan.get_cred_infos_by_filter(
             {
                 'schema_name': s_key.name,
                 'schema_version': s_key.version
-            }))) == (len(cred_data[s_id]) if holder_prover[s_key.origin_did].did == bcoban.did else 0))
+            }))) == (len(cred_data[s_id]) if holder_prover[s_key.origin_did].did == bcohan.did else 0))
 
     # BC Org Book anchor (as HolderProver) finds creds; actuator filters post hoc
     EPOCH_PRE_BC_REVOC = int(time())
@@ -683,7 +710,7 @@ async def test_anchors_low_level_api(
             'interval': (EPOCH_START, EPOCH_PRE_BC_REVOC)
         }
     }))
-    (bc_cred_ids_all, bc_creds_all_json) = await bcoban.get_creds(json.dumps(proof_req[S_ID['BC']]))
+    (bc_cred_ids_all, bc_creds_all_json) = await bcohan.get_creds(json.dumps(proof_req[S_ID['BC']]))
 
     print('\n\n== 9 == All BC creds, no filter {}: {}'.format(bc_cred_ids_all, ppjson(bc_creds_all_json)))
     bc_creds_all = json.loads(bc_creds_all_json)
@@ -712,7 +739,7 @@ async def test_anchors_low_level_api(
             }
         }
     }
-    (bc_cred_ids_filt, bc_creds_filt_json) = await bcoban.get_creds(
+    (bc_cred_ids_filt, bc_creds_filt_json) = await bcohan.get_creds(
         json.dumps(proof_req[S_ID['BC']]),
         filt_get_creds)
     bc_creds_filt = json.loads(bc_creds_filt_json)
@@ -770,7 +797,7 @@ async def test_anchors_low_level_api(
             ]
         }
     })
-    (nr_cred_ids_q, nr_briefs_q_json) = await bcoban.get_cred_briefs_by_proof_req_q(
+    (nr_cred_ids_q, nr_briefs_q_json) = await bcohan.get_cred_briefs_by_proof_req_q(
         json.dumps(proof_req[S_ID['NON-REVO']]),
         wql_get_briefs_json)
     nr_briefs_q = json.loads(nr_briefs_q_json)
@@ -789,7 +816,7 @@ async def test_anchors_low_level_api(
             'attr::must have::value': 'slack'  # (expect no match: Chicken Hawk's must-have is chicken)
         }
     })
-    (nr_cred_ids_q, nr_briefs_q_json) = await bcoban.get_cred_briefs_by_proof_req_q(
+    (nr_cred_ids_q, nr_briefs_q_json) = await bcohan.get_cred_briefs_by_proof_req_q(
         json.dumps(proof_req[S_ID['NON-REVO']]),
         wql_get_briefs_json)
     nr_briefs_q = json.loads(nr_briefs_q_json)
@@ -808,7 +835,7 @@ async def test_anchors_low_level_api(
             'attr::must have::value': 'chicken'  # (expect one match)
         }
     })
-    (nr_cred_ids_q, nr_briefs_q_json) = await bcoban.get_cred_briefs_by_proof_req_q(
+    (nr_cred_ids_q, nr_briefs_q_json) = await bcohan.get_cred_briefs_by_proof_req_q(
         json.dumps(proof_req[S_ID['NON-REVO']]),
         wql_get_briefs_json)
     nr_briefs_q = json.loads(nr_briefs_q_json)
@@ -828,7 +855,7 @@ async def test_anchors_low_level_api(
             'attr::legalName::value': 'Tart City'
         }
     })
-    (bc_cred_ids_q, bc_briefs_q_json) = await bcoban.get_cred_briefs_by_proof_req_q(
+    (bc_cred_ids_q, bc_briefs_q_json) = await bcohan.get_cred_briefs_by_proof_req_q(
         json.dumps(proof_req[S_ID['BC']]),
         wql_get_briefs_json)
     bc_briefs_q = json.loads(bc_briefs_q_json)
@@ -844,7 +871,7 @@ async def test_anchors_low_level_api(
     assert bc_revoc_info_q.items() <= bc_revoc_info.items() and len(bc_revoc_info_q) == 1
 
     # BC Org Book anchor (as HolderProver) creates proof for cred specified by filter
-    bc_req_creds = json.loads(await bcoban.build_req_creds_json(bc_creds_filt))
+    bc_req_creds = json.loads(await bcohan.build_req_creds_json(bc_creds_filt))
     print('\n\n== 22 == BC req creds by filt {}'.format(ppjson(bc_req_creds)))
     bc_req_creds_q = proof_req_briefs2req_creds(proof_req[S_ID['BC']], bc_briefs_q)
     print('\n\n== 23 == BC req creds by query {}'.format(ppjson(bc_req_creds_q)))
@@ -853,7 +880,7 @@ async def test_anchors_low_level_api(
     _set_tails_state(False)  # simulate not having tails file first
     _set_cache_state(False)
     try:
-        bc_proof_json = await bcoban.create_proof(
+        bc_proof_json = await bcohan.create_proof(
             proof_req[S_ID['BC']],
             bc_creds_filt,
             bc_req_creds)
@@ -864,12 +891,12 @@ async def test_anchors_low_level_api(
     x_proof_req = deepcopy(proof_req[S_ID['BC']])
     for attr_uuid in x_proof_req['requested_attributes']:
         x_proof_req['requested_attributes'][attr_uuid].pop('non_revoked')
-    (_, x_creds_json) = await bcoban.get_creds(json.dumps(x_proof_req), filt_get_creds)
+    (_, x_creds_json) = await bcohan.get_creds(json.dumps(x_proof_req), filt_get_creds)
     rr_id = list(revoc_info(json.loads(x_creds_json), {'legalName': 'Tart City'}).keys())[0][0]
     _download_tails(rr_id)  # simulate sending tails file to HolderProver
 
     try:
-        await bcoban.create_proof(
+        await bcohan.create_proof(
             x_proof_req,
             json.loads(x_creds_json),
             bc_req_creds)
@@ -877,13 +904,13 @@ async def test_anchors_low_level_api(
     except AbsentInterval:  # check: skipping non-revocation interval raises AbsentInterval for cred def w/revocation
         pass
 
-    bc_proof_json = await bcoban.create_proof(proof_req[S_ID['BC']], bc_creds_filt, bc_req_creds)
+    bc_proof_json = await bcohan.create_proof(proof_req[S_ID['BC']], bc_creds_filt, bc_req_creds)
     assert len(Tails.unlinked(DIR_TAILS)) == 0  # proof creation should get rev reg def from ledger and link its rr_id
 
     _set_tails_state(True)  # restore state
     _set_cache_state(True)
 
-    print('\n\n== 24 == BC proof (by filter): {}'.format(ppjson(bc_proof_json, 1000)))
+    print('\n\n== 24 == BC proof (by filter): {}'.format(ppjson(bc_proof_json, 4096)))
 
     # SRI anchor (as Verifier) verifies proof (by filter)
     rc_json = await san.verify_proof(
@@ -893,8 +920,8 @@ async def test_anchors_low_level_api(
     assert json.loads(rc_json)
 
     # BC Registrar anchor creates proof from cred-infos via query
-    bc_proof_q_json = await bcoban.create_proof(proof_req[S_ID['BC']], bc_briefs_q, bc_req_creds_q)
-    print('\n\n== 26 == BC proof (by query): {}'.format(ppjson(bc_proof_json, 1000)))
+    bc_proof_q_json = await bcohan.create_proof(proof_req[S_ID['BC']], bc_briefs_q, bc_req_creds_q)
+    print('\n\n== 26 == BC proof (by query): {}'.format(ppjson(bc_proof_json, 4096)))
 
     assert len(Tails.unlinked(DIR_TAILS)) == 0  # proof creation should get rev reg def from ledger and link its rr_id
 
@@ -918,18 +945,18 @@ async def test_anchors_low_level_api(
             }
         }
     }
-    (nr_cred_ids, nr_creds_json) = await bcoban.get_creds(
+    (nr_cred_ids, nr_creds_json) = await bcohan.get_creds(
         json.dumps(proof_req[S_ID['NON-REVO']]),
         nr_filt_get_creds)
     assert len(nr_cred_ids) == 1
     nr_cred_id = nr_cred_ids.pop()
     nr_creds = json.loads(nr_creds_json)
-    nr_req_creds = json.loads(await bcoban.build_req_creds_json(nr_creds))
-    nr_proof_json = await bcoban.create_proof(
+    nr_req_creds = json.loads(await bcohan.build_req_creds_json(nr_creds))
+    nr_proof_json = await bcohan.create_proof(
         proof_req[S_ID['NON-REVO']],
         nr_creds,
         nr_req_creds)
-    print('\n\n== 28 == Proof (by filter) of non-revocable cred: {}'.format(ppjson(nr_proof_json, 1000)))
+    print('\n\n== 28 == Proof (by filter) of non-revocable cred: {}'.format(ppjson(nr_proof_json, 4096)))
 
     # Verifier anchor attempts to verify proof (by filter) of non-revocable cred
     rc_json = await san.verify_proof(proof_req[S_ID['NON-REVO']], json.loads(nr_proof_json))
@@ -942,7 +969,7 @@ async def test_anchors_low_level_api(
             'attr::Must Have::value': 'slack'
         }
     })
-    (nr_cred_ids_q, nr_briefs_q_json) = await bcoban.get_cred_briefs_by_proof_req_q(
+    (nr_cred_ids_q, nr_briefs_q_json) = await bcohan.get_cred_briefs_by_proof_req_q(
         json.dumps(proof_req[S_ID['NON-REVO']]),
         wql_get_briefs_json)
     nr_briefs_q = json.loads(nr_briefs_q_json)
@@ -950,11 +977,11 @@ async def test_anchors_low_level_api(
     nr_cred_id = nr_cred_ids_q.pop()
     nr_briefs_q = json.loads(nr_briefs_q_json)
     nr_req_creds_q = proof_req_briefs2req_creds(proof_req[S_ID['NON-REVO']], nr_briefs_q)
-    nr_proof_q_json = await bcoban.create_proof(
+    nr_proof_q_json = await bcohan.create_proof(
         proof_req[S_ID['NON-REVO']],
         nr_briefs_q,
         nr_req_creds_q)
-    print('\n\n== 30 == Proof (by query) of non-revocable cred: {}'.format(ppjson(nr_proof_json, 1000)))
+    print('\n\n== 30 == Proof (by query) of non-revocable cred: {}'.format(ppjson(nr_proof_json, 4096)))
 
     # Verifier anchor attempts to verify proof (by query) of non-revocable cred
     rc_json = await san.verify_proof(proof_req[S_ID['NON-REVO']], json.loads(nr_proof_json))
@@ -989,6 +1016,76 @@ async def test_anchors_low_level_api(
     assert all(preq['requested_attributes'][uuid]['non_revoked'] for uuid in preq['requested_attributes'])
     assert all(preq['requested_predicates'][uuid]['non_revoked'] for uuid in preq['requested_predicates'])
 
+    # Exercise Org Hub Anchor capacities to issue, verify with simple non-revo schema
+    try:
+        orghub_cred_def = json.loads(await bcohan.send_cred_def(
+            S_ID['NON-REVO'],
+            False,
+            None))
+        orghub_cd_id = orghub_cred_def['id']
+    except:
+        assert False
+    s_key = schema_key(S_ID['NON-REVO'])
+    orghub_cred_offer_json = await bcohan.create_cred_offer(schema[S_ID['NON-REVO']]['seqNo'])
+    print('\n\n== 32 == BC Org Hub cred offer [{} v{}]: {}'.format(
+        s_key.name,
+        s_key.version,
+        ppjson(orghub_cred_offer_json)))
+
+    (orghub_cred_req_json, orghub_cred_req_metadata_json) = await bcohan.create_cred_req(
+        orghub_cred_offer_json,
+        orghub_cd_id)
+    orghub_cred_req = json.loads(orghub_cred_req_json)
+    print('\n\n== 33 == BC Org Hub credential request [{} v{}]: metadata {}, cred req {}'.format(
+        s_key.name,
+        s_key.version,
+        ppjson(orghub_cred_req_metadata_json),
+        ppjson(orghub_cred_req_json)))
+    assert json.loads(orghub_cred_req_json)
+
+    print('\n\n== 34 == BC Org Hub creating credential')
+    (orghub_cred_json, _, _) = await bcohan.create_cred(
+        orghub_cred_offer_json,
+        orghub_cred_req_json,
+        {
+            'Preferred Name': 'Chicken Lady',
+            'Must Have': 'Fifty Bucks'
+        })
+    assert json.loads(orghub_cred_json)
+    orghub_cred = json.loads(orghub_cred_json)
+    orghub_cred_id = await bcohan.store_cred(orghub_cred_json, orghub_cred_req_metadata_json)
+
+    # Org Hub Anchor creates proof (by filter) for non-revocable cred, for verification
+    orghub_proof_req = json.loads(await bcohan.build_proof_req_json({
+        orghub_cd_id: None
+    }))
+    orghub_filt_get_creds = {
+        orghub_cd_id: {
+            'attr-match': {
+                'Must Have': 'Fifty Bucks'
+            }
+        }
+    }
+    (orghub_cred_ids, orghub_creds_json) = await bcohan.get_creds(
+        json.dumps(orghub_proof_req),
+        orghub_filt_get_creds)
+    assert len(orghub_cred_ids) == 1
+    orghub_cred_id = orghub_cred_ids.pop()
+    orghub_creds = json.loads(orghub_creds_json)
+    orghub_req_creds = json.loads(await bcohan.build_req_creds_json(orghub_creds))
+    orghub_proof_json = await bcohan.create_proof(
+        orghub_proof_req,
+        orghub_creds,
+        orghub_req_creds)
+    print('\n\n== 35 == BC Org Hub anchor creates proof (by filter) of non-revocable cred: {}'.format(
+        ppjson(nr_proof_json, 4096)))
+
+    # Org Hub Anchor attempts to verify proof (by filter) of non-revocable cred
+    rc_json = await bcohan.verify_proof(orghub_proof_req, json.loads(orghub_proof_json))
+    print('\n\n== 36 == BC Org Hub anchor verifies proof (by filter) of non-revocable cred as: {}'.format(
+        ppjson(rc_json)))
+    assert json.loads(rc_json)
+
     schema_data.pop(S_ID['NON-REVO'])  # all done with non-revocable cred def
     schema.pop(S_ID['NON-REVO'])
     cred_data.pop(S_ID['NON-REVO'])
@@ -1000,7 +1097,7 @@ async def test_anchors_low_level_api(
             'attr::legalName::value': 'Flan Nebula'
         }
     })
-    (_, bc_briefs_q_json) = await bcoban.get_cred_briefs_by_proof_req_q(
+    (_, bc_briefs_q_json) = await bcohan.get_cred_briefs_by_proof_req_q(
         json.dumps(proof_req[S_ID['BC']]),
         wql_get_briefs_json)
     r = set(revoc_info(json.loads(bc_briefs_q_json)))
@@ -1015,13 +1112,13 @@ async def test_anchors_low_level_api(
         pass
 
     EPOCH_BC_REVOC = await did2an[schema_key(S_ID['BC']).origin_did].revoke_cred(x_rr_id, x_cr_id)
-    print('\n\n== 32 == BC registrar anchor revoked ({}, {}) -> {}'.format(
+    print('\n\n== 37 == BC Registrar anchor revoked ({}, {}) -> {}'.format(
         x_rr_id,
         x_cr_id,
         bc_revoc_info[(x_rr_id, x_cr_id)]['legalName']))
     sleep(1)
     EPOCH_POST_BC_REVOC = int(time())
-    print('\n\n== 33 == EPOCH times re: BC revocation: pre-revoc {}, revoc {}, post-revoc {}'.format(
+    print('\n\n== 38 == EPOCH times re: BC revocation: pre-revoc {}, revoc {}, post-revoc {}'.format(
         EPOCH_PRE_BC_REVOC,
         EPOCH_BC_REVOC,
         EPOCH_POST_BC_REVOC))
@@ -1038,11 +1135,11 @@ async def test_anchors_low_level_api(
             'interval': (EPOCH_PRE_BC_REVOC, EPOCH_POST_BC_REVOC)  #  should take latest = post-revocation
         }
     }))
-    (bc_cred_ids_all, _) = await bcoban.get_creds(json.dumps(proof_req[S_ID['BC']]))
+    (bc_cred_ids_all, _) = await bcohan.get_creds(json.dumps(proof_req[S_ID['BC']]))
     assert len(bc_cred_ids_all) == len(cred_data[S_ID['BC']])  # indy-sdk get-creds includes revoked creds here
 
     # BC Org Book anchor (as HolderProver) finds cred-briefs after revocation
-    (bc_cred_ids_all_q, _) = await bcoban.get_cred_briefs_by_proof_req_q(json.dumps(proof_req[S_ID['BC']]))
+    (bc_cred_ids_all_q, _) = await bcohan.get_cred_briefs_by_proof_req_q(json.dumps(proof_req[S_ID['BC']]))
     assert len(bc_cred_ids_all_q) == len(cred_data[S_ID['BC']])  # indy-sdk get-creds includes revoked creds here
 
     # BC Org Book anchor (as HolderProver) creates non-proof (by filter) for revoked cred, for non-verification
@@ -1058,18 +1155,18 @@ async def test_anchors_low_level_api(
             }
         }
     }
-    (x_cred_ids, x_creds_json) = await bcoban.get_creds(json.dumps(x_proof_req), x_filt_get_creds)
+    (x_cred_ids, x_creds_json) = await bcohan.get_creds(json.dumps(x_proof_req), x_filt_get_creds)
     assert len(x_cred_ids) == 1
     x_cred_id = x_cred_ids.pop()
     x_creds = json.loads(x_creds_json)
-    x_req_creds = json.loads(await bcoban.build_req_creds_json(x_creds))
-    x_proof_json = await bcoban.create_proof(x_proof_req, x_creds, x_req_creds)
+    x_req_creds = json.loads(await bcohan.build_req_creds_json(x_creds))
+    x_proof_json = await bcohan.create_proof(x_proof_req, x_creds, x_req_creds)
 
-    print('\n\n== 34 == Proof (by filter) of revoked cred: {}'.format(ppjson(x_proof_json, 1000)))
+    print('\n\n== 39 == Proof (by filter) of revoked cred: {}'.format(ppjson(x_proof_json, 4096)))
 
     # Verifier anchor attempts to verify non-proof (by filter) of revoked cred
     rc_json = await san.verify_proof(x_proof_req, json.loads(x_proof_json))
-    print('\n\n== 35 == SRI anchor verifies proof (by filter) of revoked cred as: {}'.format(ppjson(rc_json)))
+    print('\n\n== 40 == SRI anchor verifies proof (by filter) of revoked cred as: {}'.format(ppjson(rc_json)))
     assert not json.loads(rc_json)
 
     # BC Org Book anchor (as HolderProver) creates non-proof (by query) for revoked cred, for non-verification
@@ -1080,7 +1177,7 @@ async def test_anchors_low_level_api(
         }
     })
 
-    (x_cred_ids, x_briefs_q_json) = await bcoban.get_cred_briefs_by_proof_req_q(
+    (x_cred_ids, x_briefs_q_json) = await bcohan.get_cred_briefs_by_proof_req_q(
         json.dumps(x_proof_req),
         wql_get_briefs_json)
     assert len(x_cred_ids) == 1
@@ -1088,12 +1185,12 @@ async def test_anchors_low_level_api(
     x_cred_id = x_cred_ids.pop()
     x_briefs_q = json.loads(x_briefs_q_json)
     x_req_creds_q = proof_req_briefs2req_creds(x_proof_req, x_briefs_q)
-    x_proof_q_json = await bcoban.create_proof(x_proof_req, x_briefs_q, x_req_creds_q)
-    print('\n\n== 36 == Proof (by filter) of revoked cred: {}'.format(ppjson(x_proof_q_json, 1000)))
+    x_proof_q_json = await bcohan.create_proof(x_proof_req, x_briefs_q, x_req_creds_q)
+    print('\n\n== 41 == Proof (by filter) of revoked cred: {}'.format(ppjson(x_proof_q_json, 4096)))
 
     # Verifier anchor attempts to verify non-proof (by filter) of revoked cred
     rc_json = await san.verify_proof(x_proof_req, json.loads(x_proof_q_json))
-    print('\n\n== 37 == SRI anchor verifies proof (by query) of revoked cred as: {}'.format(ppjson(rc_json)))
+    print('\n\n== 42 == SRI anchor verifies proof (by query) of revoked cred as: {}'.format(ppjson(rc_json)))
     assert not json.loads(rc_json)
 
     # BC Org Book anchor (as HolderProver) creates proof for non-revoked cred on same rev reg, for verification
@@ -1109,17 +1206,17 @@ async def test_anchors_low_level_api(
             }
         }
     }
-    (ok_cred_ids, ok_creds_json) = await bcoban.get_creds(json.dumps(ok_proof_req), ok_filt_get_creds)
+    (ok_cred_ids, ok_creds_json) = await bcohan.get_creds(json.dumps(ok_proof_req), ok_filt_get_creds)
     assert len(ok_cred_ids) == 1
     ok_cred_id = ok_cred_ids.pop()
     ok_creds = json.loads(ok_creds_json)
-    ok_req_creds = json.loads(await bcoban.build_req_creds_json(ok_creds))
-    ok_proof_json = await bcoban.create_proof(ok_proof_req, ok_creds, ok_req_creds)
-    print('\n\n== 38 == Proof (by filter) of non-revoked cred: {}'.format(ppjson(ok_proof_json, 1000)))
+    ok_req_creds = json.loads(await bcohan.build_req_creds_json(ok_creds))
+    ok_proof_json = await bcohan.create_proof(ok_proof_req, ok_creds, ok_req_creds)
+    print('\n\n== 43 == Proof (by filter) of non-revoked cred: {}'.format(ppjson(ok_proof_json, 4096)))
 
     # Verifier anchor attempts to verify non-proof of revoked cred
     rc_json = await san.verify_proof(ok_proof_req, json.loads(ok_proof_json))
-    print('\n\n== 39 == SRI anchor verifies proof (by filter) of non-revoked cred as: {}'.format(ppjson(rc_json)))
+    print('\n\n== 44 == SRI anchor verifies proof (by filter) of non-revoked cred as: {}'.format(ppjson(rc_json)))
     assert json.loads(rc_json)
 
     # BC Org Book anchor (as HolderProver) creates proof for revoked cred, back-dated just before revocation
@@ -1128,17 +1225,17 @@ async def test_anchors_low_level_api(
             'interval': EPOCH_PRE_BC_REVOC
         }
     }))
-    (x_cred_ids, x_creds_json) = await bcoban.get_creds(json.dumps(x_proof_req), x_filt_get_creds)
+    (x_cred_ids, x_creds_json) = await bcohan.get_creds(json.dumps(x_proof_req), x_filt_get_creds)
     assert len(x_cred_ids) == 1
     x_cred_id = x_cred_ids.pop()
     x_creds = json.loads(x_creds_json)
-    x_req_creds = json.loads(await bcoban.build_req_creds_json(x_creds))
-    x_proof_json = await bcoban.create_proof(x_proof_req, x_creds, x_req_creds)
-    print('\n\n== 40 == Proof (by filter) of cred before revocation: {}'.format(ppjson(x_proof_json, 1000)))
+    x_req_creds = json.loads(await bcohan.build_req_creds_json(x_creds))
+    x_proof_json = await bcohan.create_proof(x_proof_req, x_creds, x_req_creds)
+    print('\n\n== 45 == Proof (by filter) of cred before revocation: {}'.format(ppjson(x_proof_json, 4096)))
 
     # Verifier anchor attempts to verify proof of cred before revocation
     rc_json = await san.verify_proof(x_proof_req, json.loads(x_proof_json))
-    print('\n\n== 41 == SRI anchor verifies proof (by filter) of cred before revocation as: {}'.format(
+    print('\n\n== 46 == SRI anchor verifies proof (by filter) of cred before revocation as: {}'.format(
         ppjson(rc_json)))
     assert json.loads(rc_json)
 
@@ -1148,20 +1245,20 @@ async def test_anchors_low_level_api(
             'interval': EPOCH_START
         }
     }))
-    (x_cred_ids, x_creds_json) = await bcoban.get_creds(json.dumps(x_proof_req), x_filt_get_creds)
+    (x_cred_ids, x_creds_json) = await bcohan.get_creds(json.dumps(x_proof_req), x_filt_get_creds)
     assert len(x_cred_ids) == 1
     x_cred_id = x_cred_ids.pop()
     x_creds = json.loads(x_creds_json)
-    x_req_creds = json.loads(await bcoban.build_req_creds_json(x_creds))
+    x_req_creds = json.loads(await bcohan.build_req_creds_json(x_creds))
     try:
-        x_proof_json = await bcoban.create_proof(x_proof_req, x_creds, x_req_creds)
+        x_proof_json = await bcohan.create_proof(x_proof_req, x_creds, x_req_creds)
         assert False
     except BadRevStateTime:
-        print('\n\n== 42 == SRI anchor cannot create proof on request with rev reg state before its creation')
+        print('\n\n== 47 == SRI anchor cannot create proof on request with rev reg state before its creation')
 
     # BC Org Book anchor (as HolderProver) finds cred by cred-id, proof req and cred-id, no cred by non-cred-id
-    bc_info_by_cred_id = json.loads(await bcoban.get_cred_info_by_id(tart_city_id))
-    print('\n\n== 43 == BC cred-infos by cred_id={}: {}'.format(
+    bc_info_by_cred_id = json.loads(await bcohan.get_cred_info_by_id(tart_city_id))
+    print('\n\n== 48 == BC cred-infos by cred_id={}: {}'.format(
         tart_city_id,
         ppjson(bc_info_by_cred_id)))
     proof_req_by_id = json.loads(await san.build_proof_req_json({
@@ -1169,34 +1266,32 @@ async def test_anchors_low_level_api(
             'interval': EPOCH_POST_BC_REVOC
         }
     }))
-    bc_info_by_cred_id = json.loads(await bcoban.get_cred_info_by_id(tart_city_id))
-    print('\n\n== 44 == BC cred by cred_id={}: {}'.format(
+    bc_info_by_cred_id = json.loads(await bcohan.get_cred_info_by_id(tart_city_id))
+    print('\n\n== 49 == BC cred by cred_id={}: {}'.format(
         tart_city_id,
         ppjson(bc_info_by_cred_id)))
     assert bc_info_by_cred_id
     assert bc_info_by_cred_id['attrs']
 
     try:
-        await bcoban.get_cred_info_by_id('ffffffff-ffff-ffff-ffff-ffffffffffff')
+        await bcohan.get_cred_info_by_id('ffffffff-ffff-ffff-ffff-ffffffffffff')
         assert False
     except AbsentCred:
         pass
 
     # BC Org Book anchor (as HolderProver) creates proof for cred specified by cred-id
     bc_briefs = proof_req_infos2briefs(proof_req[S_ID['BC']], [bc_info_by_cred_id])
-    print('bc briefs: {}'.format(ppjson(bc_briefs)))
     bc_req_creds = proof_req_briefs2req_creds(proof_req[S_ID['BC']], bc_briefs)
-    print('bc req creds: {}'.format(ppjson(bc_req_creds)))
-    bc_proof_json = await bcoban.create_proof(
+    bc_proof_json = await bcohan.create_proof(
         proof_req[S_ID['BC']],
         bc_briefs,
         bc_req_creds)
     bc_proof = json.loads(bc_proof_json)
-    print('\n\n== 45 == BC proof by cred-id={}: {}'.format(tart_city_id, ppjson(bc_proof_json, 1000)))
+    print('\n\n== 50 == BC proof by cred-id={}: {}'.format(tart_city_id, ppjson(bc_proof_json, 4096)))
 
     # SRI anchor (as Verifier) verifies proof (by cred-id)
     rc_json = await san.verify_proof(proof_req[S_ID['BC']], bc_proof)
-    print('\n\n== 46 == SRI anchor verifies BC proof by cred-id={} as: {}'.format(tart_city_id, ppjson(rc_json)))
+    print('\n\n== 51 == SRI anchor verifies BC proof by cred-id={} as: {}'.format(tart_city_id, ppjson(rc_json)))
     assert json.loads(rc_json)
 
     # BC Org Book anchor (as HolderProver) creates proof by attr for non-revoked Babka Galaxy
@@ -1212,17 +1307,17 @@ async def test_anchors_low_level_api(
             }
         }
     }
-    (bg_cred_ids, bg_creds_json) = await bcoban.get_creds(json.dumps(bg_proof_req), bg_filt_get_creds)
+    (bg_cred_ids, bg_creds_json) = await bcohan.get_creds(json.dumps(bg_proof_req), bg_filt_get_creds)
     assert len(bg_cred_ids) == 1
     bg_cred_id = bg_cred_ids.pop()
     bg_creds = json.loads(bg_creds_json)
-    bg_req_creds = json.loads(await bcoban.build_req_creds_json(bg_creds))
-    bg_proof_json = await bcoban.create_proof(bg_proof_req, bg_creds, bg_req_creds)
-    print('\n\n== 47 == Proof (by filter) of non-revoked Babka Galaxy: {}'.format(ppjson(bg_proof_json, 1000)))
+    bg_req_creds = json.loads(await bcohan.build_req_creds_json(bg_creds))
+    bg_proof_json = await bcohan.create_proof(bg_proof_req, bg_creds, bg_req_creds)
+    print('\n\n== 52 == Proof (by filter) of non-revoked Babka Galaxy: {}'.format(ppjson(bg_proof_json, 4096)))
 
     # Verifier anchor attempts to verify proof of non-revoked Babka Galaxy cred
     rc_json = await san.verify_proof(bg_proof_req, json.loads(bg_proof_json))
-    print('\n\n== 48 == SRI anchor verifies proof (by filter) of cred before revocation as: {}'.format(
+    print('\n\n== 53 == SRI anchor verifies proof (by filter) of cred before revocation as: {}'.format(
         ppjson(rc_json)))
     assert json.loads(rc_json)
 
@@ -1248,34 +1343,34 @@ async def test_anchors_low_level_api(
             }
         }
     }
-    (bc_cred_ids_pred, bc_creds_pred_json) = await bcoban.get_creds(json.dumps(proof_req_pred), filt_pred)
-    print('\n\n== 49 == BC creds, filtered by predicate id >= 5: {}'.format(ppjson(bc_creds_pred_json)))
+    (bc_cred_ids_pred, bc_creds_pred_json) = await bcohan.get_creds(json.dumps(proof_req_pred), filt_pred)
+    print('\n\n== 54 == BC creds, filtered by predicate id >= 5: {}'.format(ppjson(bc_creds_pred_json)))
     bc_creds_pred = json.loads(bc_creds_pred_json)
     bc_display_pred = creds_display(bc_creds_pred)
-    print('\n\n== 50 == BC creds display, filtered by predicate id >= 5: {}'.format(ppjson(bc_display_pred)))
+    print('\n\n== 55 == BC creds display, filtered by predicate id >= 5: {}'.format(ppjson(bc_display_pred)))
     assert len(bc_cred_ids_pred) == 1
     bc_cred_id_pred = bc_cred_ids_pred.pop()  # it's unique
 
     # BC Org Book anchor (as HolderProver) creates proof for creds structure filtered by predicate
-    bc_req_creds_pred = json.loads(await bcoban.build_req_creds_json(
+    bc_req_creds_pred = json.loads(await bcohan.build_req_creds_json(
         bc_creds_pred,
         {cd_id[S_ID['BC']]: {}},
         True))
-    bc_proof_pred_json = await bcoban.create_proof(
+    bc_proof_pred_json = await bcohan.create_proof(
         proof_req_pred,
         bc_creds_pred,
         bc_req_creds_pred)
-    print('\n\n== 51 == BC proof by predicate id >= 5: {}'.format(ppjson(bc_proof_pred_json, 1000)))
+    print('\n\n== 56 == BC proof by predicate id >= 5: {}'.format(ppjson(bc_proof_pred_json, 4096)))
 
     # SRI anchor (as Verifier) verifies proof (by predicate)
     rc_json = await san.verify_proof(
         proof_req_pred,
         json.loads(bc_proof_pred_json))
-    print('\n\n== 52 == SRI anchor verifies BC proof (by predicate) as: {}'.format(ppjson(rc_json)))
+    print('\n\n== 57 == SRI anchor verifies BC proof (by predicate) as: {}'.format(ppjson(rc_json)))
     assert json.loads(rc_json)
 
     # Create and store SRI registration completion creds, green cred from verified proof + extra data
-    print('\n\n== 53 == Revealed attributes from BC proof: {}'.format(ppjson(revealed_attrs(bc_proof))))
+    print('\n\n== 58 == Revealed attributes from BC proof: {}'.format(ppjson(revealed_attrs(bc_proof))))
     revealed = revealed_attrs(bc_proof)[cd_id[S_ID['BC']]]
 
     TODAY = datetime.date.today().strftime('%Y-%m-%d')
@@ -1316,7 +1411,7 @@ async def test_anchors_low_level_api(
             EPOCH_CRED_CREATE[s_id].append(epoch_creation)
             sleep(2)  # put an interior second between each cred creation
             assert json.loads(cred_json[s_id])
-            print('\n\n== 54.{}.0 == SRI created cred (revoc id {}) at epoch {} on schema {}: {}'.format(
+            print('\n\n== 59.{}.0 == SRI created cred (revoc id {}) at epoch {} on schema {}: {}'.format(
                 i,
                 cred_rev_id,
                 epoch_creation,
@@ -1325,7 +1420,7 @@ async def test_anchors_low_level_api(
             cred_id = await holder_prover[s_key.origin_did].store_cred(
                 cred_json[s_id],
                 cred_req_metadata_json[s_id])
-            print('\n\n== 54.{}.1 == Cred id in wallet: {}'.format(i, cred_id))
+            print('\n\n== 59.{}.1 == Cred id in wallet: {}'.format(i, cred_id))
             i += 1
     EPOCH_PRE_SRI_REVOC = int(time())
 
@@ -1344,7 +1439,7 @@ async def test_anchors_low_level_api(
         (sri_cred_ids, creds_pspc_json[s_id]) = await holder_prover[s_key.origin_did].get_creds(
             json.dumps(proof_req[s_id]))
 
-        print('\n\n== 55.{} == Creds on schema {} (no filter) cred_ids: {}; creds: {}'.format(
+        print('\n\n== 60.{} == Creds on schema {} (no filter) cred_ids: {}; creds: {}'.format(
             i,
             s_id,
             sri_cred_ids,
@@ -1359,7 +1454,7 @@ async def test_anchors_low_level_api(
     }))
 
     (sri_cred_ids, sri_creds_json) = await pspcoban.get_creds(json.dumps(proof_req_sri))
-    print('\n\n== 56 == All SRI-issued creds (no filter) at PSPC Org Book {}: {}'.format(
+    print('\n\n== 61 == All SRI-issued creds (no filter) at PSPC Org Book {}: {}'.format(
         sri_cred_ids,
         ppjson(sri_creds_json)))
 
@@ -1372,13 +1467,13 @@ async def test_anchors_low_level_api(
                 'greenLevel': cred_data[S_ID['GREEN']][1]['greenLevel']  # [1]: 'greenLevel': 'Silver'
             }
         })
-    print('\n\n== 57 == SRI creds display, filtered post hoc matching greenLevel {}: {}'.format(
+    print('\n\n== 62 == SRI creds display, filtered post hoc matching greenLevel {}: {}'.format(
         cred_data[S_ID['GREEN']][1]['greenLevel'],
         ppjson(sri_display_filt_post_hoc)))
     sri_pruned = prune_creds_json(
         sri_creds,
         {k for k in sri_display_filt_post_hoc})
-    print('\n\n== 58 == SRI creds, stripped down: {}'.format(ppjson(sri_pruned)))
+    print('\n\n== 63 == SRI creds, stripped down: {}'.format(ppjson(sri_pruned)))
 
     filt_get_creds_silver = {
         cd_id[S_ID['GREEN']]: {
@@ -1391,7 +1486,7 @@ async def test_anchors_low_level_api(
     (sri_cred_ids_filt, creds_pspc_json[S_ID['GREEN']]) = await pspcoban.get_creds(
         json.dumps(proof_req[S_ID['GREEN']]),
         filt_get_creds_silver)
-    print('\n\n== 59 == SRI creds, filtered a priori {}: {}'.format(
+    print('\n\n== 64 == SRI creds, filtered a priori {}: {}'.format(
         sri_cred_ids_filt,
         ppjson(creds_pspc_json[S_ID['GREEN']])))
     assert set([*sri_display_filt_post_hoc]) == sri_cred_ids_filt
@@ -1413,12 +1508,12 @@ async def test_anchors_low_level_api(
     # PSPC Org Book anchor (as HolderProver) creates multi-cred proof (by filter)
     sri_req_creds = json.loads(await pspcoban.build_req_creds_json(sri_creds_filt))
     sri_proof_json = await pspcoban.create_proof(proof_req_sri, sri_creds_filt, sri_req_creds)
-    print('\n\n== 60 == PSPC Org Book proof on cred-ids {}: {}'.format(sri_cred_ids_filt, ppjson(sri_proof_json, 1000)))
+    print('\n\n== 65 == PSPC Org Book proof on cred-ids {}: {}'.format(sri_cred_ids_filt, ppjson(sri_proof_json, 4096)))
     sri_proof = json.loads(sri_proof_json)
 
     # SRI anchor (as Verifier) verifies proof (by filter)
     rc_json = await san.verify_proof(proof_req_sri, sri_proof)
-    print('\n\n== 61 == SRI anchor verifies PSPC Org Book proof by cred_ids {} as: {}'.format(
+    print('\n\n== 66 == SRI anchor verifies PSPC Org Book proof by cred_ids {} as: {}'.format(
         sri_cred_ids_filt,
         ppjson(rc_json)))
     assert json.loads(rc_json)
@@ -1452,14 +1547,14 @@ async def test_anchors_low_level_api(
     sri_briefs_q = json.loads(sri_briefs_q_json)
     sri_req_creds_q = proof_req_briefs2req_creds(proof_req_sri, sri_briefs_q)
     sri_proof_q_json = await pspcoban.create_proof(proof_req_sri, sri_briefs_q, sri_req_creds_q)
-    print('\n\n== 62 == PSPC Org Book proof by query on cred-ids {}: {}'.format(
+    print('\n\n== 67 == PSPC Org Book proof by query on cred-ids {}: {}'.format(
         sri_cred_ids_q,
-        ppjson(sri_proof_q_json, 1000)))
+        ppjson(sri_proof_q_json, 4096)))
     sri_proof_q = json.loads(sri_proof_q_json)
 
     # SRI anchor (as Verifier) verifies proof (by query)
     rc_json = await san.verify_proof(proof_req_sri, sri_proof_q)
-    print('\n\n== 63 == SRI anchor verifies PSPC Org Book proof by query on cred_ids {} as: {}'.format(
+    print('\n\n== 68 == SRI anchor verifies PSPC Org Book proof by query on cred_ids {} as: {}'.format(
         sri_cred_ids_filt,
         ppjson(rc_json)))
     assert json.loads(rc_json)
@@ -1543,14 +1638,14 @@ async def test_anchors_low_level_api(
     x_sri_creds = json.loads(x_sri_creds_json)
     x_sri_req_creds = json.loads(await pspcoban.build_req_creds_json(x_sri_creds))
     x_sri_proof_json = await pspcoban.create_proof(x_proof_req_sri, x_sri_creds, x_sri_req_creds)
-    print('\n\n== 64 == Org Book proof pre-revoc on cred-ids {}, just before Silver cred creation {}'.format(
+    print('\n\n== 69 == Org Book proof pre-revoc on cred-ids {}, just before Silver cred creation {}'.format(
         sri_cred_ids_filt,
-        ppjson(x_sri_proof_json, 1000)))
+        ppjson(x_sri_proof_json, 4096)))
     x_sri_proof = json.loads(x_sri_proof_json)
 
     # SRI anchor (as Verifier) verifies proof
     rc_json = await san.verify_proof(x_proof_req_sri, x_sri_proof)
-    print('\n\n== 65 == SRI anchor verifies BC Org Book proof pre-revoc on cred_ids {} < Silver creation as: {}'.format(
+    print('\n\n== 70 == SRI anchor verifies PSPC proof pre-revocation on cred_ids {} < Silver creation as: {}'.format(
         x_cred_ids,
         ppjson(rc_json)))
     assert not json.loads(rc_json)
@@ -1587,14 +1682,14 @@ async def test_anchors_low_level_api(
 
     sleep(1)
     EPOCH_SRI_REVOC = await did2an[schema_key(S_ID['GREEN']).origin_did].revoke_cred(x_rr_id, x_cr_id)
-    print('\n\n== 66 == SRI anchor revoked ({}, {}) -> {} green level {}'.format(
+    print('\n\n== 71 == SRI anchor revoked ({}, {}) -> {} green level {}'.format(
         x_rr_id,
         x_cr_id,
         sri_revoc_info[(x_rr_id, x_cr_id)]['legalName'],
         sri_revoc_info[(x_rr_id, x_cr_id)]['greenLevel']))
     sleep(1)
     EPOCH_POST_SRI_REVOC = int(time())
-    print('\n\n== 67 == EPOCH times re: SRI Silver revocation: pre-revoc {}, revoc {}, post-revoc {}'.format(
+    print('\n\n== 72 == EPOCH times re: SRI Silver revocation: pre-revoc {}, revoc {}, post-revoc {}'.format(
         EPOCH_PRE_SRI_REVOC,
         EPOCH_SRI_REVOC,
         EPOCH_POST_SRI_REVOC))
@@ -1612,14 +1707,14 @@ async def test_anchors_low_level_api(
     x_sri_creds = json.loads(x_sri_creds_json)
     x_sri_req_creds = json.loads(await pspcoban.build_req_creds_json(x_sri_creds))
     x_sri_proof_json = await pspcoban.create_proof(x_proof_req_sri, x_sri_creds, x_sri_req_creds)
-    print('\n\n== 68 == PSPC Org Book proof on cred-ids {} post Silver revocation: {}'.format(
+    print('\n\n== 73 == PSPC Org Book proof on cred-ids {} post Silver revocation: {}'.format(
         x_cred_ids,
-        ppjson(x_sri_proof_json, 1000)))
+        ppjson(x_sri_proof_json, 4096)))
     x_sri_proof = json.loads(x_sri_proof_json)
 
     # SRI anchor (as Verifier) attempts to verify multi-cred proof with revoked cred
     rc_json = await san.verify_proof(x_proof_req_sri, x_sri_proof)
-    print('\n\n== 69 == SRI anchor verifies multi-cred proof (by filter) with Silver cred revoked as: {}'.format(
+    print('\n\n== 74 == SRI anchor verifies multi-cred proof (by filter) with Silver cred revoked as: {}'.format(
         ppjson(rc_json)))
     assert not json.loads(rc_json)
 
@@ -1636,14 +1731,14 @@ async def test_anchors_low_level_api(
     sri_creds = json.loads(sri_creds_json)
     sri_req_creds = json.loads(await pspcoban.build_req_creds_json(sri_creds))
     sri_proof_json = await pspcoban.create_proof(proof_req_sri, sri_creds, sri_req_creds)
-    print('\n\n== 70 == Org Book proof on cred-ids {} just before Silver cred revoc: {}'.format(
+    print('\n\n== 75 == PSPC proof on cred-ids {} just before Silver cred revoc: {}'.format(
         cred_ids,
-        ppjson(sri_proof_json, 1000)))
+        ppjson(sri_proof_json, 4096)))
     sri_proof = json.loads(sri_proof_json)
 
     # SRI anchor (as Verifier) attempts to verify multi-cred proof with revoked cred, back-dated pre-revocation
     rc_json = await san.verify_proof(proof_req_sri, sri_proof)
-    print('\n\n== 71 == SRI anchor verifies multi-cred proof (by filter) just before Silver cred revoc as: {}'.format(
+    print('\n\n== 76 == SRI anchor verifies multi-cred proof (by filter) just before Silver cred revoc as: {}'.format(
         ppjson(rc_json)))
     assert json.loads(rc_json)
 
@@ -1660,14 +1755,14 @@ async def test_anchors_low_level_api(
     x_sri_creds = json.loads(x_sri_creds_json)
     x_sri_req_creds = json.loads(await pspcoban.build_req_creds_json(x_sri_creds))
     x_sri_proof_json = await pspcoban.create_proof(x_proof_req_sri, x_sri_creds, x_sri_req_creds)
-    print('\n\n== 72 == Org Book proof on cred-ids {} just before Silver cred creation: {}'.format(
+    print('\n\n== 77 == PSPC proof on cred-ids {} just before Silver cred creation: {}'.format(
         x_cred_ids,
-        ppjson(x_sri_proof_json, 1000)))
+        ppjson(x_sri_proof_json, 4096)))
     x_sri_proof = json.loads(x_sri_proof_json)
 
     # SRI anchor (as Verifier) attempts to verify multi-cred proof with revoked cred
     rc_json = await san.verify_proof(x_proof_req_sri, x_sri_proof)
-    print('\n\n== 73 == SRI anchor verifies multi-cred proof (by filter) just before Silver cred creation as {}'.format(
+    print('\n\n== 78 == SRI anchor verifies multi-cred proof (by filter) just before Silver cred creation as {}'.format(
         ppjson(rc_json)))
     assert not json.loads(rc_json)
 
@@ -1686,14 +1781,14 @@ async def test_anchors_low_level_api(
     x_sri_proof_json = await pspcoban.create_proof(x_proof_req_sri, x_sri_creds, x_sri_req_creds)
 
     x_sri_proof_json = await pspcoban.create_proof(x_proof_req_sri, x_sri_creds, x_sri_req_creds)
-    print('\n\n== 74 == Org Book proof on cred-ids {} before any Green cred creation: {}'.format(
+    print('\n\n== 79 == PSPC Org Book proof on cred-ids {} before any Green cred creation: {}'.format(
         x_cred_ids,
-        ppjson(x_sri_proof_json, 1000)))
+        ppjson(x_sri_proof_json, 4096)))
     x_sri_proof = json.loads(x_sri_proof_json)
 
     # SRI anchor (as Verifier) attempts to verify multi-cred proof with revoked cred
     rc_json = await san.verify_proof(x_proof_req_sri, x_sri_proof)
-    print('\n\n== 75 == SRI anchor verifies multi-cred proof (by filter) before any Green cred creation as: {}'.format(
+    print('\n\n== 80 == SRI anchor verifies multi-cred proof (by filter) before any Green cred creation as: {}'.format(
         ppjson(rc_json)))
     assert not json.loads(rc_json)
 
@@ -1751,26 +1846,26 @@ async def test_anchors_low_level_api(
     assert len(sri_creds['predicates'])
     sri_req_creds = json.loads(await pspcoban.build_req_creds_json(sri_creds))
     sri_proof_json = await pspcoban.create_proof(proof_req_sri, sri_creds, sri_req_creds)
-    print('\n\n== 76 == PSPC Org Book multi-cred proof on cred-ids {} for Tart City on min jurisdictionId: {}'.format(
+    print('\n\n== 81 == PSPC Org Book multi-cred proof on cred-ids {} for Tart City on min jurisdictionId: {}'.format(
         cred_ids,
-        ppjson(sri_proof_json, 1000)))
+        ppjson(sri_proof_json, 4096)))
     sri_proof = json.loads(sri_proof_json)
 
     # SRI anchor (as Verifier) attempts to verify multi-cred proof with specification of one by pred
     rc_json = await san.verify_proof(proof_req_sri, sri_proof)
-    print('\n\n== 77 == SRI anchor verifies multi-cred proof (by pred) as: {}'.format(
+    print('\n\n== 82 == SRI anchor verifies multi-cred proof (by pred) as: {}'.format(
         ppjson(rc_json)))
     assert json.loads(rc_json)
 
     # Exercise helper GET calls
     txn_json = await san.get_txn(schema[S_ID['GREEN']]['seqNo'])
-    print('\n\n== 78 == GREEN schema by txn #{}: {}'.format(schema[S_ID['GREEN']]['seqNo'], ppjson(txn_json)))
+    print('\n\n== 83 == GREEN schema by txn #{}: {}'.format(schema[S_ID['GREEN']]['seqNo'], ppjson(txn_json)))
     assert json.loads(txn_json)
     txn_json = await san.get_txn(99999)  # ought not exist
     assert not json.loads(txn_json)
 
     bc_box_ids = json.loads(await bcran.get_box_ids_json())
-    print('\n\n== 79 == Box identifiers at BC registrar (issuer): {}'.format(ppjson(bc_box_ids)))
+    print('\n\n== 84 == Box identifiers at BC registrar (issuer): {}'.format(ppjson(bc_box_ids)))
     assert all(box_id.startswith(bcran.did) for ids in bc_box_ids.values() for box_id in ids)
     assert len(bc_box_ids['schema_id']) > 1  # bc-reg, non-revo
     assert len(bc_box_ids['cred_def_id']) > 1  # bc-reg, non-revo
@@ -1799,10 +1894,10 @@ async def test_anchors_low_level_api(
     remaining = listdir(pspcoban.dir_cache)
     assert len(remaining) == 0
 
-    print('\n\n== 80 == Caches archive, parse, load, purge OK')
+    print('\n\n== 85 == Caches archive, parse, load, purge OK')
 
     await bcran.close()
-    await bcoban.close()
+    await bcohan.close()
     await pspcoban.close()
     await san.close()
     await tan.close()
@@ -1813,7 +1908,7 @@ async def test_anchors_low_level_api(
 @pytest.mark.asyncio
 async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_home):
 
-    print('\n\n== Testing offline anchor operation ==')
+    print(Ink.YELLOW('\n\n== Testing offline anchor operation =='))
 
     # Open PSPC Org Book anchor and create proof without opening node pool
     path = Path(path_home, 'pool', pool_name)
@@ -1822,8 +1917,8 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
         await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
         p,
         {
-            'parse-cache-on-open': True,
-            'archive-cache-on-close': False
+            'parse-caches-on-open': True,
+            'archive-holder-prover-caches-on-close': False
         })
     await pspcoban.open()
     await pspcoban.create_link_secret('SecretLink')
@@ -1842,7 +1937,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
         schema[s_id] = json.loads(await pspcoban.get_schema(s_id))
         cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
 
-    cd_id2spec = await pspcoban.offline_intervals([   
+    cd_id2spec = await pspcoban.offline_intervals([
         cd_id[S_ID['SRI-1.0']],
         cd_id[S_ID['SRI-1.1']]
     ])
@@ -1873,13 +1968,13 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     sri_proof_json = await pspcoban.create_proof(proof_req_sri, sri_creds, sri_req_creds)
     print('\n\n== 2 == PSPC Org Book multi-cred proof on cred-ids {} for Tart City on min jurisdictionId: {}'.format(
         cred_ids,
-        ppjson(sri_proof_json, 1000)))
+        ppjson(sri_proof_json, 4096)))
     sri_proof = json.loads(sri_proof_json)
 
     # SRI anchor (as Verifier) attempts to verify multi-cred proof with specification of one by pred, offline
     san_cfg = {
-        'parse-cache-on-open': True,
-        'archive-on-close': json.loads(await pspcoban.get_box_ids_json())
+        'parse-caches-on-open': True,
+        'archive-verifier-caches-on-close': json.loads(await pspcoban.get_box_ids_json())
     }
     san = SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p, san_cfg)
 
@@ -1890,7 +1985,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     await san.close()  # ... then close ...
     await p.close()
     san.cfg = {
-        'parse-cache-on-open': True
+        'parse-caches-on-open': True
     }
     await san.open()  # ... and open off-line
 
@@ -1914,7 +2009,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
 @pytest.mark.asyncio
 async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_home):
 
-    print('\n\n== Testing anchor survival on node pool restart ==')
+    print(Ink.YELLOW('\n\n== Testing anchor survival on node pool restart =='))
 
     # Open pool, close and auto-remove it
     path = Path(path_home, 'pool', pool_name)
@@ -1931,8 +2026,8 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
             await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
             p,
             {
-                'parse-cache-on-open': True,
-                'archive-cache-on-close': True
+                'parse-caches-on-open': True,
+                'archive-holder-prover-caches-on-close': True
             })) as pspcoban:
 
         assert p.handle is not None
@@ -1968,7 +2063,7 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
 @pytest.mark.asyncio
 async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_path, pool_genesis_txn_file):
 
-    print('\n\n== Testing anchor revocation cache reg update maintenance ==')
+    print(Ink.YELLOW('\n\n== Testing anchor revocation cache reg update maintenance =='))
 
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
         OrgBookAnchor(
@@ -2039,7 +2134,7 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
         await pspcoban.create_link_secret('SecretLink')
         (cred_req_json, cred_req_metadata_json) = await pspcoban.create_cred_req(cred_offer_json, cred_def['id'])
         cred_req = json.loads(cred_req_json)
-        print('\n\n== 4 == Credential request [{} v{}]: metadata {}, cred {}'.format(
+        print('\n\n== 4 == Credential request [{} v{}]: metadata {}, cred req {}'.format(
             s_key.name,
             s_key.version,
             ppjson(cred_req_metadata_json),
@@ -2154,7 +2249,7 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
     THREADS = 256
     threads = []
 
-    print('\n\n== Testing anchor cache locking ==')
+    print(Ink.YELLOW('\n\n== Testing anchor cache locking =='))
 
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
         OrgBookAnchor(
@@ -2229,66 +2324,80 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
 
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
-async def test_anchor_rekey(
+async def test_anchor_reseed(
         pool_name,
         pool_genesis_txn_path,
         pool_genesis_txn_file,
         seed_trustee1):
 
-    print('\n\n== Testing anchor rekey')
+    print(Ink.YELLOW('\n\n== Testing anchor reseed'))
 
     now = int(time())  # ten digits, unique and disposable each run
     # Generate seeds (in case of re-run on existing ledger, use fresh disposable identity every time)
-    rk_seeds = ['Rekey-Org_Book-Anchor-{}'.format(now + i) for i in range(2)]  # makes 32 characters
-    print('\n\n== 1 == seeds: {}'.format(rk_seeds))
+    seeds = ['Reseed-Org-Book-Anchor{}'.format(now + i) for i in range(2)]  # makes 32 characters
+    print('\n\n== 1 == seeds: {}'.format(seeds))
 
     # Open pool, init anchors
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-        TrusteeAnchor(await Wallet(seed_trustee1, 'trust-anchor').create(), p)) as tan, (
-        OrgBookAnchor(await Wallet(rk_seeds[0], 'rekey-org-book', None, {'auto-remove': True}).create(), p)) as rkan:
-
+            TrusteeAnchor(await Wallet(seed_trustee1, 'trust-anchor').create(), p)) as tan, (
+            OrgBookAnchor(await Wallet(seeds[0], 'reseed-org-book').create(), p)) as rsan:
         assert p.handle
 
         # Publish anchor particulars to ledger if not yet present
         did2an = {}
-        for an in (tan, rkan):
+        for an in (tan, rsan):
             did2an[an.did] = an
             if not json.loads(await tan.get_nym(an.did)):
                 await tan.send_nym(an.did, an.verkey, an.wallet.name, an.role())
 
         nyms = {
             'tan': json.loads(await tan.get_nym(tan.did)),
-            'rkan': json.loads(await tan.get_nym(rkan.did))
+            'rsan': json.loads(await tan.get_nym(rsan.did))
         }
         print('\n\n== 2 == nyms: {}'.format(ppjson(nyms)))
 
         for k in nyms:
             assert 'dest' in nyms[k]
 
-        await rkan.create_link_secret('SecretLink')
-        await rkan.reset_wallet()
-        assert rkan.wallet.auto_remove  # make sure auto-remove configuration survives reset
+        await rsan.create_link_secret('SecretLink')
 
-        # Anchor rekey
-        old_seed2did = await rkan.wallet._seed2did()
-        assert old_seed2did == rkan.did
-        verkey_in_wallet = await did.key_for_local_did(rkan.wallet.handle, rkan.did)
-        print('\n\n== 3 == PSPC Org Book anchor DID {}, verkey in wallet {}'.format(rkan.did, verkey_in_wallet))
-        nym_resp = json.loads(await rkan.get_nym(rkan.did))
-        print('\n\n== 4 == PSPC Org Book nym on ledger {}'.format(ppjson(nym_resp)))
+        # Anchor reseed wallet
+        old_seed2did = await rsan.wallet._seed2did()
+        assert old_seed2did == rsan.did
+        verkey_in_wallet = await did.key_for_local_did(rsan.wallet.handle, rsan.did)
+        print('\n\n== 3 == Anchor DID {}, verkey in wallet {}'.format(rsan.did, verkey_in_wallet))
+        nym_resp = json.loads(await rsan.get_nym(rsan.did))
+        print('\n\n== 4 == Anchor nym on ledger {}'.format(ppjson(nym_resp)))
 
-        old_verkey = rkan.verkey
-        await rkan.rekey(rk_seeds[1])
-        assert rkan.verkey != old_verkey
-        assert old_seed2did == await rkan.wallet._seed2did()
-        assert old_seed2did == rkan.did
+        old_verkey = rsan.verkey
+        await rsan.reseed(seeds[1])
+        assert rsan.verkey != old_verkey
+        assert old_seed2did == await rsan.wallet._seed2did()
+        assert old_seed2did == rsan.did
 
-        verkey_in_wallet = await did.key_for_local_did(rkan.wallet.handle, rkan.did)
-        print('\n\n== 5 == PSPC Org Book anchor rekey operation retains DID {} on rekey from {} to {}'.format(    
-            rkan.did,
+        verkey_in_wallet = await did.key_for_local_did(rsan.wallet.handle, rsan.did)
+        print('\n\n== 5 == Anchor reseed operation retains DID {} on rekey from {} to {}'.format(
+            rsan.did,
             old_verkey,
-            rkan.verkey))
+            rsan.verkey))
 
+    # Fail to re-open on old seed
+    try:
+        async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
+                OrgBookAnchor(await Wallet(seeds[0], 'reseed-org-book').create(), p)) as rsan:
+            assert False  # should have failed to open wallet on old seed
+    except AbsentMetadata:
+        print('\n\n== 6 == Anchor failed to re-open wallet on old seed as expected')
+
+    # Re-open on new seed
+    async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
+            OrgBookAnchor(await Wallet(seeds[1], 'reseed-org-book', None, {'auto-remove': True}).create(), p)) as rsan:
+        assert p.handle
+
+        print('\n\n== 7 == Re-opened anchor wallet on new seed: using verkey {}'.format(rsan.verkey))
+        await rsan.create_link_secret('SecretLink')
+        await rsan.reset_wallet()
+        assert rsan.wallet.auto_remove  # make sure auto-remove configuration survives reset
 
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
@@ -2298,7 +2407,7 @@ async def test_anchors_cache_only(
         pool_genesis_txn_file,
         seed_trustee1):
 
-    print('\n\n== Testing proof/verification from cache only ==')
+    print(Ink.YELLOW('\n\n== Testing proof/verification from cache only =='))
 
     _set_cache_state(False)
 
@@ -2310,8 +2419,8 @@ async def test_anchors_cache_only(
         await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
         p,
         {
-            'parse-cache-on-open': True,
-            'archive-cache-on-close': True
+            'parse-caches-on-open': True,
+            'archive-holder-prover-caches-on-close': True
         })
 
     await p.open()
@@ -2452,7 +2561,7 @@ async def test_anchors_cache_only(
         i += 1
 
     try:  # exercise non-buildability of cache-only proof req when there is no cache data
-        cd_id2spec = await pspcoban.offline_intervals([   
+        cd_id2spec = await pspcoban.offline_intervals([
             cd_id[s_id] for s_id in cd_id
         ])
         print('\n\n** cd_id2spec {}'.format(ppjson(cd_id2spec)))
@@ -2470,7 +2579,7 @@ async def test_anchors_cache_only(
             cred_offer_json[s_id],
             cd_id[s_id])
         cred_req[s_id] = json.loads(cred_req_json[s_id])
-        print('\n\n== 3.{} == Credential request [{} v{}]: metadata {}, cred {}'.format(
+        print('\n\n== 3.{} == Credential request [{} v{}]: metadata {}, cred req {}'.format(
             i,
             s_key.name,
             s_key.version,
@@ -2523,13 +2632,13 @@ async def test_anchors_cache_only(
 
         cred_id = await pspcoban.store_cred(cred_json, cred_req_metadata_json[s_id])
 
-    await pspcoban.load_cache(False)
+    await pspcoban.load_cache_for_proof(False)
     san_cfg = {
-        'parse-cache-on-open': True,
-        'archive-on-close': json.loads(await pspcoban.get_box_ids_json())
+        'parse-caches-on-open': True,
+        'archive-verifier-caches-on-close': json.loads(await pspcoban.get_box_ids_json())
     }
     san.cfg = san_cfg
-    await san.load_cache(False)
+    await san.load_cache_for_verification(False)
     await p.close()  # The pool is now closed - from here on in, we are off-line
 
     # PSPC org book anchor provides default intervals per cred def id, SRI anchor builds proof req
@@ -2564,7 +2673,7 @@ async def test_anchors_cache_only(
     req_creds_q = proof_req_briefs2req_creds(proof_req, briefs_q)
     print('\n\n== 8 == Proof req and briefs created req-creds: {}'.format(ppjson(req_creds_q)))
     proof_q_json = await pspcoban.create_proof(proof_req, briefs_q, req_creds_q)
-    print('\n\n== 9 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 1000)))
+    print('\n\n== 9 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 4096)))
     proof_q = json.loads(proof_q_json)
 
     # SRI anchor (as Verifier) verifies proof (by query)
@@ -2606,7 +2715,7 @@ async def test_anchors_cache_only(
     req_creds = json.loads(await pspcoban.build_req_creds_json(creds_pruned))
     print('\n\n== 16 == Requested credentials: {}'.format(ppjson(req_creds)))
     proof_json = await pspcoban.create_proof(proof_req, creds_pruned, req_creds)
-    print('\n\n== 17 == PSPC Org Book proof: {}'.format(ppjson(proof_json, 1000)))
+    print('\n\n== 17 == PSPC Org Book proof: {}'.format(ppjson(proof_json, 4096)))
     proof = json.loads(proof_json)
 
     # SRI org book verifies proof (by filter)
@@ -2644,7 +2753,7 @@ async def test_anchors_cache_only(
     req_creds_q = proof_req_briefs2req_creds(proof_req, briefs_q)
     print('\n\n== 22 == Proof req and briefs created req-creds: {}'.format(ppjson(req_creds_q)))
     proof_q_json = await pspcoban.create_proof(proof_req, briefs_q, req_creds_q)
-    print('\n\n== 23 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 1000)))
+    print('\n\n== 23 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 4096)))
     proof_q = json.loads(proof_q_json)
 
     # SRI org book verifies single-cred proof (by query)
@@ -2682,7 +2791,7 @@ async def test_anchors_cache_only(
     req_creds_q = proof_req_briefs2req_creds(proof_req, briefs_q)
     print('\n\n== 28 == Proof req and briefs created req-creds: {}'.format(ppjson(req_creds_q)))
     proof_q_json = await pspcoban.create_proof(proof_req, briefs_q, req_creds_q)
-    print('\n\n== 29 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 1000)))
+    print('\n\n== 29 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 4096)))
     proof_q = json.loads(proof_q_json)
 
     # SRI org book verifies single-cred proof (by query)
@@ -2717,7 +2826,7 @@ async def test_anchors_cache_only(
     req_creds_q = proof_req_briefs2req_creds(proof_req, briefs_q)
     print('\n\n== 33 == Proof req, briefs created req-creds: {}'.format(ppjson(req_creds_q)))
     proof_q_json = await pspcoban.create_proof(proof_req, briefs_q, req_creds_q)
-    print('\n\n== 34 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 1000)))
+    print('\n\n== 34 == Proof via query on cred-ids {}: {}'.format(cred_ids_q, ppjson(proof_q_json, 4096)))
     proof_q = json.loads(proof_q_json)
 
     # SRI org book verifies single-cred proof (by query)
@@ -2766,3 +2875,342 @@ async def test_anchors_cache_only(
 
     _set_cache_state(True)
     Caches.purge_archives(pspcoban.dir_cache, False)
+
+
+@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.asyncio
+async def test_util_wranglers(
+        pool_ip,
+        pool_name,
+        pool_genesis_txn_path,
+        pool_genesis_txn_file,
+        seed_trustee1):
+
+    print(Ink.YELLOW('\n\n== Testing utility wranglers =='))
+
+    # Open pool, init anchors
+    async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
+        SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p)) as san, (
+        OrgBookAnchor(
+            await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
+            p)) as pspcoban:
+
+        assert p.handle is not None
+
+        nyms = {
+            'san': json.loads(await san.get_nym(san.did)),
+            'pspcoban': json.loads(await san.get_nym(pspcoban.did))
+        }
+        print('\n\n== 1 == nyms: {}'.format(ppjson(nyms)))
+
+        for k in nyms:
+            assert 'dest' in nyms[k]
+
+        # Publish schema to ledger if not yet present; get from ledger
+        S_ID = {
+            'NON-REVO-X': schema_id(san.did, 'non-revo-x', '1.0'),
+            'REVO-X': schema_id(san.did, 'revo-x', '1.0')
+        }
+
+        schema_data = {
+            S_ID['NON-REVO-X']: {
+                'name': schema_key(S_ID['NON-REVO-X']).name,
+                'version': schema_key(S_ID['NON-REVO-X']).version,
+                'attr_names': [
+                    'ident',
+                    'role',
+                    'epochExpiry'
+                ]
+            },
+            S_ID['REVO-X']: {
+                'name': schema_key(S_ID['REVO-X']).name,
+                'version': schema_key(S_ID['REVO-X']).version,
+                'attr_names': [
+                    'ident',
+                    'r',
+                    'g',
+                    'b'
+                ]
+            }
+        }
+
+        # index by transaction number
+        seq_no2schema = {}
+        seq_no2schema_id = {}
+
+        # index by schema id
+        schema_json = {}
+        schema = {}
+        cred_offer_json = {}
+        cred_offer = {}
+        cred_def_json = {}
+        cred_def = {}
+        cd_id = {}
+        cred_data = {}
+        cred_id = {}
+        cred_info = {}
+        cred_brief = {}
+        cred_req_json = {}
+        cred_req = {}
+        cred_json = {}
+        cred_req_metadata_json = {}
+        cred = {}
+
+        i = 0
+        seq_no = None
+        for s_id in schema_data:
+            s_key = schema_key(s_id)
+            try:
+                swab_json = await san.get_schema(s_key)  # may exist
+            except AbsentSchema:
+                await san.send_schema(json.dumps(schema_data[s_id]))
+            schema_json[s_id] = await san.get_schema(s_key)
+            assert json.loads(schema_json[s_id])  # should exist now
+
+            schema[s_id] = json.loads(schema_json[s_id])
+            seq_no2schema_id[schema[s_id]['seqNo']] = s_id
+            print('\n\n== 2.{} == SCHEMA [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
+            assert schema[s_id]
+            i += 1
+
+        # SRI anchor creates, stores, publishes cred definitions to ledger; creates cred offers
+        i = 0
+        for s_id in schema_data:
+            s_key = schema_key(s_id)
+
+            await san.send_cred_def(
+                s_id,
+                s_id != S_ID['NON-REVO-X'],
+                4 if s_id == S_ID['REVO-X'] else None)
+            cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
+
+            assert (s_id == S_ID['NON-REVO-X']) or (
+                [f for f in Tails.links(str(san._dir_tails), san.did)
+                    if cd_id[s_id] in f] and not Tails.unlinked(str(san._dir_tails)))
+
+            cred_def_json[s_id] = await san.get_cred_def(cd_id[s_id])  # ought to exist now
+            cred_def[s_id] = json.loads(cred_def_json[s_id])
+            print('\n\n== 3.{}.0 == Cred def [{} v{}]: {}'.format(
+                i,
+                s_key.name,
+                s_key.version,
+                ppjson(json.loads(cred_def_json[s_id]))))
+            assert cred_def[s_id].get('schemaId', None) == str(schema[s_id]['seqNo'])
+
+            cred_offer_json[s_id] = await san.create_cred_offer(schema[s_id]['seqNo'])
+            cred_offer[s_id] = json.loads(cred_offer_json[s_id])
+            print('\n\n== 3.{}.1 == Credential offer [{} v{}]: {}'.format(
+                i,
+                s_key.name,
+                s_key.version,
+                ppjson(cred_offer_json[s_id])))
+            i += 1
+
+        # Setup link secret, cred reqs at HolderProver anchor
+        await pspcoban.create_link_secret('SecretLink')
+
+        i = 0
+        for s_id in schema_data:
+            s_key = schema_key(s_id)
+            (cred_req_json[s_id], cred_req_metadata_json[s_id]) = await pspcoban.create_cred_req(
+                cred_offer_json[s_id],
+                cd_id[s_id])
+            cred_req[s_id] = json.loads(cred_req_json[s_id])
+            print('\n\n== 4.{} == Credential request [{} v{}]: metadata {}, cred req {}'.format(
+                i,
+                s_key.name,
+                s_key.version,
+                ppjson(cred_req_metadata_json[s_id]),
+                ppjson(cred_req_json[s_id])))
+            assert json.loads(cred_req_json[s_id])
+            i += 1
+
+        # Issuer issues creds and stores at HolderProver: get cred req, create cred, store cred
+        cred_data = {
+            S_ID['NON-REVO-X']: {
+                'ident': 'GC-12345',
+                'role': 'supervisor',
+                'epochExpiry': int(time()) + (8 * 60 * 60)
+            },
+            S_ID['REVO-X']: {
+                'ident': 'GC-12345',
+                'r': choice(range(256)),
+                'g': choice(range(256)),
+                'b': choice(range(256))
+            }
+        }
+
+        EPOCH_CRED_CREATE = {}
+        i = 0
+        for s_id in cred_data:
+            (cred_json[s_id], cred_revoc_id, epoch_creation) = await san.create_cred(
+                cred_offer_json[s_id],
+                cred_req_json[s_id],
+                cred_data[s_id])
+            EPOCH_CRED_CREATE[s_id] = epoch_creation
+            assert json.loads(cred_json[s_id])
+            print('\n\n== 5.{} == Issuer created cred (revoc id {}) at epoch {}: {}'.format(
+                i,
+                cred_revoc_id,
+                epoch_creation,
+                ppjson(cred_json[s_id])))
+            cred = json.loads(cred_json[s_id])
+
+            cred_id[s_id] = await pspcoban.store_cred(
+                cred_json[s_id],
+                cred_req_metadata_json[s_id])
+            assert (s_id == S_ID['NON-REVO-X'] or
+                len(Tails.unlinked(DIR_TAILS)) == 0)  # storage should get rev reg def from ledger and link its id
+
+            print('\n\n== 5.{}.1 == Cred id on {} in wallet: {}'.format(i, s_id, cred_id[s_id]))
+            i += 1
+
+
+        max_proof_req_json = await san.build_proof_req_json({
+            cd_id[s_id]: {
+                'attrs': schema_data[s_id]['attr_names']
+            } for s_id in schema_data
+        })
+        max_proof_req = json.loads(max_proof_req_json)
+        print('\n\n== 6 == Built maximal proof request: {}'.format(ppjson(max_proof_req)))
+        assert (len(max_proof_req['requested_attributes']) ==
+            sum([len(schema_data[s_id]['attr_names']) for s_id in schema_data]))
+
+        # Get cred info by cred def
+        i = 0
+        for s_id in cred_data:
+            cred_info[s_id] = json.loads(await pspcoban.get_cred_info_by_id(cred_id[s_id]))
+            print('\n\n== 7.{}.0 == Cred info on {} by cred_id={}: {}'.format(
+                i,
+                s_id,
+                cred_id[s_id],
+                ppjson(cred_info[s_id])))
+            assert cred_info[s_id]
+            assert cred_info[s_id]['attrs']
+
+            briefs = proof_req_infos2briefs(max_proof_req, cred_info[s_id])
+            print('\n\n== 7.{}.1 == Cred briefs for cred info on {} against maximal proof req: {}'.format(
+                i,
+                s_id,
+                ppjson(briefs)))
+            assert len(briefs) == 1
+            assert bool(cred_def[s_id]['value'].get('revocation', None)) == bool(briefs[0]['interval'])
+            i += 1
+
+        briefs = proof_req_infos2briefs(max_proof_req, [cred_info[s_id] for s_id in cred_info])
+        print('\n\n== 8 == Cred briefs for all cred infos against maximal proof req: {}'.format(ppjson(briefs)))
+        assert len(briefs) == len(cred_info)
+        assert all(bool(cred_def[briefs[i]['cred_info']['schema_id']]['value'].get('revocation', None)) ==
+            bool(briefs[i]['interval']) for i in range(len(briefs)))
+
+        req_creds = proof_req_briefs2req_creds(max_proof_req, briefs)
+        print('\n\n== 9 == Req creds for all cred briefs against maximal proof req: {}'.format(ppjson(req_creds)))
+        assert len(req_creds['requested_attributes']) == sum([len(cred_info[s_id]['attrs']) for s_id in cred_info])
+
+        proof_req_json = await san.build_proof_req_json({
+            cd_id[s_id]: {
+                'attrs': [schema_data[s_id]['attr_names'][0]]
+            } for s_id in schema_data
+        })
+        proof_req = json.loads(proof_req_json)
+        print('\n\n== 10 == Built proof request on first attrs: {}'.format(ppjson(proof_req)))
+        assert len(proof_req['requested_attributes']) == len(schema_data)
+        assert ({cd_id[s_id] for s_id in cd_id} ==
+            {proof_req['requested_attributes'][uuid]['restrictions'][0]['cred_def_id']
+                for uuid in proof_req['requested_attributes']})
+
+        briefs = proof_req_infos2briefs(proof_req, [cred_info[s_id] for s_id in cred_info])
+        print('\n\n== 11 == Cred briefs for all cred infos against first-attrs proof req: {}'.format(ppjson(briefs)))
+        assert len(briefs) == len(cred_info)
+        assert all(bool(cred_def[briefs[i]['cred_info']['schema_id']]['value'].get('revocation', None)) ==
+            bool(briefs[i]['interval']) for i in range(len(briefs)))
+
+        req_creds = proof_req_briefs2req_creds(proof_req, briefs)
+        print('\n\n== 12 == Req creds for all cred briefs against first-attrs proof req: {}'.format(ppjson(req_creds)))
+        assert len(req_creds['requested_attributes']) == len(cred_info)  # one attr per cred def
+
+        proof_req_json = await san.build_proof_req_json({
+            cd_id[S_ID['REVO-X']]: {
+                'attrs': schema_data[S_ID['REVO-X']]['attr_names']
+            }
+        })
+        proof_req = json.loads(proof_req_json)
+        print('\n\n== 13 == Built proof request for {}: {}'.format(S_ID['REVO-X'], ppjson(proof_req)))
+        assert len(proof_req['requested_attributes']) == len(schema_data[S_ID['REVO-X']]['attr_names'])
+        assert ({cd_id[S_ID['REVO-X']]} ==
+            {proof_req['requested_attributes'][uuid]['restrictions'][0]['cred_def_id']
+                for uuid in proof_req['requested_attributes']})
+
+        briefs = proof_req_infos2briefs(proof_req, [cred_info[s_id] for s_id in cred_info])
+        print('\n\n== 14 == Cred briefs for all cred infos against {} proof req: {}'.format(
+            S_ID['REVO-X'],
+            ppjson(briefs)))
+        assert len(briefs) == 1
+        assert all(bool(cred_def[briefs[i]['cred_info']['schema_id']]['value'].get('revocation', None)) ==
+            bool(briefs[i]['interval']) for i in range(len(briefs)))
+
+        req_creds = proof_req_briefs2req_creds(proof_req, briefs)
+        print('\n\n== 15 == Req creds for all cred briefs against {} proof req: {}'.format(
+            S_ID['REVO-X'],
+            ppjson(req_creds)))
+        assert len(req_creds['requested_attributes']) == len(schema_data[S_ID['REVO-X']]['attr_names'])
+        
+        briefs = proof_req_infos2briefs(proof_req, cred_info[S_ID['REVO-X']])
+        print('\n\n== 16 == Cred briefs for {} cred info against {} proof req: {}'.format(
+            S_ID['REVO-X'],
+            S_ID['REVO-X'],
+            ppjson(briefs)))
+        assert len(briefs) == 1
+        assert all(bool(cred_def[briefs[i]['cred_info']['schema_id']]['value'].get('revocation', None)) ==
+            bool(briefs[i]['interval']) for i in range(len(briefs)))
+
+        req_creds = proof_req_briefs2req_creds(proof_req, briefs)
+        print('\n\n== 17 == Req creds for {} cred brief against {} proof req: {}'.format(
+            S_ID['REVO-X'],
+            S_ID['REVO-X'],
+            ppjson(req_creds)))
+        assert len(req_creds['requested_attributes']) == len(schema_data[S_ID['REVO-X']]['attr_names'])
+
+        briefs = proof_req_infos2briefs(proof_req, cred_info[S_ID['NON-REVO-X']])
+        print('\n\n== 18 == Cred briefs for {} cred info against {} proof req: {}'.format(
+            S_ID['NON-REVO-X'],
+            S_ID['REVO-X'],
+            ppjson(briefs)))
+        assert len(briefs) == 0
+        assert all(bool(cred_def[briefs[i]['cred_info']['schema_id']]['value'].get('revocation', None)) ==
+            bool(briefs[i]['interval']) for i in range(len(briefs)))
+
+        req_creds = proof_req_briefs2req_creds(proof_req, briefs)
+        print('\n\n== 19 == Req creds for {} cred brief against {} proof req: {}'.format(
+            S_ID['NON-REVO-X'],
+            S_ID['REVO-X'],
+            ppjson(req_creds)))
+        assert len(req_creds['requested_attributes']) == 0
+
+        proof_req_json = await san.build_proof_req_json({
+            cd_id[S_ID['NON-REVO-X']]: {
+                'attrs': [schema_data[S_ID['NON-REVO-X']]['attr_names'][0]]
+            }
+        })
+        proof_req = json.loads(proof_req_json)
+        print('\n\n== 20 == Built proof request on {} first attr: {}'.format(S_ID['NON-REVO-X'], ppjson(proof_req)))
+        assert len(proof_req['requested_attributes']) == 1
+        assert ({cd_id[S_ID['NON-REVO-X']]} ==
+            {proof_req['requested_attributes'][uuid]['restrictions'][0]['cred_def_id']
+                for uuid in proof_req['requested_attributes']})
+
+        briefs = proof_req_infos2briefs(proof_req, [cred_info[s_id] for s_id in cred_info])
+        print('\n\n== 21 == Cred briefs for {} cred info against first-attr {} proof req: {}'.format(
+            S_ID['NON-REVO-X'],
+            S_ID['NON-REVO-X'],
+            ppjson(briefs)))
+        assert len(briefs) == 1
+        assert all(bool(cred_def[briefs[i]['cred_info']['schema_id']]['value'].get('revocation', None)) ==
+            bool(briefs[i]['interval']) for i in range(len(briefs)))
+
+        req_creds = proof_req_briefs2req_creds(proof_req, briefs)
+        print('\n\n== 22 == Req creds for {} cred brief against first-attr {} proof req: {}'.format(
+            S_ID['NON-REVO-X'],
+            S_ID['NON-REVO-X'],
+            ppjson(req_creds)))
+        assert len(req_creds['requested_attributes']) == 1

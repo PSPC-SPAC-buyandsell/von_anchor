@@ -26,6 +26,7 @@ from von_anchor.cache import SCHEMA_CACHE
 from von_anchor.error import AbsentSchema, BadLedgerTxn
 from von_anchor.util import schema_id, schema_key
 
+
 LOGGER = logging.getLogger(__name__)
 
 
