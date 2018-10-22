@@ -254,13 +254,7 @@ class Wallet:
         :return: current object
         """
 
-        if "freshness_time" in self.cfg:
-            del self.cfg["freshness_time"]
-
         LOGGER.debug('Wallet.create >>>')
-        print('Wallet.create >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
-        print("Config:", json.dumps(self.cfg))
-        print("Creds", json.dumps(self.access_creds))
 
         try:
             await wallet.create_wallet(
