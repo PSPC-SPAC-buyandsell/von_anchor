@@ -43,7 +43,7 @@ class Ink(IntEnum):
         :return: input message in colour
         """
 
-        return '\033[{}m{}\033[0m'.format(self.value, message)
+        return f'\033[{self.value}m{message}\033[0m'
 
 
 def ppjson(dumpit: Any, elide_to: int = None) -> str:
@@ -60,5 +60,5 @@ def ppjson(dumpit: Any, elide_to: int = None) -> str:
     try:
         rv = json.dumps(json.loads(dumpit) if isinstance(dumpit, str) else dumpit, indent=4)
     except TypeError:
-        rv = '{}'.format(pformat(dumpit, indent=4, width=120))
-    return rv if elide_to is None or len(rv) <= elide_to else '{}...'.format(rv[0 : elide_to - 3])
+        rv = f'{pformat(dumpit, indent=4, width=120)}'
+    return rv if elide_to is None or len(rv) <= elide_to else f'{rv[0 : elide_to - 3]}...'

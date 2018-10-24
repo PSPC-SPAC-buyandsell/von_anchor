@@ -87,10 +87,7 @@ class Protocol(Enum):
         :return: credential definition identifier
         """
 
-        return '{}:3:CL:{}{}'.format(  # 3 marks indy cred def id, CL is sig type
-            issuer_did,
-            schema_seq_no,
-            self.cd_id_tag(True))
+        return f'{issuer_did}:3:CL:{schema_seq_no}{self.cd_id_tag(True)}'  # 3 marks indy cred def id, CL is sig type
 
     def txn_data2schema_key(self, txn: dict) -> SchemaKey:
         """
@@ -342,4 +339,4 @@ class NodePool:
         :return: representation for current object
         """
 
-        return 'NodePool({}, {})'.format(self.name, self.genesis_txn_path)
+        return f'NodePool({self.name}, {self.genesis_txn_path})'

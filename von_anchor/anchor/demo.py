@@ -158,7 +158,7 @@ class OrgHubAnchor(OrgBookAnchor, Issuer, Verifier):
         for path_rr_id in Tails.links(self._dir_tails):
             rr_id = basename(path_rr_id)
             try:
-                await self._sync_revoc(rr_id)
+                await HolderProver._sync_revoc_for_proof(self, rr_id)
             except ClosedPool:
                 LOGGER.warning('OrgHubAnchor sync-revoc on close required ledger for %s but pool was closed', rr_id)
 

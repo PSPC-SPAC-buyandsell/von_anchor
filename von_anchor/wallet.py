@@ -28,6 +28,45 @@ from von_anchor.validate_config import validate_config
 
 LOGGER = logging.getLogger(__name__)
 
+
+async def register_wallet_storage_library(storage_type: str, c_library: str, fn_pfx: str = None) -> None:
+    """
+    Load a wallet storage plug-in.
+
+    An indy-sdk wallet storage plug-in is a shared library; relying parties must explicitly
+    load it before creating or opening a wallet with the plug-in.
+
+    The implementation corresponds to the indy-sdk wallet api function:
+    async def register_wallet_storage_library(storage_type: str, c_library: str, fn_pfx: str):
+
+    :param storage_type: wallet storage type
+    :param c_library: plug-in library
+    :param fn_pfx: function prefix to adopt
+    """
+
+    LOGGER.debug(
+        'register_wallet_storage_library >>> storage_type %s, c_library %s, fn_pfx %s',
+        storage_type,
+        c_library,
+        fn_pfx)
+
+    try:
+        await wallet.register_wallet_storage_library(
+            storage_type=storage_type,
+            c_library=c_library,
+            fn_pfx=fn_pfx or "")
+
+        LOGGER.info('Loaded wallet library type %s (%s)', storage_type, c_library)
+    except IndyError as x_indy:
+        LOGGER.debug(
+            'Wallet.register <!< indy error code %s on load of wallet storage %s %s',
+            x_indy.error_code,
+            storage_type, c_library)
+        raise
+
+    LOGGER.debug('register_wallet_storage_library <<<')
+
+
 class Wallet:
     """
     Class encapsulating indy-sdk wallet.
@@ -215,7 +254,7 @@ class Wallet:
 
         if not rv:  # seed not in metadata
             LOGGER.debug('Wallet._seed2did <!< no metadata match for seed in wallet %s', self.name)
-            raise AbsentMetadata('No metadata match for seed {} in wallet {}'.format(self._seed, self.name))
+            raise AbsentMetadata(f'No metadata match for seed {self._seed} in wallet {self.name}')
 
         return rv
 
@@ -280,9 +319,7 @@ class Wallet:
                         self.did,
                         self.name)
                     raise CorruptWallet(
-                        'No verkey for DID {} on ledger, wallet {} may pertain to another'.format(
-                            self.did,
-                            self.name))
+                        f'No verkey for DID {self.did} on ledger, wallet {self.name} may pertain to another')
                 LOGGER.info('Wallet %s got verkey %s for existing DID %s', self.name, self.verkey, self.did)
         finally:
             await wallet.close_wallet(self.handle)
@@ -324,7 +361,7 @@ class Wallet:
 
         if not self.created:
             LOGGER.debug('Wallet.open <!< absent wallet %s', self.name)
-            raise AbsentWallet('Cannot open wallet {}: not created'.format(self.name))
+            raise AbsentWallet(f'Cannot open wallet {self.name}: not created')
 
         self._handle = await wallet.open_wallet(
             json.dumps(self.cfg),
@@ -432,8 +469,4 @@ class Wallet:
         :return: representation for current object
         """
 
-        return '{}([SEED], {}, {}, {}, [ACCESS_CREDS])'.format(
-            self.__class__.__name__,
-            self.name,
-            self.xtype,
-            self.cfg)
+        return f'{self.__class__.__name__}([SEED], {self.name}, {self.xtype}, {self.cfg}, [ACCESS_CREDS])'

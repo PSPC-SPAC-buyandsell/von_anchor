@@ -31,7 +31,7 @@ from time import sleep, time
 from sys import float_info
 
 from von_anchor import BCRegistrarAnchor, OrgBookAnchor, OrgHubAnchor, SRIAnchor, TrusteeAnchor
-from von_anchor.cache import Caches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
+from von_anchor.cache import Caches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE, RevoCacheEntry
 from von_anchor.codec import canon, raw
 from von_anchor.error import (
     AbsentCred,
@@ -1864,7 +1864,7 @@ async def test_anchors_api(
     txn_json = await san.get_txn(99999)  # ought not exist
     assert not json.loads(txn_json)
 
-    bc_box_ids = json.loads(await bcran.get_box_ids_json())
+    bc_box_ids = json.loads(await bcran.get_box_ids_issued())
     print('\n\n== 84 == Box identifiers at BC registrar (issuer): {}'.format(ppjson(bc_box_ids)))
     assert all(box_id.startswith(bcran.did) for ids in bc_box_ids.values() for box_id in ids)
     assert len(bc_box_ids['schema_id']) > 1  # bc-reg, non-revo
@@ -1974,7 +1974,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     # SRI anchor (as Verifier) attempts to verify multi-cred proof with specification of one by pred, offline
     san_cfg = {
         'parse-caches-on-open': True,
-        'archive-verifier-caches-on-close': json.loads(await pspcoban.get_box_ids_json())
+        'archive-verifier-caches-on-close': json.loads(await pspcoban.get_box_ids_held())
     }
     san = SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p, san_cfg)
 
@@ -2110,7 +2110,7 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
             ppjson(schema)))
 
         # SRI anchor creates credential definition on revocation registry large enough to clean
-        RR_SIZE = 128
+        RR_SIZE = RevoCacheEntry.MARK[1] + 32
         await san.send_cred_def(s_id, True, RR_SIZE)
         cd_id = cred_def_id(s_key.origin_did, seq_no)
         rr_id = Tails.current_rev_reg_id(san._dir_tails, cd_id)
@@ -2199,9 +2199,8 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
                 cache_frames_size[creation_epoch]))
             i += 1
 
-        MARK = 4096**0.5  # replicated from cache heuristic: if cache code changes, this test has to change with it
-        assert int(MARK * 0.75) <= len(REVO_CACHE[rr_id].rr_delta_frames) <= int(MARK * 1.25)
-        assert int(MARK * 0.75) <= len(REVO_CACHE[rr_id].rr_state_frames) <= int(MARK * 1.25)
+        assert RevoCacheEntry.MARK[0] <= len(REVO_CACHE[rr_id].rr_delta_frames) <= RevoCacheEntry.MARK[1]
+        assert RevoCacheEntry.MARK[0] <= len(REVO_CACHE[rr_id].rr_state_frames) <= RevoCacheEntry.MARK[1]
 
         print('\n\n== 7 == Revocation cache {} reg delta frames cleaned, now ({}, {}) (delta, state) frames'.format(
             rr_id,
@@ -2635,7 +2634,7 @@ async def test_anchors_cache_only(
     await pspcoban.load_cache_for_proof(False)
     san_cfg = {
         'parse-caches-on-open': True,
-        'archive-verifier-caches-on-close': json.loads(await pspcoban.get_box_ids_json())
+        'archive-verifier-caches-on-close': json.loads(await pspcoban.get_box_ids_held())
     }
     san.cfg = san_cfg
     await san.load_cache_for_verification(False)

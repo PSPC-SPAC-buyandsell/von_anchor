@@ -90,7 +90,7 @@ def encode(orig: Any) -> str:
     if orig is None:
         return str(I32_BOUND)  # sentinel
 
-    prefix = '{}'.format(_prefix(orig) or '')  # no prefix for indy 32-bit ints
+    prefix = f'{_prefix(orig) or ""}'  # no prefix for indy 32-bit ints
 
     if isinstance(orig, bool):
         return '{}{}'.format(
@@ -194,10 +194,10 @@ def canon_wql(query: dict) -> dict:
             query[k] = canon_wql(query[k])
         if k == '$or':
             if not isinstance(query[k], list):
-                raise BadWalletQuery('Bad WQL; $or value must be a list in {}'.format(json.dumps(query)))
+                raise BadWalletQuery(f'Bad WQL; $or value must be a list in {json.dumps(query)}')
             query[k] = [canon_wql(subq) for subq in query[k]]
         if attr_match:
-            qkey = 'attr::{}::{}'.format(canon(attr_match.group(1)), attr_match.group(2))
+            qkey = f'attr::{canon(attr_match.group(1))}::{canon(attr_match.group(2))}'
             query[qkey] = query.pop(k)
             tag_value = query[qkey]
             if isinstance(tag_value, dict) and len(tag_value) == 1:

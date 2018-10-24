@@ -249,7 +249,7 @@ class _BaseAnchor:
 
         resp = json.loads(rv_json)
         if resp.get('op', '') in ('REQNACK', 'REJECT'):
-            LOGGER.debug('_BaseAnchor._submit: <!< ledger rejected request: %s', resp['reason'])
+            LOGGER.debug('_BaseAnchor._submit <!< ledger rejected request: %s', resp['reason'])
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
 
         LOGGER.debug('_BaseAnchor._submit <<< %s', rv_json)
@@ -278,14 +278,14 @@ class _BaseAnchor:
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.WalletIncompatiblePoolError:
                 LOGGER.debug(
-                    '_BaseAnchor._sign_submit: <!< Corrupt wallet %s is not compatible with pool %s',
+                    '_BaseAnchor._sign_submit <!< Corrupt wallet %s is not compatible with pool %s',
                     self.wallet.name,
                     self.pool.name)
                 raise CorruptWallet(
                     'Corrupt wallet {} is not compatible with pool {}'.format(self.wallet.name, self.pool.name))
             else:
                 LOGGER.debug(
-                    '_BaseAnchor._sign_submit: <!<  cannot sign/submit request for ledger: indy error code %s',
+                    '_BaseAnchor._sign_submit <!<  cannot sign/submit request for ledger: indy error code %s',
                     self.wallet.name)
                 raise BadLedgerTxn('Cannot sign/submit request for ledger: indy error code {}'.format(
                     x_indy.error_code))
@@ -333,7 +333,7 @@ class _BaseAnchor:
                     (_, rv_json) = await ledger.parse_get_revoc_reg_def_response(resp_json)
                     rr_def = json.loads(rv_json)
                 except IndyError:  # ledger replied, but there is no such rev reg
-                    LOGGER.debug('_BaseAnchor._get_rev_reg_def: <!< no rev reg exists on %s', rr_id)
+                    LOGGER.debug('_BaseAnchor._get_rev_reg_def <!< no rev reg exists on %s', rr_id)
                     raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
 
                 if revo_cache_entry is None:
@@ -377,12 +377,12 @@ class _BaseAnchor:
             resp_json = await self._submit(req_json)
             resp = json.loads(resp_json)
             if not ('result' in resp and resp['result'].get('data', None)):
-                LOGGER.debug('_BaseAnchor.get_cred_def: <!< no cred def exists on %s', cd_id)
+                LOGGER.debug('_BaseAnchor.get_cred_def <!< no cred def exists on %s', cd_id)
                 raise AbsentCredDef('No cred def exists on {}'.format(cd_id))
             try:
                 (_, rv_json) = await ledger.parse_get_cred_def_response(resp_json)
             except IndyError:  # ledger replied, but there is no such cred def
-                LOGGER.debug('_BaseAnchor.get_cred_def: <!< no cred def exists on %s', cd_id)
+                LOGGER.debug('_BaseAnchor.get_cred_def <!< no cred def exists on %s', cd_id)
                 raise AbsentCredDef('No cred def exists on {}'.format(cd_id))
             CRED_DEF_CACHE[cd_id] = json.loads(rv_json)
             LOGGER.info('_BaseAnchor.get_cred_def: got cred def %s from ledger', cd_id)
@@ -423,12 +423,12 @@ class _BaseAnchor:
                 resp = json.loads(resp_json)
 
                 if not ('result' in resp and resp['result'].get('data', {}).get('attr_names', None)):
-                    LOGGER.debug('_BaseAnchor.get_schema: <!< no schema exists on %s', index)
+                    LOGGER.debug('_BaseAnchor.get_schema <!< no schema exists on %s', index)
                     raise AbsentSchema('No schema exists on {}'.format(index))
                 try:
                     (_, rv_json) = await ledger.parse_get_schema_response(resp_json)
                 except IndyError:  # ledger replied, but there is no such schema
-                    LOGGER.debug('_BaseAnchor.get_schema: <!< no schema exists on %s', index)
+                    LOGGER.debug('_BaseAnchor.get_schema <!< no schema exists on %s', index)
                     raise AbsentSchema('No schema exists on {}'.format(index))
                 SCHEMA_CACHE[s_key] = json.loads(rv_json)  # cache indexes by both txn# and schema key en passant
                 LOGGER.info('_BaseAnchor.get_schema: got schema %s from ledger', index)
@@ -442,7 +442,7 @@ class _BaseAnchor:
                     LOGGER.info('_BaseAnchor.get_schema: no schema at seq #%s on ledger', index)
 
             else:
-                LOGGER.debug('_BaseAnchor.get_schema: <!< bad schema index type')
+                LOGGER.debug('_BaseAnchor.get_schema <!< bad schema index type')
                 raise AbsentSchema('Attempt to get schema on ({}) {} , must use schema key or an int'.format(
                     type(index),
                     index))

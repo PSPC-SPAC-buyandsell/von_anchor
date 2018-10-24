@@ -79,12 +79,12 @@ class SchemaCache:
                 rv = self._schema_key2schema[self._seq_no2schema_key[int(index)]]
             except KeyError:
                 LOGGER.debug('SchemaCache.__getitem__: <!< index %s not present', index)
-                raise CacheIndex('{}'.format(index))
+                raise CacheIndex(f'{index}')
         elif isinstance(index, str):
             rv = self._schema_key2schema[schema_key(index)]
         else:
             LOGGER.debug('SchemaCache.__getitem__: <!< index %s must be int SchemaKey, or schema id', index)
-            raise CacheIndex('{} must be int, SchemaKey, or schema id'.format(index))
+            raise CacheIndex(f'{index} must be int, SchemaKey, or schema id')
 
         LOGGER.debug('SchemaCache.__getitem__ <<< %s', rv)
         return rv
@@ -109,7 +109,7 @@ class SchemaCache:
             self._seq_no2schema_key[index] = s_key
         else:
             LOGGER.debug('SchemaCache.__setitem__: <!< Bad index %s must be a schema key or a sequence number', index)
-            raise CacheIndex('Bad index {} must be a schema key or a sequence number'.format(index))
+            raise CacheIndex(f'Bad index {index} must be a schema key or a sequence number')
 
         LOGGER.debug('SchemaCache.__setitem__ <<< %s', schema)
         return schema
@@ -303,7 +303,7 @@ class RevRegUpdateFrame:
         Return canonical representation of the item.
         """
 
-        return 'RevRegUpdateFrame({}, {}, {})'.format(self.to, self.timestamp, self.rr_update)
+        return f'RevRegUpdateFrame({self.to}, {self.timestamp}, {self.rr_update})'
 
     def __str__(self):
         """
@@ -324,6 +324,8 @@ class RevoCacheEntry:
     * a Tails structure
     * a list of revocation delta frames.
     """
+
+    MARK = (int(sqrt(Tails.MAX_SIZE) * 15 / 16), int(sqrt(Tails.MAX_SIZE) * 17 / 16)) # heuristic: hover about sqrt
 
     def __init__(self, rev_reg_def: dict, tails: Tails = None):
         """
@@ -425,10 +427,9 @@ class RevoCacheEntry:
         LOGGER.debug('RevoCacheEntry.cull >>> delta: %s', delta)
 
         rr_frames = self.rr_delta_frames if delta else self.rr_state_frames
-        mark = sqrt(4096)  # max rev reg size = 4096; heuristic: hover max around sqrt(4096) = 64
-        if len(rr_frames) > int(mark * 1.25):
+        if len(rr_frames) > RevoCacheEntry.MARK[1]:
             rr_frames.sort(key=lambda x: -x.qtime)  # order by descending query time
-            del rr_frames[int(mark * 0.75):]  # retain most recent, grow again from here
+            del rr_frames[RevoCacheEntry.MARK[0]:]  # retain most recent, grow again from here
             LOGGER.info(
                 'Pruned revocation cache entry %s to %s %s frames',
                 self.rev_reg_def['id'],
@@ -693,7 +694,7 @@ class RevocationCache(dict):
 
         if not ok_cred_def_id(cd_id):
             LOGGER.debug('RevocationCache.dflt_interval <!< Bad cred def id %s', cd_id)
-            raise BadIdentifier('Bad cred def id {}'.format(cd_id))
+            raise BadIdentifier(f'Bad cred def id {cd_id}')
 
         fro = None
         to = None
@@ -710,7 +711,7 @@ class RevocationCache(dict):
             LOGGER.debug(
                 'RevocationCache.dflt_interval <!< No data for default non-revoc interval on cred def id %s',
                 cd_id)
-            raise CacheIndex('No data for default non-revoc interval on cred def id {}'.format(cd_id))
+            raise CacheIndex(f'No data for default non-revoc interval on cred def id {cd_id}')
 
         rv = (fro, to)
         LOGGER.debug('RevocationCache.dflt_interval <<< %s', rv)

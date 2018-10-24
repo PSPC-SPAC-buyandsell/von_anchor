@@ -40,6 +40,9 @@ logging.getLogger('requests').setLevel(logging.ERROR)
 def event_loop():
     loop = asyncio.get_event_loop()
     yield loop
+
+    pending = asyncio.all_tasks(loop)
+    loop.run_until_complete(asyncio.gather(*pending))
     loop.close()
 
 
