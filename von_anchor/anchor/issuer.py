@@ -119,7 +119,7 @@ class Issuer(Origin):
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('Issuer._create_rev_reg <!< Bad rev reg id %s', rr_id)
-            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
+            raise BadIdentifier(f'Bad rev reg id {rr_id}')
 
         if len({t for t in asyncio.all_tasks()
             if t._coro.__qualname__ == 'Issuer._create_rev_reg'
@@ -189,7 +189,7 @@ class Issuer(Origin):
         if len(delta) != 1:
             LOGGER.debug(
                 'Issuer._create_rev_reg <!< Could not create tails file for rev reg id: %s', rr_id)
-            raise CorruptTails('Could not create tails file for rev reg id {}'.format(rr_id))
+            raise CorruptTails(f'Could not create tails file for rev reg id {rr_id}')
 
         # __mark[:] = [__mark[1], time.time()]
         # print(Ink.MAGENTA(f'..8({__mark[1] - __mark[0]:.2f}).. '), end='', flush=True)
@@ -231,26 +231,26 @@ class Issuer(Origin):
                 'Issuer._send_rev_reg_def <!< Tails file for rev reg %s not ready in dir %s',
                 rr_id,
                 dir_hopper_target)
-            raise AbsentRevReg('Tails file for rev reg {} not ready in dir {}'.format(rr_id, dir_hopper_target))
+            raise AbsentRevReg(f'Tails file for rev reg {rr_id} not ready in dir {dir_hopper_target}')
 
         file_rrd = join(dir_hopper_target, 'rrd.json')
         if not isfile(file_rrd):
             LOGGER.debug('Issuer._send_rev_reg_def <!< Rev reg def file %s not present', file_rrd)
-            raise AbsentRevReg('Rev reg def file {} not present'.format(file_rrd))
+            raise AbsentRevReg(f'Rev reg def file {file_rrd} not present')
         with open(file_rrd, 'r') as rrd:
             rrd_json = rrd.read()
 
         file_rre = join(dir_hopper_target, 'rre.json')
         if not isfile(file_rre):
             LOGGER.debug('Issuer._send_rev_reg_def <!< Rev reg entry file %s not present', file_rre)
-            raise AbsentRevReg('Rev reg entry file {} not present'.format(file_rre))
+            raise AbsentRevReg(f'Rev reg entry file {file_rre} not present')
         with open(file_rre, 'r') as rre:
             rre_json = rre.read()
 
         file_tails = Tails.linked(dir_hopper_rr_id, rr_id)
         if not file_tails:
             LOGGER.debug('Issuer._send_rev_reg_def <!< Tails link %s not present in dir %s', rr_id, dir_hopper_target)
-            raise AbsentTails('Tails link {} not present in dir {}'.format(rr_id, dir_hopper_target))
+            raise AbsentTails(f'Tails link {rr_id} not present in dir {dir_hopper_target}')
 
         dir_target = join(self._dir_tails, cd_id)
         makedirs(dir_target, exist_ok=True)
@@ -324,7 +324,7 @@ class Issuer(Origin):
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('Issuer._sync_revoc_for_issue <!< Bad rev reg id %s', rr_id)
-            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
+            raise BadIdentifier(f'Bad rev reg id {rr_id}')
 
         (cd_id, tag) = rev_reg_id2cred_def_id_tag(rr_id)
 
@@ -335,9 +335,7 @@ class Issuer(Origin):
                 'Issuer._sync_revoc_for_issue <!< tails tree %s may be for another ledger; no cred def found on %s',
                 self._dir_tails,
                 cd_id)
-            raise AbsentCredDef('Tails tree {} may be for another ledger; no cred def found on {}'.format(
-                self._dir_tails,
-                cd_id))
+            raise AbsentCredDef(f'Tails tree {self._dir_tails} may be for another ledger; no cred def found on {cd_id}')
 
         with REVO_CACHE.lock:
             revo_cache_entry = REVO_CACHE.get(rr_id, None)
@@ -368,7 +366,7 @@ class Issuer(Origin):
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('Issuer.path_tails <!< Bad rev reg id %s', rr_id)
-            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
+            raise BadIdentifier(f'Bad rev reg id {rr_id}')
 
         rv = Tails.linked(self._dir_tails, rr_id)
         LOGGER.debug('Issuer.path_tails <<< %s', rv)
@@ -392,7 +390,7 @@ class Issuer(Origin):
 
         if not ok_schema_id(s_id):
             LOGGER.debug('Issuer.send_cred_def <!< Bad schema id %s', s_id)
-            raise BadIdentifier('Bad schema id {}'.format(s_id))
+            raise BadIdentifier(f'Bad schema id {s_id}')
 
         rv_json = json.dumps({})
         schema_json = await self.get_schema(schema_key(s_id))
@@ -435,10 +433,7 @@ class Issuer(Origin):
                     else:
                         LOGGER.debug('Issuer.send_cred_def <!< corrupt wallet %s', self.wallet.name)
                         raise CorruptWallet(
-                            'Corrupt Issuer wallet {} has cred def on schema {} version {} not on ledger'.format(
-                                self.wallet.name,
-                                schema['name'],
-                                schema['version']))
+                            f'Corrupt Issuer wallet {self.wallet.name} has cred def on schema {s_id} not on ledger')
                 else:
                     LOGGER.debug(
                         'Issuer.send_cred_def <!< cannot store cred def in wallet %s: indy error code %s',
@@ -460,7 +455,7 @@ class Issuer(Origin):
 
                 if not rv_json:
                     LOGGER.debug('Issuer.send_cred_def <!< timed out waiting on sent cred_def %s', cd_id)
-                    raise BadLedgerTxn('Timed out waiting on sent cred_def {}'.format(cd_id))
+                    raise BadLedgerTxn(f'Timed out waiting on sent cred_def {cd_id}')
 
                 if revocation:
                     await self._sync_revoc_for_issue(rev_reg_id(cd_id, '0'), rr_size)  # create new rev reg for tag '0'
@@ -501,7 +496,7 @@ class Issuer(Origin):
                     'Issuer.create_cred_offer <!< did not issue cred definition from wallet %s',
                     self.wallet.name)
                 raise CorruptWallet(
-                    'Cannot create cred offer: did not issue cred definition from wallet {}'.format(self.wallet.name))
+                    f'Cannot create cred offer: did not issue cred definition from wallet {self.wallet.name}')
             else:
                 LOGGER.debug(
                     'Issuer.create_cred_offer <!<  cannot create cred offer, indy error code %s',
@@ -557,7 +552,7 @@ class Issuer(Origin):
         cd_id = json.loads(cred_offer_json)['cred_def_id']
         if not ok_cred_def_id(cd_id):
             LOGGER.debug('Issuer.create_cred <!< Bad cred def id %s', cd_id)
-            raise BadIdentifier('Bad cred def id {}'.format(cd_id))
+            raise BadIdentifier(f'Bad cred def id {cd_id}')
 
         cred_def = json.loads(await self.get_cred_def(cd_id))  # ensure cred def is in cache
 
@@ -636,7 +631,7 @@ class Issuer(Origin):
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('Issuer.revoke_cred <!< Bad rev reg id %s', rr_id)
-            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
+            raise BadIdentifier(f'Bad rev reg id {rr_id}')
 
         tails_reader_handle = (await Tails(
             self._dir_tails,
@@ -654,10 +649,7 @@ class Issuer(Origin):
                 cr_id,
                 x_indy.error_code)
             raise BadRevocation(
-                'Could not revoke revoc reg id {}, cred rev id {}: indy error code {}'.format(
-                    rr_id,
-                    cr_id,
-                    x_indy.error_code))
+                f'Could not revoke revoc reg id {rr_id}, cred rev id {cr_id}: indy error code {x_indy.error_code}')
 
         rre_req_json = await ledger.build_revoc_reg_entry_request(self.did, rr_id, 'CL_ACCUM', rrd_json)
         resp_json = await self._sign_submit(rre_req_json)
@@ -704,7 +696,7 @@ class Issuer(Origin):
         LOGGER.debug('Issuer.get_box_ids_issued >>>')
 
         cd_ids = [d for d in listdir(self._dir_tails)
-            if isdir(join(self._dir_tails, d)) and ok_cred_def_id(d) and d.startswith('{}:3:'.format(self.did))]
+            if isdir(join(self._dir_tails, d)) and ok_cred_def_id(d, self.did)]
         s_ids = []
         for cd_id in cd_ids:
             try:

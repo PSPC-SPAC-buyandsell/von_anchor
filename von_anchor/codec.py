@@ -93,19 +93,15 @@ def encode(orig: Any) -> str:
     prefix = f'{_prefix(orig) or ""}'  # no prefix for indy 32-bit ints
 
     if isinstance(orig, bool):
-        return '{}{}'.format(
-            prefix,
-            I32_BOUND + 2 if orig else I32_BOUND + 1)  # python bool('False') = True; just use 2 sentinels
+        return f'{prefix}{I32_BOUND + 2 if orig else I32_BOUND + 1}'  # python bool('False') = True; use 2 sentinels
 
     if isinstance(orig, int):
-        return '{}{}'.format(prefix, str(orig) if -I32_BOUND <= orig < I32_BOUND else str(abs(orig)))
+        return f'{prefix}{str(orig) if -I32_BOUND <= orig < I32_BOUND else str(abs(orig))}'
 
-    rv = '{}{}'.format(
-        prefix,
-        str(int.from_bytes(
-            orig.encode() if int(prefix) == Prefix.STR else json.dumps(orig).encode(), 'big') + I32_BOUND))
+    payload = (str(int.from_bytes(orig.encode() if int(prefix) == Prefix.STR
+        else json.dumps(orig).encode(), 'big') + I32_BOUND))
 
-    return rv
+    return f'{prefix}{payload}'
 
 
 def decode(enc_value: str) -> Union[str, None, bool, int, float]:

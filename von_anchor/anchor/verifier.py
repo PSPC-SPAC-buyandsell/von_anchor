@@ -156,7 +156,7 @@ class Verifier(_BaseAnchor):
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('Verifier._build_rr_state_json <!< Bad rev reg id %s', rr_id)
-            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
+            raise BadIdentifier(f'Bad rev reg id {rr_id}')
 
         rr_json = None
         ledger_timestamp = None
@@ -170,13 +170,13 @@ class Verifier(_BaseAnchor):
                 (_, rr_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_response(resp_json)
             except IndyError:  # ledger replied, but there is no such rev reg available
                 LOGGER.debug('Verifier._build_rr_state_json <!< no rev reg exists on %s', rr_id)
-                raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
+                raise AbsentRevReg(f'No rev reg exists on {rr_id}')
         else:
             LOGGER.debug(
                 '_Verifier._build_rr_state_json <!< Rev reg %s created after asked-for time %s',
                 rr_id,
                 timestamp)
-            raise BadRevStateTime('Rev reg {} created after asked-for time {}'.format(rr_id, timestamp))
+            raise BadRevStateTime(f'Rev reg {rr_id} created after asked-for time {timestamp}')
 
         rv = (rr_json, ledger_timestamp)
         LOGGER.debug('_Verifier._build_rr_state_json <<< %s', rv)
@@ -245,7 +245,7 @@ class Verifier(_BaseAnchor):
         for cd_id in cd_id2spec:
             if not ok_cred_def_id(cd_id):
                 LOGGER.debug('Verifier.build_proof_req_json <!< Bad cred def id %s', cd_id)
-                raise BadIdentifier('Bad cred def id {}'.format(cd_id))
+                raise BadIdentifier(f'Bad cred def id {cd_id}')
 
             interval = None
             cred_def = json.loads(await self.get_cred_def(cd_id))
@@ -261,7 +261,7 @@ class Verifier(_BaseAnchor):
 
             for attr in (cd_id2spec[cd_id].get('attrs', cd_id2schema[cd_id]['attrNames']) or []
                     if cd_id2spec[cd_id] else cd_id2schema[cd_id]['attrNames']):
-                attr_uuid = '{}_{}_uuid'.format(seq_no, canon(attr))
+                attr_uuid = f'{seq_no}_{canon(attr)}_uuid'
                 proof_req['requested_attributes'][attr_uuid] = {
                     'name': attr,
                     'restrictions': [{
@@ -272,7 +272,7 @@ class Verifier(_BaseAnchor):
                     proof_req['requested_attributes'][attr_uuid]['non_revoked'] = interval
 
             for attr in (cd_id2spec[cd_id].get('minima', {}) or {} if cd_id2spec[cd_id] else {}):
-                pred_uuid = '{}_{}_uuid'.format(seq_no, canon(attr))
+                pred_uuid = f'{seq_no}_{canon(attr)}_uuid'
                 try:
                     proof_req['requested_predicates'][pred_uuid] = {
                         'name': attr,
@@ -407,7 +407,7 @@ class Verifier(_BaseAnchor):
             s_id = proof_id['schema_id']
             if not ok_schema_id(s_id):
                 LOGGER.debug('Verifier.verify_proof <!< Bad schema id %s', s_id)
-                raise BadIdentifier('Bad schema id {}'.format(s_id))
+                raise BadIdentifier(f'Bad schema id {s_id}')
 
             if s_id not in s_id2schema:
                 schema = json.loads(await self.get_schema(s_id))  # add to cache en passant
@@ -415,15 +415,14 @@ class Verifier(_BaseAnchor):
                     LOGGER.debug(
                         'Verifier.verify_proof <!< absent schema %s, proof req may be for another ledger',
                         s_id)
-                    raise AbsentSchema(
-                        'Absent schema {}, proof req may be for another ledger'.format(s_id))
+                    raise AbsentSchema(f'Absent schema {s_id}, proof req may be for another ledger')
                 s_id2schema[s_id] = schema
 
             # cred def
             cd_id = proof_id['cred_def_id']
             if not ok_cred_def_id(cd_id):
                 LOGGER.debug('Verifier.verify_proof <!< Bad cred def id %s', cd_id)
-                raise BadIdentifier('Bad cred def id {}'.format(cd_id))
+                raise BadIdentifier(f'Bad cred def id {cd_id}')
 
             if cd_id not in cd_id2cred_def:
                 cred_def = json.loads(await self.get_cred_def(cd_id))  # add to cache en passant
@@ -435,7 +434,7 @@ class Verifier(_BaseAnchor):
                 continue
             if not ok_rev_reg_id(rr_id):
                 LOGGER.debug('Verifier.verify_proof <!< Bad rev reg id %s', rr_id)
-                raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
+                raise BadIdentifier(f'Bad rev reg id {rr_id}')
 
             rr_def_json = await self._get_rev_reg_def(rr_id)
             rr_id2rr_def[rr_id] = json.loads(rr_def_json)
