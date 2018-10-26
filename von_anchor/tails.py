@@ -62,7 +62,7 @@ class Tails:
 
         if not ok_cred_def_id(cd_id):
             LOGGER.debug('Tails.__init__ <!< Bad cred def id %s', cd_id)
-            raise BadIdentifier(f'Bad cred def id {cd_id}')
+            raise BadIdentifier('Bad cred def id {}'.format(cd_id))
 
         if tag is None:
             self._rr_id = Tails.current_rev_reg_id(base_dir, cd_id)
@@ -73,15 +73,15 @@ class Tails:
                     'Tails.__init__ <!< No tails file present for cred def id %s on rev reg id tag %s',
                     cd_id,
                     tag)
-                raise AbsentTails(f'No tails file present for cred def id {cd_id} on rev reg id tag {tag}')
+                raise AbsentTails('No tails file present for cred def id {} on rev reg id tag {}'.format(cd_id, tag))
 
         path_link = join(Tails.dir(base_dir, self._rr_id), self._rr_id)
         if not islink(path_link):
-            raise AbsentTails(f'No symbolic link present at {path_link} for rev reg id {self._rr_id}')
+            raise AbsentTails('No symbolic link present at {} for rev reg id {}'.format(path_link, self._rr_id))
 
         path_tails = Tails.linked(base_dir, self._rr_id)
         if not isfile(path_tails):
-            raise AbsentTails(f'No tails file present at {path_tails} for rev reg id {self._rr_id}')
+            raise AbsentTails('No tails file present at {} for rev reg id {}'.format(path_tails, self._rr_id))
 
         self._tails_cfg_json = json.dumps({
             'base_dir': dirname(path_tails),
@@ -118,7 +118,7 @@ class Tails:
 
         LOGGER.debug('Tails.ok_hash >>> token: %s', token)
 
-        rv = re.match(f'[{B58}]{{42,44}}$', token) is not None
+        rv = re.match('[{}]{{42,44}}$'.format(B58), token) is not None
         LOGGER.debug('Tails.ok_hash <<< %s', rv)
         return rv
 
@@ -135,11 +135,11 @@ class Tails:
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('Tails.associate <!< Bad rev reg id %s', rr_id)
-            raise BadIdentifier(f'Bad rev reg id {rr_id}')
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
         if not Tails.ok_hash(tails_hash):
             LOGGER.debug('Tails.associate <!< Bad tails hash %s', tails_hash)
-            raise BadIdentifier(f'Bad tails hash {tails_hash}')
+            raise BadIdentifier('Bad tails hash {}'.format(tails_hash))
 
         cd_id = rev_reg_id2cred_def_id(rr_id)
         directory = join(base_dir, cd_id)
@@ -164,7 +164,7 @@ class Tails:
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('Tails.dir <!< Bad rev reg id %s', rr_id)
-            raise BadIdentifier(f'Bad rev reg id {rr_id}')
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
         rv = join(base_dir, rev_reg_id2cred_def_id(rr_id))
         LOGGER.debug('Tails.dir <<< %s', rv)
@@ -185,7 +185,7 @@ class Tails:
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('Tails.linked <!< Bad rev reg id %s', rr_id)
-            raise BadIdentifier(f'Bad rev reg id {rr_id}')
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
         cd_id = rev_reg_id2cred_def_id(rr_id)
         link = join(base_dir, cd_id, rr_id)
@@ -210,7 +210,7 @@ class Tails:
 
         if issuer_did and not ok_did(issuer_did):
             LOGGER.debug('Tails.links <!< Bad DID %s', issuer_did)
-            raise BadIdentifier(f'Bad DID {issuer_did}')
+            raise BadIdentifier('Bad DID {}'.format(issuer_did))
 
         rv = set()
         for dir_path, dir_names, file_names in walk(base_dir, topdown=True):
@@ -267,7 +267,7 @@ class Tails:
 
         if not ok_cred_def_id(cd_id):
             LOGGER.debug('Tails.next_tag <!< Bad cred def id %s', cd_id)
-            raise BadIdentifier(f'Bad cred def id {cd_id}')
+            raise BadIdentifier('Bad cred def id {}'.format(cd_id))
 
         tag = 1 + max([int(rev_reg_id2tag(basename(f)))
             for f in Tails.links(base_dir) if cd_id in basename(f)] + [-1])  # -1: next tag is '0' if no tags so far
@@ -294,12 +294,12 @@ class Tails:
 
         if not ok_cred_def_id(cd_id):
             LOGGER.debug('Tails.current_rev_reg_id <!< Bad cred def id %s', cd_id)
-            raise BadIdentifier(f'Bad cred def id {cd_id}')
+            raise BadIdentifier('Bad cred def id {}'.format(cd_id))
 
         tags = [int(rev_reg_id2tag(basename(f))) for f in Tails.links(base_dir)
             if cd_id in basename(f)]
         if not tags:
-            raise AbsentTails(f'No tails files present for cred def id {cd_id}')
+            raise AbsentTails('No tails files present for cred def id {}'.format(cd_id))
 
         rv = rev_reg_id(cd_id, str(max(tags)))  # ensure 10 > 9, not '9' > '10'
         LOGGER.debug('Tails.current_rev_reg_id <<< %s', rv)
@@ -345,4 +345,4 @@ class Tails:
         """
 
         cfg = json.loads(self._tails_cfg_json)
-        return f'Tails: {cfg["base_dir"]}/{self._rr_id} -> {cfg["file"]}'
+        return 'Tails: {}/{} -> {}'.format(cfg['base_dir'], self._rr_id, cfg['file'])

@@ -90,18 +90,18 @@ def encode(orig: Any) -> str:
     if orig is None:
         return str(I32_BOUND)  # sentinel
 
-    prefix = f'{_prefix(orig) or ""}'  # no prefix for indy 32-bit ints
+    prefix = '{}'.format(_prefix(orig) or '')  # no prefix for indy 32-bit ints
 
     if isinstance(orig, bool):
-        return f'{prefix}{I32_BOUND + 2 if orig else I32_BOUND + 1}'  # python bool('False') = True; use 2 sentinels
+        return '{}{}'.format(prefix, I32_BOUND + 2 if orig else I32_BOUND + 1)  # bool('False') = True; use 2 sentinels
 
     if isinstance(orig, int):
-        return f'{prefix}{str(orig) if -I32_BOUND <= orig < I32_BOUND else str(abs(orig))}'
+        return '{}{}'.format(prefix, str(orig) if -I32_BOUND <= orig < I32_BOUND else str(abs(orig)))
 
     payload = (str(int.from_bytes(orig.encode() if int(prefix) == Prefix.STR
         else json.dumps(orig).encode(), 'big') + I32_BOUND))
 
-    return f'{prefix}{payload}'
+    return '{}{}'.format(prefix, payload)
 
 
 def decode(enc_value: str) -> Union[str, None, bool, int, float]:
@@ -190,10 +190,10 @@ def canon_wql(query: dict) -> dict:
             query[k] = canon_wql(query[k])
         if k == '$or':
             if not isinstance(query[k], list):
-                raise BadWalletQuery(f'Bad WQL; $or value must be a list in {json.dumps(query)}')
+                raise BadWalletQuery('Bad WQL; $or value must be a list in {}'.format(json.dumps(query)))
             query[k] = [canon_wql(subq) for subq in query[k]]
         if attr_match:
-            qkey = f'attr::{canon(attr_match.group(1))}::{canon(attr_match.group(2))}'
+            qkey = 'attr::{}::{}'.format(canon(attr_match.group(1)), canon(attr_match.group(2)))
             query[qkey] = query.pop(k)
             tag_value = query[qkey]
             if isinstance(tag_value, dict) and len(tag_value) == 1:

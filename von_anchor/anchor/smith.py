@@ -64,7 +64,7 @@ class AnchorSmith(_BaseAnchor):
 
         if not ok_did(did):
             LOGGER.debug('AnchorSmith <!< Bad DID %s', did)
-            raise BadIdentifier(f'Bad DID {did}')
+            raise BadIdentifier('Bad DID {}'.format(did))
 
         req_json = await ledger.build_nym_request(self.did, did, verkey, alias, role or '')
         await self._sign_submit(req_json)

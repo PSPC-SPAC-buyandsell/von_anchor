@@ -88,7 +88,7 @@ class Origin(_BaseAnchor):
 
                 if not rv_json:
                     LOGGER.debug('Origin.send_schema <!< timed out waiting on sent schema %s', s_id)
-                    raise BadLedgerTxn(f'Timed out waiting on sent schema {s_id}')
+                    raise BadLedgerTxn('Timed out waiting on sent schema {}'.format(s_id))
 
         LOGGER.debug('Origin.send_schema <<< %s', rv_json)
         return rv_json

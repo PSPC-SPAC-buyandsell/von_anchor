@@ -254,7 +254,7 @@ class Wallet:
 
         if not rv:  # seed not in metadata
             LOGGER.debug('Wallet._seed2did <!< no metadata match for seed in wallet %s', self.name)
-            raise AbsentMetadata(f'No metadata match for seed {self._seed} in wallet {self.name}')
+            raise AbsentMetadata('No metadata match for seed in wallet {}'.format(self.name))
 
         return rv
 
@@ -319,7 +319,7 @@ class Wallet:
                         self.did,
                         self.name)
                     raise CorruptWallet(
-                        f'No verkey for DID {self.did} on ledger, wallet {self.name} may pertain to another')
+                        'No verkey for DID {} on ledger, wallet {} may pertain to another'.format(self.did, self.name))
                 LOGGER.info('Wallet %s got verkey %s for existing DID %s', self.name, self.verkey, self.did)
         finally:
             await wallet.close_wallet(self.handle)
@@ -361,7 +361,7 @@ class Wallet:
 
         if not self.created:
             LOGGER.debug('Wallet.open <!< absent wallet %s', self.name)
-            raise AbsentWallet(f'Cannot open wallet {self.name}: not created')
+            raise AbsentWallet('Cannot open wallet {}: not created'.format(self.name))
 
         self._handle = await wallet.open_wallet(
             json.dumps(self.cfg),
@@ -469,4 +469,4 @@ class Wallet:
         :return: representation for current object
         """
 
-        return f'{self.__class__.__name__}([SEED], {self.name}, {self.xtype}, {self.cfg}, [ACCESS_CREDS])'
+        return '{}([SEED], {}, {}, {}, [ACCESS_CREDS])'.format(self.__class__.__name__, self.name, self.xtype, self.cfg)

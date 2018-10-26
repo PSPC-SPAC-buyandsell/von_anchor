@@ -18,6 +18,7 @@ limitations under the License.
 import asyncio
 import json
 import logging
+import threading
 
 from os import listdir, makedirs, rename
 from os.path import basename, expanduser, isdir, isfile, join
@@ -52,8 +53,7 @@ from von_anchor.util import (
     schema_key)
 from von_anchor.wallet import Wallet
 
-# import time
-# from von_anchor.frill import Ink
+# from von_anchor.frill import Ink, Stopwatch
 
 
 LOGGER = logging.getLogger(__name__)
@@ -102,6 +102,32 @@ class Issuer(Origin):
         LOGGER.debug('Issuer.open <<<')
         return self
 
+    def _fire_create_rev_reg(self, rr_id: str, rr_size: int = None) -> None:
+        """
+        Experimental only at present. TODO: fix
+        """
+
+        '''
+        loop = asyncio.get_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(self._create_rev_reg(rr_id, rr_size))
+        '''
+
+        '''
+        print(Ink.BLUE(f'Current thread {id(threading.current_thread())} vs main {id(threading.main_thread())}'))
+        breakpoint()
+        asyncio.create_task(self._create_rev_reg(rr_id, rr_size))
+        '''
+
+        assert threading.current_thread() != threading.main_thread()
+        loop = None
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        loop.run_until_complete(self._create_rev_reg(rr_id, rr_size))
+
     async def _create_rev_reg(self, rr_id: str, rr_size: int = None) -> None:
         """
         Create, in tails hopper directory, revocation registry artifacts and new tails file
@@ -115,17 +141,12 @@ class Issuer(Origin):
         LOGGER.debug('Issuer._create_rev_reg >>> rr_id: %s, rr_size: %s', rr_id, rr_size)
 
         # print(Ink.MAGENTA(f'\n\n start: rev reg {rr_id}'), end='', flush=True)
-        # __mark = [time.time()] * 2
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('Issuer._create_rev_reg <!< Bad rev reg id %s', rr_id)
             raise BadIdentifier(f'Bad rev reg id {rr_id}')
 
-        if len({t for t in asyncio.all_tasks()
-            if t._coro.__qualname__ == 'Issuer._create_rev_reg'
-                and not t.done()
-                and t._coro.cr_frame
-                and t._coro.cr_frame.f_locals.get('rr_id', None) == rr_id}) > 1:  # current task counts!
+        if len([t for t in threading.enumerate() if t.name == rr_id]) > 1:  # current task included!
             LOGGER.warning(
                 'Issuer %s abstaining from creating rev reg %s; already in progress',
                 self.wallet.name,
@@ -133,27 +154,21 @@ class Issuer(Origin):
             return
 
         rr_size = rr_size or 256
-        # __mark[:] = [__mark[1], time.time()]
-        # print(Ink.MAGENTA(f'..0({__mark[1] - __mark[0]:.2f}) '), end='', flush=True)
+
+        # swatch = Stopwatch()
+        # print(Ink.MAGENTA(f'..0({swatch.mark():.2f}) '), end='', flush=True)
         (cd_id, tag) = rev_reg_id2cred_def_id_tag(rr_id)
         dir_hopper_rr_id = join(self._dir_tails_hopper, rr_id)
         dir_hopper_target = join(dir_hopper_rr_id, cd_id)
-        # __mark[:] = [__mark[1], time.time()]
-        # print(Ink.MAGENTA(f'..1({__mark[1] - __mark[0]:.2f}) '), end='', flush=True)
         try:
             makedirs(dir_hopper_target, exist_ok=False)
-            # __mark[:] = [__mark[1], time.time()]
-            # print(Ink.MAGENTA(f'..2({__mark[1] - __mark[0]:.2f}) '), end='', flush=True)
         except FileExistsError:
             LOGGER.warning(
-                'Issuer._create_rev_reg found dir %s existed but no such task not in progress: rebuilding rev reg %s',
+                'Issuer._create_rev_reg found dir %s existed but no such task in progress: rebuilding rev reg %s',
                 dir_hopper_target,
                 rr_id)
             rmtree(dir_hopper_target)
             makedirs(dir_hopper_target, exist_ok=False)
-
-        # __mark[:] = [__mark[1], time.time()]
-        # print(Ink.MAGENTA(f'..3({__mark[1] - __mark[0]:.2f}).. '), end='', flush=True)
 
         LOGGER.info('Creating revocation registry (capacity %s) for rev reg id %s', rr_size, rr_id)
         tails_writer_handle = await blob_storage.open_writer(
@@ -163,12 +178,9 @@ class Issuer(Origin):
                 'uri_pattern': ''
             }))
 
-        # __mark[:] = [__mark[1], time.time()]
-        # print(Ink.MAGENTA(f'..4({__mark[1] - __mark[0]:.2f}).. '), end='', flush=True)
         apriori = Tails.unlinked(dir_hopper_target)
-        await asyncio.sleep(0)  # issuer_create_and_store_revoc_reg is expensive: co-operate
-        # __mark[:] = [__mark[1], time.time()]
-        # print(Ink.MAGENTA(f'..5({__mark[1] - __mark[0]:.2f}).. '), end='', flush=True)
+        # await asyncio.sleep(0)  # issuer_create_and_store_revoc_reg is expensive: co-operate
+        # print(Ink.MAGENTA(f'..5({swatch.mark():.2f}) '), end='', flush=True)
         (rr_id, rrd_json, rre_json) = await anoncreds.issuer_create_and_store_revoc_reg(
             self.wallet.handle,
             self.did,
@@ -180,28 +192,20 @@ class Issuer(Origin):
                 'issuance_type': 'ISSUANCE_ON_DEMAND'
             }),
             tails_writer_handle)
-        # __mark[:] = [__mark[1], time.time()]
-        # print(Ink.MAGENTA(f'..6({__mark[1] - __mark[0]:.2f}).. '), end='', flush=True)
-        await asyncio.sleep(0)  # issuer_create_and_store_revoc_reg is expensive: co-operate
-        # __mark[:] = [__mark[1], time.time()]
-        # print(Ink.MAGENTA(f'..7({__mark[1] - __mark[0]:.2f}).. '), end='', flush=True)
+        # print(Ink.MAGENTA(f'..6(main?{threading.current_thread() == threading.main_thread()}, {swatch.mark():.2f}) '), end='', flush=True)
+        # await asyncio.sleep(0)  # issuer_create_and_store_revoc_reg is expensive: co-operate
         delta = Tails.unlinked(dir_hopper_target) - apriori
         if len(delta) != 1:
             LOGGER.debug(
                 'Issuer._create_rev_reg <!< Could not create tails file for rev reg id: %s', rr_id)
-            raise CorruptTails(f'Could not create tails file for rev reg id {rr_id}')
+            raise CorruptTails('Could not create tails file for rev reg id {}'.format(rr_id))
 
-        # __mark[:] = [__mark[1], time.time()]
-        # print(Ink.MAGENTA(f'..8({__mark[1] - __mark[0]:.2f}).. '), end='', flush=True)
         with open(join(dir_hopper_target, 'rrd.json'), 'w') as rrd_file:
             print(rrd_json, file=rrd_file)
         with open(join(dir_hopper_target, 'rre.json'), 'w') as rre_file:
             print(rre_json, file=rre_file)
         tails_hash = basename(delta.pop())
-        # __mark[:] = [__mark[1], time.time()]
-        # print(Ink.MAGENTA(f'..9({__mark[1] - __mark[0]:.2f}).. '), end='', flush=True)
         Tails.associate(dir_hopper_rr_id, rr_id, tails_hash)
-        # __mark[:] = [__mark[1], time.time()]
         # print(Ink.MAGENTA(f'..ready: rev reg {rr_id}'), flush=True)
 
         LOGGER.debug('Issuer._create_rev_reg <<<')
@@ -231,26 +235,26 @@ class Issuer(Origin):
                 'Issuer._send_rev_reg_def <!< Tails file for rev reg %s not ready in dir %s',
                 rr_id,
                 dir_hopper_target)
-            raise AbsentRevReg(f'Tails file for rev reg {rr_id} not ready in dir {dir_hopper_target}')
+            raise AbsentRevReg('Tails file for rev reg {} not ready in dir {}'.format(rr_id, dir_hopper_target))
 
         file_rrd = join(dir_hopper_target, 'rrd.json')
         if not isfile(file_rrd):
             LOGGER.debug('Issuer._send_rev_reg_def <!< Rev reg def file %s not present', file_rrd)
-            raise AbsentRevReg(f'Rev reg def file {file_rrd} not present')
+            raise AbsentRevReg('Rev reg def file {} not present'.format(file_rrd))
         with open(file_rrd, 'r') as rrd:
             rrd_json = rrd.read()
 
         file_rre = join(dir_hopper_target, 'rre.json')
         if not isfile(file_rre):
             LOGGER.debug('Issuer._send_rev_reg_def <!< Rev reg entry file %s not present', file_rre)
-            raise AbsentRevReg(f'Rev reg entry file {file_rre} not present')
+            raise AbsentRevReg('Rev reg entry file {} not present'.format(file_rre))
         with open(file_rre, 'r') as rre:
             rre_json = rre.read()
 
         file_tails = Tails.linked(dir_hopper_rr_id, rr_id)
         if not file_tails:
             LOGGER.debug('Issuer._send_rev_reg_def <!< Tails link %s not present in dir %s', rr_id, dir_hopper_target)
-            raise AbsentTails(f'Tails link {rr_id} not present in dir {dir_hopper_target}')
+            raise AbsentTails('Tails link {} not present in dir {}'.format(rr_id, dir_hopper_target))
 
         dir_target = join(self._dir_tails, cd_id)
         makedirs(dir_target, exist_ok=True)
@@ -269,7 +273,6 @@ class Issuer(Origin):
 
         LOGGER.debug('Issuer._send_rev_reg_def <<<')
 
-
     async def _set_rev_reg(self, rr_id: str, rr_size: int) -> None:
         """
         Move precomputed revocation registry data from hopper into place within tails directory.
@@ -280,35 +283,41 @@ class Issuer(Origin):
 
         LOGGER.debug('Issuer._set_rev_reg >>> rr_id: %s, rr_size: %s', rr_id, rr_size)
 
-        # print(Ink.CYAN(f'\n\nset 0: rev reg {rr_id}'), flush=True)
-        # __mark = [time.time()] * 2
         dir_hopper_rr_id = join(self._dir_tails_hopper, rr_id)
-        if not (Tails.linked(dir_hopper_rr_id, rr_id) or any({t for t in asyncio.all_tasks()
-            if t._coro.__qualname__ == 'Issuer._create_rev_reg'
-                and not t.done()
-                and t._coro.cr_frame
-                and t._coro.cr_frame.f_locals.get('rr_id', None) == rr_id})):
+        if not (Tails.linked(dir_hopper_rr_id, rr_id) or any(t.name == rr_id for t in threading.enumerate())):
             LOGGER.info(
                 'Issuer %s waiting on rev reg %s, neither ready nor pending: starting pre-computation',
                 self.wallet.name,
                 rr_id)
-            asyncio.create_task(self._create_rev_reg(rr_id, rr_size))  # nothing happening, kick off pre-computation
+            rrt = threading.Thread(
+                target=self._fire_create_rev_reg,
+                args=(rr_id, rr_size),
+                name=rr_id,
+                daemon=False)
+            # print(Ink.YELLOW(f'Current thread {id(threading.current_thread())}, loop {id(asyncio.get_running_loop())}'))
+            # breakpoint()
+            rrt.start()
+            # print(Ink.RED(f'Started rrt {id(threading.current_thread())}, active={threading.active_count()}'))
 
-        # __mark[:] = [__mark[1], time.time()]
-        # print(Ink.CYAN(f'set 1({__mark[1] - __mark[0]:.2f}: rev reg {rr_id}'), flush=True)
+        # swatch = Stopwatch()
+        # print(Ink.CYAN(f'set 1({swatch.mark():.2f}: rev reg {rr_id}) thread main? {threading.current_thread() == threading.main_thread()}'), flush=True)
         while Tails.linked(dir_hopper_rr_id, rr_id) is None:
             await asyncio.sleep(1)
         await self._send_rev_reg_def(rr_id)
 
-        # __mark[:] = [__mark[1], time.time()]
-        # print(Ink.CYAN(f'set 2({__mark[1] - __mark[0]:.2f}: rev reg {rr_id}'), flush=True)
+        # print(Ink.CYAN(f'set 2({swatch.mark():.2f}: rev reg {rr_id}) '), flush=True)
         cd_id = rev_reg_id2cred_def_id(rr_id)
         (next_tag, rr_size_suggested) = Tails.next_tag(self._dir_tails, cd_id)
-        asyncio.create_task(self._create_rev_reg(
-            rev_reg_id(cd_id, next_tag),
-            rr_size_suggested))  # pre-compute next rev reg
-        # __mark[:] = [__mark[1], time.time()]
-        # print(Ink.CYAN(f'set 3({__mark[1] - __mark[0]:.2f}: rev reg {rr_id}'), flush=True)
+        rrt = threading.Thread(
+            target=self._fire_create_rev_reg,
+            args=(rev_reg_id(cd_id, next_tag), rr_size_suggested),
+            name=rr_id,
+            daemon=False)
+        # print(Ink.YELLOW(f'Current thread {id(threading.current_thread())}, loop {id(asyncio.get_running_loop())}'))
+        # breakpoint()
+        rrt.start()  # pre-compute next rev reg
+
+        # print(Ink.CYAN(f'set 3({swatch.mark():.2f}: rev reg {rr_id}) '), flush=True)
         LOGGER.debug('Issuer._set_rev_reg <<<')
 
     async def _sync_revoc_for_issue(self, rr_id: str, rr_size: int = None) -> None:
@@ -324,7 +333,7 @@ class Issuer(Origin):
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('Issuer._sync_revoc_for_issue <!< Bad rev reg id %s', rr_id)
-            raise BadIdentifier(f'Bad rev reg id {rr_id}')
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
         (cd_id, tag) = rev_reg_id2cred_def_id_tag(rr_id)
 
@@ -335,7 +344,9 @@ class Issuer(Origin):
                 'Issuer._sync_revoc_for_issue <!< tails tree %s may be for another ledger; no cred def found on %s',
                 self._dir_tails,
                 cd_id)
-            raise AbsentCredDef(f'Tails tree {self._dir_tails} may be for another ledger; no cred def found on {cd_id}')
+            raise AbsentCredDef('Tails tree {} may be for another ledger; no cred def found on {}'.format(
+                self._dir_tails,
+                cd_id))
 
         with REVO_CACHE.lock:
             revo_cache_entry = REVO_CACHE.get(rr_id, None)
@@ -366,7 +377,7 @@ class Issuer(Origin):
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('Issuer.path_tails <!< Bad rev reg id %s', rr_id)
-            raise BadIdentifier(f'Bad rev reg id {rr_id}')
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
         rv = Tails.linked(self._dir_tails, rr_id)
         LOGGER.debug('Issuer.path_tails <<< %s', rv)
@@ -390,7 +401,7 @@ class Issuer(Origin):
 
         if not ok_schema_id(s_id):
             LOGGER.debug('Issuer.send_cred_def <!< Bad schema id %s', s_id)
-            raise BadIdentifier(f'Bad schema id {s_id}')
+            raise BadIdentifier('Bad schema id {}'.format(s_id))
 
         rv_json = json.dumps({})
         schema_json = await self.get_schema(schema_key(s_id))
@@ -432,8 +443,9 @@ class Issuer(Origin):
                             schema['version'])
                     else:
                         LOGGER.debug('Issuer.send_cred_def <!< corrupt wallet %s', self.wallet.name)
-                        raise CorruptWallet(
-                            f'Corrupt Issuer wallet {self.wallet.name} has cred def on schema {s_id} not on ledger')
+                        raise CorruptWallet('Corrupt Issuer wallet {} has cred def on schema {} not on ledger'.format(
+                            self.wallet.name,
+                            s_id))
                 else:
                     LOGGER.debug(
                         'Issuer.send_cred_def <!< cannot store cred def in wallet %s: indy error code %s',
@@ -455,15 +467,21 @@ class Issuer(Origin):
 
                 if not rv_json:
                     LOGGER.debug('Issuer.send_cred_def <!< timed out waiting on sent cred_def %s', cd_id)
-                    raise BadLedgerTxn(f'Timed out waiting on sent cred_def {cd_id}')
+                    raise BadLedgerTxn('Timed out waiting on sent cred_def {}'.format(cd_id))
 
                 if revocation:
                     await self._sync_revoc_for_issue(rev_reg_id(cd_id, '0'), rr_size)  # create new rev reg for tag '0'
 
                     (next_tag, rr_size_suggested) = Tails.next_tag(self._dir_tails, cd_id)
-                    asyncio.create_task(self._create_rev_reg(
-                        rev_reg_id(cd_id, next_tag),
-                        rr_size_suggested))  # pre-compute next rev reg
+                    rr_id = rev_reg_id(cd_id, next_tag)
+                    rrt = threading.Thread(
+                        target=self._fire_create_rev_reg,
+                        args=(rr_id, rr_size_suggested),
+                        name=rr_id,
+                        daemon=False)
+                    # print(Ink.YELLOW(f'Current thread {id(threading.current_thread())}, loop {id(asyncio.get_running_loop())}'))
+                    # breakpoint()
+                    rrt.start()  # pre-compute next rev reg
 
         if revocation and private_key_ok:
             for tag in [str(t) for t in range(int(Tails.next_tag(self._dir_tails, cd_id)[0]))]:  # '0' to str(next-1)
@@ -495,11 +513,11 @@ class Issuer(Origin):
                 LOGGER.debug(
                     'Issuer.create_cred_offer <!< did not issue cred definition from wallet %s',
                     self.wallet.name)
-                raise CorruptWallet(
-                    f'Cannot create cred offer: did not issue cred definition from wallet {self.wallet.name}')
+                raise CorruptWallet('Cannot create cred offer: did not issue cred definition from wallet {}'.format(
+                    self.wallet.name))
             else:
                 LOGGER.debug(
-                    'Issuer.create_cred_offer <!<  cannot create cred offer, indy error code %s',
+                    'Issuer.create_cred_offer <!< cannot create cred offer, indy error code %s',
                     x_indy.error_code)
                 raise
 
@@ -512,6 +530,7 @@ class Issuer(Origin):
             cred_req_json: str,
             cred_attrs: dict,
             rr_size: int = None) -> (str, str, int):
+            # rr_size: int = None, inner: bool = False) -> (str, str, int):
         """
         Create credential as Issuer out of credential request and dict of key:value (raw, unencoded)
         entries for attributes.
@@ -549,20 +568,29 @@ class Issuer(Origin):
             cred_attrs,
             rr_size)
 
+        # iwatch = Stopwatch()
+        # if inner: print(Ink.GREEN(f'  .. check 1'), flush=True)
+
         cd_id = json.loads(cred_offer_json)['cred_def_id']
         if not ok_cred_def_id(cd_id):
             LOGGER.debug('Issuer.create_cred <!< Bad cred def id %s', cd_id)
-            raise BadIdentifier(f'Bad cred def id {cd_id}')
+            raise BadIdentifier('Bad cred def id {}'.format(cd_id))
+
+        # if inner: print(Ink.GREEN(f'  .. check 2({iwatch.mark():.2f})'), flush=True)
 
         cred_def = json.loads(await self.get_cred_def(cd_id))  # ensure cred def is in cache
 
+        # if inner: print(Ink.GREEN(f'  .. check 3({iwatch.mark():.2f})'), flush=True)
         if 'revocation' in cred_def['value']:
+            # if inner: print(Ink.GREEN(f'  .. check 4({iwatch.mark():.2f})'), flush=True)
             with REVO_CACHE.lock:
+                # if inner: print(Ink.GREEN(f'  .. check 5({iwatch.mark():.2f})'), flush=True)
                 rr_id = Tails.current_rev_reg_id(self._dir_tails, cd_id)
                 tails = REVO_CACHE[rr_id].tails
                 assert tails  # at (re)start, at cred def, Issuer sync_revoc_for_issue() sets this index in revo cache
 
                 try:
+                    # if inner: print(Ink.GREEN(f'  .. check 6 rr_id {rr_id}({iwatch.mark():.2f})'), flush=True)
                     (cred_json, cred_revoc_id, rr_delta_json) = await anoncreds.issuer_create_credential(
                         self.wallet.handle,
                         cred_offer_json,
@@ -571,27 +599,37 @@ class Issuer(Origin):
                         rr_id,
                         tails.reader_handle)
                     # do not create rr delta frame and append to cached delta frames list: timestamp could lag or skew
+                    # if inner: print(Ink.GREEN(f'  .. check 7({iwatch.mark():.2f})'), flush=True)
                     rre_req_json = await ledger.build_revoc_reg_entry_request(
                         self.did,
                         rr_id,
                         'CL_ACCUM',
                         rr_delta_json)
-                    await self._sign_submit(rre_req_json)
                     assert rr_id == tails.rr_id
+                    # if inner: print(Ink.GREEN(f'  .. check 8({threading.current_thread() == threading.main_thread()}, {iwatch.mark():.2f})'), flush=True)
                     resp_json = await self._sign_submit(rre_req_json)
+                    # if inner: print(Ink.GREEN(f'  .. check 9({iwatch.mark():.2f})'), flush=True)
                     resp = json.loads(resp_json)
                     rv = (cred_json, cred_revoc_id, self.pool.protocol.txn2epoch(resp))
 
                 except IndyError as x_indy:
                     if x_indy.error_code == ErrorCode.AnoncredsRevocationRegistryFullError:
+                        # swatch = Stopwatch()
+                        # print(Ink.YELLOW(f'x_issue 1({swatch.mark():.2f}) on x-rr_id {rr_id} thread main? {threading.current_thread() == threading.main_thread()}'), flush=True)
                         (tag, rr_size_suggested) = Tails.next_tag(self._dir_tails, cd_id)
                         rr_id = rev_reg_id(cd_id, tag)
+                        # print(Ink.YELLOW(f'x_issue 2({swatch.mark():.2f}) awaiting set-rr {rr_id}'), flush=True)
                         await self._set_rev_reg(rr_id, rr_size or rr_size_suggested)
 
+                        # print(Ink.YELLOW(f'x_issue 3({swatch.mark():.2f})'), flush=True)
                         REVO_CACHE[rr_id].tails = await Tails(self._dir_tails, cd_id).open()  # symlink should exist now
+                        # print(Ink.YELLOW(f'x_issue 4({swatch.mark():.2f})'), flush=True)
+                        # ccc = await self.create_cred(cred_offer_json, cred_req_json, cred_attrs, None, inner=True)
+                        # print(Ink.YELLOW(f'x_issue 5({swatch.mark():.2f})'), flush=True)
+                        # return ccc
                         return await self.create_cred(cred_offer_json, cred_req_json, cred_attrs)
 
-                    LOGGER.debug('Issuer.create_cred <!<  cannot create cred, indy error code %s', x_indy.error_code)
+                    LOGGER.debug('Issuer.create_cred <!< cannot create cred, indy error code %s', x_indy.error_code)
                     raise
         else:
             try:
@@ -604,10 +642,11 @@ class Issuer(Origin):
                     None)
                 rv = (cred_json, _, _)
             except IndyError as x_indy:
-                LOGGER.debug('Issuer.create_cred <!<  cannot create cred, indy error code %s', x_indy.error_code)
+                LOGGER.debug('Issuer.create_cred <!< cannot create cred, indy error code %s', x_indy.error_code)
                 raise
 
         LOGGER.debug('Issuer.create_cred <<< %s', rv)
+        # if inner: print(Ink.GREEN(f'  .. check 10({iwatch.mark():.2f})'), flush=True)
         return rv
 
     async def revoke_cred(self, rr_id: str, cr_id) -> int:
@@ -631,7 +670,7 @@ class Issuer(Origin):
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('Issuer.revoke_cred <!< Bad rev reg id %s', rr_id)
-            raise BadIdentifier(f'Bad rev reg id {rr_id}')
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
         tails_reader_handle = (await Tails(
             self._dir_tails,
@@ -649,7 +688,10 @@ class Issuer(Origin):
                 cr_id,
                 x_indy.error_code)
             raise BadRevocation(
-                f'Could not revoke revoc reg id {rr_id}, cred rev id {cr_id}: indy error code {x_indy.error_code}')
+                'Could not revoke revoc reg id {}, cred rev id {}: indy error code {}'.format(
+                    rr_id,
+                    cr_id,
+                    x_indy.error_code))
 
         rre_req_json = await ledger.build_revoc_reg_entry_request(self.did, rr_id, 'CL_ACCUM', rrd_json)
         resp_json = await self._sign_submit(rre_req_json)

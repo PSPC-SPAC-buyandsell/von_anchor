@@ -39,7 +39,7 @@ def schema_id(origin_did: str, name: str, version: str) -> str:
     :return: schema identifier
     """
 
-    return f'{origin_did}:2:{name}:{version}'  # 2 marks indy-sdk schema id
+    return '{}:2:{}:{}'.format(origin_did, name, version)  # 2 marks indy-sdk schema id
 
 
 def ok_did(token: str) -> bool:
@@ -50,7 +50,7 @@ def ok_did(token: str) -> bool:
     :return: whether input token looks like a valid schema identifier
     """
 
-    return bool(re.match(f'[{B58}]{{21,22}}$', token))
+    return bool(re.match('[{}]{{21,22}}$'.format(B58), token))
 
 
 def ok_schema_id(token: str) -> bool:
@@ -62,7 +62,7 @@ def ok_schema_id(token: str) -> bool:
     :return: whether input token looks like a valid schema identifier
     """
 
-    return bool(re.match(f'[{B58}]{{21,22}}:2:.+:[0-9.]+$', token))
+    return bool(re.match('[{}]{{21,22}}:2:.+:[0-9.]+$'.format(B58), token))
 
 
 def schema_key(s_id: str) -> SchemaKey:
@@ -105,7 +105,7 @@ def ok_cred_def_id(token: str, issuer_did: str = None) -> bool:
     :return: whether input token looks like a valid credential definition identifier
     """
 
-    cd_id_m = re.match(f'([{B58}]{{21,22}}):3:CL:[1-9][0-9]*(:.+)?$', token)
+    cd_id_m = re.match('([{}]{{21,22}}):3:CL:[1-9][0-9]*(:.+)?$'.format(B58), token)
     return bool(cd_id_m) and ((not issuer_did) or cd_id_m.group(1) == issuer_did)
 
 
@@ -131,7 +131,7 @@ def rev_reg_id(cd_id: str, tag: str) -> str:
     :return: revocation registry identifier
     """
 
-    return f'{cd_id.split(":", 1)[0]}:4:{cd_id}:CL_ACCUM:{tag}'  # 4 marks rev reg def id
+    return '{}:4:{}:CL_ACCUM:{}'.format(cd_id.split(":", 1)[0], cd_id, tag)  # 4 marks rev reg def id
 
 
 def ok_rev_reg_id(token: str, issuer_did: str = None) -> bool:
@@ -145,7 +145,7 @@ def ok_rev_reg_id(token: str, issuer_did: str = None) -> bool:
     :return: whether input token looks like a valid revocation registry identifier
     """
 
-    rr_id_m = re.match(f'([{B58}]{{21,22}}):4:([{B58}]{{21,22}}):3:CL:[1-9][0-9]*(:.+)?:CL_ACCUM:.+$', token)
+    rr_id_m = re.match('([{}]{{21,22}}):4:([{}]{{21,22}}):3:CL:[1-9][0-9]*(:.+)?:CL_ACCUM:.+$'.format(B58, B58), token)
     return bool(rr_id_m) and ((not issuer_did) or (rr_id_m.group(1) == issuer_did and rr_id_m.group(2) == issuer_did))
 
 

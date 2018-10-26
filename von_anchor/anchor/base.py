@@ -201,7 +201,7 @@ class _BaseAnchor:
 
         if not ok_did(did):
             LOGGER.debug('_BaseAnchor._get_nym <!< Bad DID %s', did)
-            raise BadIdentifier(f'Bad DID {did}')
+            raise BadIdentifier('Bad DID {}'.format(did))
 
         rv = json.dumps({})
         get_nym_req = await ledger.build_get_nym_request(self.did, did)
@@ -295,7 +295,7 @@ class _BaseAnchor:
 
         if not self.pool.handle:
             LOGGER.debug('_BaseAnchor._submit <!< closed pool %s', self.pool.name)
-            raise ClosedPool(f'Cannot submit request to closed pool {self.pool.name}')
+            raise ClosedPool('Cannot submit request to closed pool {}'.format(self.pool.name))
 
         rv_json = await ledger.submit_request(self.pool.handle, req_json)
         await asyncio.sleep(0)
@@ -303,7 +303,7 @@ class _BaseAnchor:
         resp = json.loads(rv_json)
         if resp.get('op', '') in ('REQNACK', 'REJECT'):
             LOGGER.debug('_BaseAnchor._submit <!< ledger rejected request: %s', resp['reason'])
-            raise BadLedgerTxn(f'Ledger rejected transaction request: {resp["reason"]}')
+            raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
 
         LOGGER.debug('_BaseAnchor._submit <<< %s', rv_json)
         return rv_json
@@ -323,7 +323,7 @@ class _BaseAnchor:
 
         if not self.pool.handle:
             LOGGER.debug('_BaseAnchor._submit <!< closed pool %s', self.pool.name)
-            raise ClosedPool(f'Cannot submit request to closed pool {self.pool.name}')
+            raise ClosedPool('Cannot submit request to closed pool {}'.format(self.pool.name))
 
         try:
             rv_json = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
@@ -334,18 +334,20 @@ class _BaseAnchor:
                     '_BaseAnchor._sign_submit <!< Corrupt wallet %s is not compatible with pool %s',
                     self.wallet.name,
                     self.pool.name)
-                raise CorruptWallet(
-                    f'Corrupt wallet {self.wallet.name} is not compatible with pool {self.pool.name}')
+                raise CorruptWallet('Corrupt wallet {} is not compatible with pool {}'.format(
+                    self.wallet.name,
+                    self.pool.name))
             else:
                 LOGGER.debug(
-                    '_BaseAnchor._sign_submit <!<  cannot sign/submit request for ledger: indy error code %s',
-                    self.wallet.name)
-                raise BadLedgerTxn(f'Cannot sign/submit request for ledger: indy error code {x_indy.error_code}')
+                    '_BaseAnchor._sign_submit <!< cannot sign/submit request for ledger: indy error code %s',
+                    x_indy.error_code)
+                raise BadLedgerTxn('Cannot sign/submit request for ledger: indy error code {}'.format(
+                    x_indy.error_code))
 
         resp = json.loads(rv_json)
         if resp.get('op', '') in ('REQNACK', 'REJECT'):
             LOGGER.debug('_BaseAnchor._sign_submit: ledger rejected request: %s', resp['reason'])
-            raise BadLedgerTxn(f'Ledger rejected transaction request: {resp["reason"]}')
+            raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
 
         LOGGER.debug('_BaseAnchor._sign_submit <<< %s', rv_json)
         return rv_json
@@ -368,7 +370,7 @@ class _BaseAnchor:
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('_BaseAnchor._get_rev_reg_def <!< Bad rev reg id %s', rr_id)
-            raise BadIdentifier(f'Bad rev reg id {rr_id}')
+            raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
         rv_json = json.dumps({})
 
@@ -386,7 +388,7 @@ class _BaseAnchor:
                     rr_def = json.loads(rv_json)
                 except IndyError:  # ledger replied, but there is no such rev reg
                     LOGGER.debug('_BaseAnchor._get_rev_reg_def <!< no rev reg exists on %s', rr_id)
-                    raise AbsentRevReg(f'No rev reg exists on {rr_id}')
+                    raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
 
                 if revo_cache_entry is None:
                     REVO_CACHE[rr_id] = RevoCacheEntry(rr_def, None)
@@ -414,7 +416,7 @@ class _BaseAnchor:
 
         if not ok_cred_def_id(cd_id):
             LOGGER.debug('_BaseAnchor._get_cred_def <!< Bad cred def id %s', cd_id)
-            raise BadIdentifier(f'Bad cred def id {cd_id}')
+            raise BadIdentifier('Bad cred def id {}'.format(cd_id))
 
         rv_json = json.dumps({})
 
@@ -430,12 +432,12 @@ class _BaseAnchor:
             resp = json.loads(resp_json)
             if not ('result' in resp and resp['result'].get('data', None)):
                 LOGGER.debug('_BaseAnchor.get_cred_def <!< no cred def exists on %s', cd_id)
-                raise AbsentCredDef(f'No cred def exists on {cd_id}')
+                raise AbsentCredDef('No cred def exists on {}'.format(cd_id))
             try:
                 (_, rv_json) = await ledger.parse_get_cred_def_response(resp_json)
             except IndyError:  # ledger replied, but there is no such cred def
                 LOGGER.debug('_BaseAnchor.get_cred_def <!< no cred def exists on %s', cd_id)
-                raise AbsentCredDef(f'No cred def exists on {cd_id}')
+                raise AbsentCredDef('No cred def exists on {}'.format(cd_id))
             CRED_DEF_CACHE[cd_id] = json.loads(rv_json)
             LOGGER.info('_BaseAnchor.get_cred_def: got cred def %s from ledger', cd_id)
 
@@ -476,12 +478,12 @@ class _BaseAnchor:
 
                 if not ('result' in resp and resp['result'].get('data', {}).get('attr_names', None)):
                     LOGGER.debug('_BaseAnchor.get_schema <!< no schema exists on %s', index)
-                    raise AbsentSchema(f'No schema exists on {index}')
+                    raise AbsentSchema('No schema exists on {}'.format(index))
                 try:
                     (_, rv_json) = await ledger.parse_get_schema_response(resp_json)
                 except IndyError:  # ledger replied, but there is no such schema
                     LOGGER.debug('_BaseAnchor.get_schema <!< no schema exists on %s', index)
-                    raise AbsentSchema(f'No schema exists on {index}')
+                    raise AbsentSchema('No schema exists on {}'.format(index))
                 SCHEMA_CACHE[s_key] = json.loads(rv_json)  # cache indexes by both txn# and schema key en passant
                 LOGGER.info('_BaseAnchor.get_schema: got schema %s from ledger', index)
 
@@ -495,7 +497,9 @@ class _BaseAnchor:
 
             else:
                 LOGGER.debug('_BaseAnchor.get_schema <!< bad schema index type')
-                raise AbsentSchema(f'Attempt to get schema on ({type(index)}) {index} , must use schema key or an int')
+                raise AbsentSchema('Attempt to get schema on ({}) {} , must use schema key or an int'.format(
+                    type(index),
+                    index))
 
         LOGGER.debug('_BaseAnchor.get_schema <<< %s', rv_json)
         return rv_json
@@ -526,4 +530,4 @@ class _BaseAnchor:
         :return: representation for current object
         """
 
-        return f'{self.__class__.__name__}({self.wallet})'
+        return '{}({})'.format(self.__class__.__name__, self.wallet)
