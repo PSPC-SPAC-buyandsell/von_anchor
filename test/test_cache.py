@@ -132,7 +132,7 @@ async def test_cache_multithread():
 
     print(Ink.YELLOW('\n\n== Testing Cache Multithreading =='))
 
-    THREADS = 32
+    THREADS = 48
     MODULUS = 5
     epoch_start = epoch()
     cache_threads = []

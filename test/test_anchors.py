@@ -30,7 +30,7 @@ from threading import current_thread, Thread
 from time import sleep, time
 from sys import float_info
 
-from von_anchor import BCRegistrarAnchor, OrgBookAnchor, OrgHubAnchor, SRIAnchor, TrusteeAnchor
+from von_anchor import BCRegistrarAnchor, OrgBookAnchor, OrgHubAnchor, RevRegBuilder, SRIAnchor, TrusteeAnchor
 from von_anchor.cache import Caches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE, RevoCacheEntry
 from von_anchor.codec import canon, raw
 from von_anchor.error import (
@@ -168,7 +168,7 @@ async def test_anchors_api(
     bcohan = OrgHubAnchor(
         await Wallet('BC-Org-Book-Anchor-0000000000000', 'bc-org-hub').create(),
         p,
-        {
+        cfg={
             'parse-caches-on-open': True,
             'archive-holder-prover-caches-on-close': True,
             'archive-verifier-caches-on-close': {
@@ -411,7 +411,7 @@ async def test_anchors_api(
     finally:
         _set_cache_state(True)
 
-    # Setup link secrets, cred reqs at HolderProver anchors
+    # Setup link secret for creation of cred req or proof
     await bcohan.create_link_secret('LinkSecret')
     await pspcoban.create_link_secret('SecretLink')
 
@@ -1984,7 +1984,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
         'parse-caches-on-open': True,
         'archive-verifier-caches-on-close': json.loads(await pspcoban.get_box_ids_held())
     }
-    san = SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p, san_cfg)
+    san = SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p, cfg=san_cfg)
 
     _set_tails_state(False)  # simulate not having tails file & cache
     _set_cache_state(False)
@@ -2073,6 +2073,7 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
 
     print(Ink.YELLOW('\n\n== Testing anchor revocation cache reg update maintenance =='))
 
+    SRI_NAME = 'sri-0'
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
         OrgBookAnchor(
             await Wallet(
@@ -2082,8 +2083,9 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
         SRIAnchor(
             await Wallet(
                 'SRI-Anchor-000000000000000000000',
-                'sri-0').create(),
-            p)) as san:
+                SRI_NAME).create(),
+            p,
+            rrbx=True)) as san:  # exercise external rev reg builder
 
         nyms = {
             'pspcoban': json.loads(await san.get_nym(pspcoban.did)),
@@ -2214,6 +2216,8 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
             rr_id,
             len(REVO_CACHE[rr_id].rr_delta_frames),
             len(REVO_CACHE[rr_id].rr_state_frames)))
+
+    await RevRegBuilder.stop(SRI_NAME)
 
 
 def do(coro):
@@ -2576,7 +2580,7 @@ async def test_anchors_cache_only(
     except CacheIndex:
         pass
 
-    # Setup link secrets, cred reqs at HolderProver anchors
+    # Setup link secret for creation of cred req or proof
     await pspcoban.create_link_secret('SecretLink')
 
     i = 0
@@ -3013,7 +3017,7 @@ async def test_util_wranglers(
                 ppjson(cred_offer_json[s_id])))
             i += 1
 
-        # Setup link secret, cred reqs at HolderProver anchor
+        # Setup link secret for creation of cred req or proof
         await pspcoban.create_link_secret('SecretLink')
 
         i = 0

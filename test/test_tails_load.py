@@ -14,14 +14,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import asyncio
 import json
+import subprocess
 import time
+
+from os import P_NOWAIT
+from os.path import dirname, realpath, isfile, join
 
 import pytest
 
-from von_anchor import OrgHubAnchor, TrusteeAnchor
+from von_anchor import OrgHubAnchor, RevRegBuilder, TrusteeAnchor
 from von_anchor.error import AbsentSchema
-from von_anchor.frill import Ink, ppjson
+from von_anchor.frill import Ink, Stopwatch, ppjson
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.util import (
@@ -32,6 +37,16 @@ from von_anchor.util import (
 from von_anchor.wallet import Wallet
 
 
+def rrbx_prox():
+    return int(subprocess.check_output('ps -ef | grep rrbuilder.py | wc -l', stderr=subprocess.STDOUT, shell=True))
+
+async def beep(msg, n):
+    print(f'(waiting for {msg})')
+    for _ in range(n):
+        await asyncio.sleep(1)
+        print('.', end='', flush=True)
+    print()
+
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchors_tails_load(
@@ -41,13 +56,26 @@ async def test_anchors_tails_load(
         pool_genesis_txn_path,
         seed_trustee1):
 
-    print(Ink.YELLOW('\n\n== Testing low-level API vs. IP {} =='.format(pool_ip)))
+    rrbx = True
+    print(Ink.YELLOW(f'\n\n== Load-testing tails on {"ex" if rrbx else "in"}ternal rev reg builder =='))
+
+    WALLET_NAME = 'superstar'
+    await RevRegBuilder.stop(WALLET_NAME)  # in case of re-run
 
     # Open pool, init anchors
     p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
 
     tan = TrusteeAnchor(await Wallet(seed_trustee1, 'trust-anchor').create(), p)
-    san = OrgHubAnchor(await Wallet('Superstar-Anchor-000000000000000', 'superstar').create(), p)
+    no_prox = rrbx_prox()
+    san = OrgHubAnchor(await Wallet('Superstar-Anchor-000000000000000', WALLET_NAME).create(), p, rrbx=True)
+    await beep(f'external rev reg builder process on {WALLET_NAME}', 5)
+    assert rrbx_prox() == no_prox + 1
+    async with OrgHubAnchor(
+            await Wallet('Superstar-Anchor-000000000000000', WALLET_NAME).create(),
+            p,
+            rrbx=True) as xan:  # check for exactly 1 external rev reg builder process
+        await beep(f'external rev reg builder process on {WALLET_NAME}', 5)
+        assert rrbx_prox() == no_prox + 1
 
     await p.open()
     assert p.handle
@@ -123,9 +151,14 @@ async def test_anchors_tails_load(
         assert schema[s_id]
         i += 1
 
-    # Setup link secrets, cred reqs at HolderProver anchor
-    await san.create_link_secret('LinkSecret')
+    # wait for rev reg builder to spin up
+    if rrbx:
+        while not isfile(join(san._dir_tails_sentinel, '.pid')):
+            await asyncio.sleep(1)
 
+    # Setup link secret for creation of cred req or proof
+    await san.create_link_secret('LinkSecret')
+    
     # SRI anchor create, store, publish cred definitions to ledger; create cred offers
     i = 0
     for s_id in schema_data:
@@ -177,11 +210,13 @@ async def test_anchors_tails_load(
     }
 
     i = 0
-    print('\n\n== 5 == creating 80000 credentials')
-    worst = 0.0
+    CREDS = 1794  # enough to kick off rev reg on size 2048 and issue two creds in it: 1 needing set-rev-reg, 1 not
+    print('\n\n== 5 == creating {} credentials'.format(CREDS))
+    swatch = Stopwatch(2)
+    optima = {}  # per rev-reg, fastest/slowest pairs
     for s_id in cred_data:
-        for number in range(80000):
-            start = time.time()
+        for number in range(CREDS):
+            swatch.mark()
             (cred_json[s_id], cred_revoc_id, epoch_creation) = await san.create_cred(
                 cred_offer_json[s_id],
                 cred_req_json[s_id],
@@ -190,19 +225,25 @@ async def test_anchors_tails_load(
                     'remainder': str(number % 100)
                 }
             )
-            elapsed = time.time() - start
-            if elapsed > worst:
-                worst = elapsed
+            elapsed = swatch.mark()
+            tag = rev_reg_id2tag(Tails.current_rev_reg_id(san._dir_tails, cd_id[s_id]))
+            if tag not in optima:
+                optima[tag] = (elapsed, elapsed)
+            else:
+                optima[tag] = (min(optima[tag][0], elapsed), max(optima[tag][1], elapsed))
             print('.', end='', flush=True)
             if ((i + 1) % 100) == 0:
-                tag = rev_reg_id2tag(Tails.current_rev_reg_id(san._dir_tails, cd_id[s_id]))
-                print('{}: rr#{}, <= {:.2f}s'.format(i + 1, tag, worst), flush=True)
-                worst = 0.0
+                print('{}: #{}: {}-{}s'.format(i + 1, tag, *optima[tag]), flush=True)
 
             assert json.loads(cred_json[s_id])
 
             i += 1
 
+    print('\n\n== 6 == best, worst times by revocation registry: {}'.format(ppjson(optima))) 
+    assert all(optima[tag][1] < optima[tag][0] * 6 for tag in optima)  # if ever waiting on rev reg, will be slower
+
     await san.close()
+    if rrbx:
+        await RevRegBuilder.stop(WALLET_NAME)
     await tan.close()
     await p.close()

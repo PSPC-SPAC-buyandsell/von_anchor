@@ -83,7 +83,7 @@ class HolderProver(_BaseAnchor):
 
         LOGGER.debug('HolderProver.__init__ >>> wallet: %s, pool: %s, cfg: %s', wallet, pool, cfg)
 
-        super().__init__(wallet, pool)
+        _BaseAnchor.__init__(self, wallet, pool)
         self._link_secret = None
 
         self._dir_tails = join(expanduser('~'), '.indy_client', 'tails')
@@ -406,7 +406,7 @@ class HolderProver(_BaseAnchor):
 
         LOGGER.debug('HolderProver.open >>>')
 
-        await super().open()
+        await _BaseAnchor.open(self)
         if self.cfg.get('parse-caches-on-open', False):
             Caches.parse(self.dir_cache)
 
@@ -430,7 +430,7 @@ class HolderProver(_BaseAnchor):
             await self.load_cache_for_proof(True)
             Caches.purge_archives(self.dir_cache, True)
 
-        await super().close()
+        await _BaseAnchor.close(self)
         for path_rr_id in Tails.links(self._dir_tails):
             rr_id = basename(path_rr_id)
             try:

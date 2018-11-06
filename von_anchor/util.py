@@ -120,7 +120,7 @@ def cred_def_id2seq_no(cd_id: str) -> int:
     return int(cd_id.split(':')[3])  # sequence number is token at 0-based position 3
 
 
-def rev_reg_id(cd_id: str, tag: str) -> str:
+def rev_reg_id(cd_id: str, tag: Union[str, int]) -> str:
     """
     Given a credential definition identifier and a tag, return the corresponding
     revocation registry identifier, repeating the issuer DID from the

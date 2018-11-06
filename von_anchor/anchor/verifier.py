@@ -82,7 +82,7 @@ class Verifier(_BaseAnchor):
 
         LOGGER.debug('Verifier.__init__ >>> wallet: %s, pool: %s, cfg: %s', wallet, pool, cfg)
 
-        super().__init__(wallet, pool)
+        _BaseAnchor.__init__(self, wallet, pool)
 
         self._cfg = cfg or {}
         validate_config('verifier', self._cfg)
@@ -358,7 +358,7 @@ class Verifier(_BaseAnchor):
 
         LOGGER.debug('Verifier.open >>>')
 
-        await super().open()
+        await _BaseAnchor.open(self)
         if self.cfg.get('parse-caches-on-open', False):
             Caches.parse(self.dir_cache)
 
@@ -380,7 +380,7 @@ class Verifier(_BaseAnchor):
             await self.load_cache_for_verification(True)
             Caches.purge_archives(self.dir_cache, True)
 
-        await super().close()
+        await _BaseAnchor.close(self)
 
         LOGGER.debug('Verifier.close <<<')
 

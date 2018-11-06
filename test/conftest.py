@@ -32,8 +32,6 @@ logging.getLogger('test.conftest').setLevel(logging.INFO)
 logging.getLogger('asyncio').setLevel(logging.WARN)
 logging.getLogger('von_anchor').setLevel(logging.WARN)
 logging.getLogger('indy').setLevel(logging.ERROR)
-logging.getLogger('urllib3').setLevel(logging.ERROR)
-logging.getLogger('requests').setLevel(logging.ERROR)
 
 
 @pytest.fixture(scope="session")

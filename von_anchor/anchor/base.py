@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+
 import asyncio
 import json
 import logging
@@ -260,6 +261,8 @@ class _BaseAnchor:
         """
         Send endpoint attribute for anchor, if ledger does not yet have input value.
 
+        Raise BadLedgerTxn on failure.
+
         :param endpoint: value to set as endpoint attribute on ledger.
         """
 
@@ -278,6 +281,15 @@ class _BaseAnchor:
         })
         req_json = await ledger.build_attrib_request(self.did, self.did, None, attr_json, None)
         await self._sign_submit(req_json)
+
+        for _ in range(16):  # reasonable timeout
+            if await self.get_endpoint() == endpoint:
+                break
+            await asyncio.sleep(1)
+            LOGGER.info('Sent endpoint %s to ledger, waiting 1s for its confirmation', endpoint)
+        else:
+            LOGGER.debug('_BaseAnchor.send_endpoint <!< timed out waiting on sent endpoint %s', endpoint)
+            raise BadLedgerTxn('Timed out waiting on sent endpoint {}'.format(endpoint))
 
         LOGGER.debug('_BaseAnchor.send_endpoint <<<')
 

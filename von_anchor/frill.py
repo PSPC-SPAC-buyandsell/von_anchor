@@ -46,20 +46,34 @@ class Stopwatch:
     Stopwatch class for troubleshooting lags.
     """
 
-    def __init__(self):
+    def __init__(self, digits: int = None):
         """
         Instantiate and start.
+
+        :param digits: number of fractional decimal digits to retain (default to all) by default
         """
 
         self._mark = [time()] * 2
+        self._digits = digits
 
-    def mark(self) -> float:
+    def mark(self, digits: int = None) -> float:
         """
         Return time in seconds since last mark, reset, or construction.
+
+        :param digits: number of fractional decimal digits to retain (default as constructed)
         """
 
         self._mark[:] = [self._mark[1], time()]
-        return self._mark[1] - self._mark[0]
+        rv = self._mark[1] - self._mark[0]
+
+        if digits is not None and digits > 0:
+            rv = round(rv, digits)
+        elif digits == 0 or self._digits == 0:
+            rv = int(rv)
+        elif self._digits is not None and self._digits > 0:
+            rv = round(rv, self._digits)
+
+        return rv
 
     def reset(self) -> float:
         """

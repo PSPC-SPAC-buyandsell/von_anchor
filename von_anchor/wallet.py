@@ -85,7 +85,7 @@ class Wallet:
         """
         Initializer for wallet. Store input parameters, packing name and wallet_type into cfg (the
         signature retains them independently as a convenience and to retain compatibility with prior releases).
-        Do not create wallet until call to create(). Do not open until call to open() or __aenter__().
+        Does not create wallet until call to create(). Do not open until call to open() or __aenter__().
 
         :param seed: seed for wallet user
         :param name: name of the wallet
