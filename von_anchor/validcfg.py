@@ -56,7 +56,7 @@ CONFIG_JSON_SCHEMA = {
                 'type': 'boolean'
             }
         },
-        'additionalProperties': False
+        'additionalProperties': True
     },
     'verifier': {
         '$schema': 'http://json-schema.org/draft-04/schema',
@@ -92,7 +92,7 @@ CONFIG_JSON_SCHEMA = {
                 }
             }
         },
-        'additionalProperties': False
+        'additionalProperties': True
     },
     'org-hub': {
         '$schema': 'http://json-schema.org/draft-04/schema',

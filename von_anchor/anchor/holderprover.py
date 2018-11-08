@@ -50,7 +50,7 @@ from von_anchor.util import (
     ok_schema_id,
     prune_creds_json,
     rev_reg_id2cred_def_id_tag)
-from von_anchor.validate_config import validate_config
+from von_anchor.validcfg import validate_config
 from von_anchor.wallet import Wallet
 
 
@@ -64,7 +64,7 @@ class HolderProver(_BaseAnchor):
     the holder-prover anchor to manage tails files.
     """
 
-    def __init__(self, wallet: Wallet, pool: NodePool, cfg: dict = None) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
         """
         Initializer for HolderProver anchor. Retain input parameters; do not open wallet nor tails writer.
 
@@ -81,15 +81,15 @@ class HolderProver(_BaseAnchor):
 
         """
 
-        LOGGER.debug('HolderProver.__init__ >>> wallet: %s, pool: %s, cfg: %s', wallet, pool, cfg)
+        LOGGER.debug('HolderProver.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)
 
-        _BaseAnchor.__init__(self, wallet, pool)
+        super().__init__(wallet, pool, **kwargs)
         self._link_secret = None
 
         self._dir_tails = join(expanduser('~'), '.indy_client', 'tails')
         makedirs(self._dir_tails, exist_ok=True)
 
-        self._cfg = cfg or {}
+        self._cfg = kwargs.get('cfg', {})
         validate_config('holder-prover', self._cfg)
 
         self._dir_cache = join(expanduser('~'), '.indy_client', 'cache', self.wallet.name)
@@ -406,7 +406,7 @@ class HolderProver(_BaseAnchor):
 
         LOGGER.debug('HolderProver.open >>>')
 
-        await _BaseAnchor.open(self)
+        await super().open()
         if self.cfg.get('parse-caches-on-open', False):
             Caches.parse(self.dir_cache)
 

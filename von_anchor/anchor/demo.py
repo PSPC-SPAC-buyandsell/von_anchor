@@ -28,7 +28,7 @@ from von_anchor.cache import Caches
 from von_anchor.error import ClosedPool
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
-from von_anchor.validate_config import validate_config
+from von_anchor.validcfg import validate_config
 from von_anchor.wallet import Wallet
 
 LOGGER = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class TrusteeAnchor(AnchorSmith):
     pass
 
 
-class BCRegistrarAnchor(Issuer, Origin):
+class BCRegistrarAnchor(Origin, Issuer):
     """
     BCRegistrarAnchor demonstrator class acts as an issuer.
     """
@@ -58,19 +58,18 @@ class OrgBookAnchor(HolderProver):
     pass
 
 
-class OrgHubAnchor(OrgBookAnchor, Issuer, Origin, Verifier):
+class OrgHubAnchor(Verifier, Origin, Issuer, OrgBookAnchor):
     """
-    OrgHubAnchor demonstrator class acts as an issuer and verifier for its own credentials
+    OrgHubAnchor demonstrator class acts as an origin, issuer and verifier for its own credentials
     (principally metadata), and as a holder-prover for its own and any of its registrars' credentials.
     """
 
-    def __init__(self, wallet: Wallet, pool: NodePool, *, rrbx: bool = False, cfg: dict = None) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
         """
         Initializer for org hub anchor. Retain input parameters; do not open wallet.
 
         :param wallet: wallet for anchor use
         :param pool: pool for anchor use
-        :param rrbx: whether revocation registry builder is an external process
         :param cfg: configuration dict for cache archive behaviour qua Issuer and Verifier roles; e.g.,
 
         ::
@@ -102,15 +101,14 @@ class OrgHubAnchor(OrgBookAnchor, Issuer, Origin, Verifier):
                 }
             }
 
+        :param rrbx: whether revocation registry builder is an external process
         """
 
-        LOGGER.debug('OrgHubAnchor.__init__ >>> wallet: %s, pool: %s, rrbx: %s, cfg: %s', wallet, pool, rrbx, cfg)
+        LOGGER.debug('OrgHubAnchor.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)
 
-        HolderProver.__init__(self, wallet, pool)
-        Issuer.__init__(self, wallet, pool, rrbx=rrbx)
-        Verifier.__init__(self, wallet, pool)
+        super().__init__(wallet, pool, **kwargs)
 
-        self._cfg = cfg or {}
+        self._cfg = kwargs.get('cfg', {})
         validate_config('org-hub', self._cfg)
 
         LOGGER.debug('OrgHubAnchor.__init__ <<<')
@@ -161,26 +159,25 @@ class OrgHubAnchor(OrgBookAnchor, Issuer, Origin, Verifier):
         LOGGER.debug('OrgHubAnchor.close <<<')
 
 
-class SRIAnchor(Origin, Issuer, Verifier):
+class SRIAnchor(Verifier, Origin, Issuer):
     """
-    SRIAnchor demonstrator class acts as both an issuer of its own credentials and a verifier
+    SRIAnchor demonstrator class acts as an origin and issuer of its own credentials and a verifier
     of any holder-prover's.
     """
 
-    def __init__(self, wallet: Wallet, pool: NodePool, *, rrbx: bool = False, cfg: dict = None) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
         """
         Initializer for SRI anchor. Retain input parameters; do not open wallet.
 
         :param wallet: wallet for anchor use
         :param pool: pool for anchor use
-        :param rrbx: whether revocation registry builder is an external process
         :param cfg: configuration dict for cache archive behaviour qua Verifier role
+        :param rrbx: whether revocation registry builder is an external process
         """
 
-        LOGGER.debug('SRIAnchor.__init__ >>> wallet: %s, pool: %s, rrbx: %s, cfg: %s', wallet, pool, rrbx, cfg)
+        LOGGER.debug('SRIAnchor.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)
 
-        Issuer.__init__(self, wallet, pool, rrbx=rrbx)
-        Verifier.__init__(self, wallet, pool, cfg)
+        super().__init__(wallet, pool, **kwargs)
 
         LOGGER.debug('SRIAnchor.close <<<')
 

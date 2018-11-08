@@ -23,7 +23,7 @@ from hashlib import sha256
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
 from von_anchor.error import AbsentMetadata, AbsentWallet, CorruptWallet
-from von_anchor.validate_config import validate_config
+from von_anchor.validcfg import validate_config
 
 
 LOGGER = logging.getLogger(__name__)

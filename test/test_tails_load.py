@@ -19,7 +19,6 @@ import json
 import subprocess
 import time
 
-from os import P_NOWAIT
 from os.path import dirname, realpath, isfile, join
 
 import pytest
@@ -64,6 +63,7 @@ async def test_anchors_tails_load(
 
     # Open pool, init anchors
     p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
+    await p.open()
 
     tan = TrusteeAnchor(await Wallet(seed_trustee1, 'trust-anchor').create(), p)
     no_prox = rrbx_prox()
@@ -77,7 +77,6 @@ async def test_anchors_tails_load(
         await beep(f'external rev reg builder process on {WALLET_NAME}', 5)
         assert rrbx_prox() == no_prox + 1
 
-    await p.open()
     assert p.handle
 
     await tan.open()
@@ -164,7 +163,7 @@ async def test_anchors_tails_load(
     for s_id in schema_data:
         s_key = schema_key(s_id)
 
-        await san.send_cred_def(s_id, True)
+        await san.send_cred_def(s_id, revocation=True, rr_size=16)  # rr_size will be 16, 512, 512, 1024: sum 2064
         cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'], p.protocol)
 
         assert ((not Tails.unlinked(san._dir_tails)) and
@@ -210,7 +209,7 @@ async def test_anchors_tails_load(
     }
 
     i = 0
-    CREDS = 1794  # enough to kick off rev reg on size 2048 and issue two creds in it: 1 needing set-rev-reg, 1 not
+    CREDS = 2066  # enough to kick off rev reg on size 2048 and issue two creds in it: 1 needing set-rev-reg, 1 not
     print('\n\n== 5 == creating {} credentials'.format(CREDS))
     swatch = Stopwatch(2)
     optima = {}  # per rev-reg, fastest/slowest pairs

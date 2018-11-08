@@ -161,7 +161,7 @@ async def test_anchors_api(
     pspcoban = OrgBookAnchor(
         await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
         p,
-        {
+        cfg={
             'parse-caches-on-open': True,
             'archive-holder-prover-caches-on-close': True
         })
@@ -1924,7 +1924,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     pspcoban = OrgBookAnchor(
         await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
         p,
-        {
+        cfg={
             'parse-caches-on-open': True,
             'archive-holder-prover-caches-on-close': False
         })
@@ -2033,7 +2033,7 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
         OrgBookAnchor(
             await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
             p,
-            {
+            cfg={
                 'parse-caches-on-open': True,
                 'archive-holder-prover-caches-on-close': True
             })) as pspcoban:
@@ -2429,7 +2429,7 @@ async def test_anchors_cache_only(
     pspcoban = OrgBookAnchor(
         await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
         p,
-        {
+        cfg={
             'parse-caches-on-open': True,
             'archive-holder-prover-caches-on-close': True
         })
@@ -2902,9 +2902,7 @@ async def test_util_wranglers(
     # Open pool, init anchors
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
         SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p)) as san, (
-        OrgBookAnchor(
-            await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
-            p)) as pspcoban:
+        OrgBookAnchor(await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(), p)) as pspcoban:
 
         assert p.handle is not None
 

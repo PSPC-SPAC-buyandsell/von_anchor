@@ -24,7 +24,7 @@ from enum import Enum
 from indy import pool
 from indy.error import IndyError, ErrorCode
 from von_anchor.schema_key import SchemaKey
-from von_anchor.validate_config import validate_config
+from von_anchor.validcfg import validate_config
 
 
 ProtocolMap = namedtuple('ProtocolMap', 'name indy')

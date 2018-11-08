@@ -27,10 +27,10 @@ import pytest
 from indy import wallet, pool, ledger
 
 
-logging.basicConfig(level=logging.WARN, format='%(levelname)-8s | %(name)-12s | %(message)s')
+logging.basicConfig(level=logging.WARNING, format='%(levelname)-8s | %(name)-12s | %(message)s')
 logging.getLogger('test.conftest').setLevel(logging.INFO)
-logging.getLogger('asyncio').setLevel(logging.WARN)
-logging.getLogger('von_anchor').setLevel(logging.WARN)
+logging.getLogger('asyncio').setLevel(logging.WARNING)
+logging.getLogger('von_anchor').setLevel(logging.WARNING)
 logging.getLogger('indy').setLevel(logging.ERROR)
 
 

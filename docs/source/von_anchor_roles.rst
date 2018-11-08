@@ -4,14 +4,6 @@ von\_anchor\_roles package
 Submodules
 ----------
 
-von\_anchor.anchor.origin module
---------------------------------
-
-.. automodule:: von_anchor.anchor.origin
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 von\_anchor.anchor.base module
 ------------------------------
 
@@ -28,6 +20,22 @@ von\_anchor.anchor.smith module
     :undoc-members:
     :show-inheritance:
 
+von\_anchor.anchor.origin module
+--------------------------------
+
+.. automodule:: von_anchor.anchor.origin
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+von\_anchor.anchor.rrbuilder module
+--------------------------------
+
+.. automodule:: von_anchor.anchor.rrbuilder
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 von\_anchor.anchor.issuer module
 --------------------------------
 
@@ -36,10 +44,10 @@ von\_anchor.anchor.issuer module
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.anchor.holder\_prover module
+von\_anchor.anchor.holderprover module
 ----------------------------------------
 
-.. automodule:: von_anchor.anchor.holder_prover
+.. automodule:: von_anchor.anchor.holderprover
     :members:
     :undoc-members:
     :show-inheritance:

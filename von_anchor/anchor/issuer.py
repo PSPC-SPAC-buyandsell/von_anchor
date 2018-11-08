@@ -18,21 +18,18 @@ limitations under the License.
 import asyncio
 import json
 import logging
-import os
 
-from os.path import basename, dirname, isdir, isfile, join, realpath
+from os import listdir, makedirs, remove, rename
+from os.path import basename, isdir, isfile, join
 from shutil import rmtree
-from subprocess import Popen
 
 from indy import anoncreds, ledger
 from indy.error import IndyError, ErrorCode
-from von_anchor.anchor.base import _BaseAnchor
-from von_anchor.anchor.rrbuilder import RevRegBuilder, State
+from von_anchor.anchor.rrbuilder import RevRegBuilder
 from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE
 from von_anchor.codec import cred_attr_value
 from von_anchor.error import (
     AbsentCredDef,
-    AbsentProcess,
     AbsentSchema,
     AbsentRevReg,
     AbsentTails,
@@ -40,7 +37,6 @@ from von_anchor.error import (
     BadLedgerTxn,
     BadRevocation,
     CorruptWallet)
-from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.util import (
     cred_def_id,
@@ -52,7 +48,6 @@ from von_anchor.util import (
     rev_reg_id2cred_def_id,
     rev_reg_id2cred_def_id_tag,
     schema_key)
-from von_anchor.wallet import Wallet
 
 
 LOGGER = logging.getLogger(__name__)
@@ -65,65 +60,6 @@ class Issuer(RevRegBuilder):
     involves the management of tails files and revocation registries.
     """
 
-    def __init__(self, wallet: Wallet, pool: NodePool, *, rrbx: bool = False) -> None:
-        """
-        Initializer for RevRegBuilder anchor. Retain input parameters; do not open wallet.
-
-        :param wallet: wallet for anchor use
-        :param pool: pool for anchor use
-        :param rrbx: whether revocation registry builder is an external process
-        """
-
-        LOGGER.debug('Issuer.__init__ >>> wallet: %s, pool: %s, rrbx: %s', wallet, pool, rrbx)
-
-        RevRegBuilder.__init__(self, wallet, pool, rrbx=rrbx)  # rev reg builder shares pool, wallet
-
-        if rrbx:
-            rrb_state = RevRegBuilder.get_state(wallet.name)
-
-            if rrb_state == State.STOPPING:
-                try:  # cancel the stop order
-                    os.remove(os.path.join(RevRegBuilder.dir_tails_sentinel(wallet.name), '.stop'))
-                except FileNotFoundError:
-                    pass  # too late, it's gone
-                else:
-                    rrb_state = State.ABSENT
-
-            if rrb_state == State.ABSENT:  # run it
-                with open(os.path.join(RevRegBuilder.dir_tails_sentinel(wallet.name), '.start'), 'w') as fh_start:
-                    print(wallet._seed, file=fh_start)
-                    logger = LOGGER
-                    print(logger.level, file=fh_start)
-                    log_paths = [realpath(h.baseFilename) for h in logger.handlers if hasattr(h, 'baseFilename')]
-                    while not log_paths:
-                        logger = logger.parent
-                        if logger is None:
-                            break
-                        log_paths = [realpath(h.baseFilename) for h in logger.handlers if hasattr(h, 'baseFilename')]
-                    for log_path in log_paths:
-                        print(log_path, file=fh_start)
-
-                rrb_proc = Popen([
-                    'python',
-                    join(dirname(realpath(__file__)), 'rrbuilder.py'),
-                    '-p',
-                    pool.name,
-                    '-g',
-                    pool.genesis_txn_path,
-                    '-n',
-                    wallet.name])
-                if rrb_proc and rrb_proc.pid:
-                    LOGGER.info(
-                        'Issuer %s spawned pid %s to run external revocation registry builder',
-                        wallet.name,
-                        rrb_proc.pid)
-                else:
-                    LOGGER.debug('Issuer %s could not spawn rev reg builder', wallet.name)
-                    raise AbsentProcess('Issuer.__init__ <!< Issuer {} could not spawn rev reg builder'.format(
-                        wallet.name))
-
-        LOGGER.debug('Issuer.__init__ <<<')
-
     async def open(self) -> 'Issuer':
         """
         Explicit entry. Perform ancestor opening operations,
@@ -134,7 +70,7 @@ class Issuer(RevRegBuilder):
 
         LOGGER.debug('Issuer.open >>>')
 
-        await _BaseAnchor.open(self)
+        await super().open()
         for path_rr_id in Tails.links(self._dir_tails, self.did):
             await self._sync_revoc_for_issue(basename(path_rr_id))
 
@@ -189,8 +125,8 @@ class Issuer(RevRegBuilder):
 
         if self._rrbx:
             dir_cd_id = join(self._dir_tails, cd_id)
-            os.makedirs(dir_cd_id, exist_ok=True)
-            os.rename(file_tails, join(dir_cd_id, basename(file_tails)))
+            makedirs(dir_cd_id, exist_ok=True)
+            rename(file_tails, join(dir_cd_id, basename(file_tails)))
 
         with REVO_CACHE.lock:
             rrd_req_json = await ledger.build_revoc_reg_def_request(self.did, rrd_json)
@@ -204,8 +140,8 @@ class Issuer(RevRegBuilder):
             Tails.associate(self._dir_tails, rr_id, basename(file_tails))
             rmtree(dir_tails)
         else:
-            os.remove(file_rrd)
-            os.remove(file_rre)
+            remove(file_rrd)
+            remove(file_rre)
 
         LOGGER.debug('Issuer._send_rev_reg_def <<<')
 
@@ -230,7 +166,7 @@ class Issuer(RevRegBuilder):
         (next_tag, rr_size_suggested) = Tails.next_tag(self._dir_tails, cd_id)
         rr_id = rev_reg_id(cd_id, next_tag)
         try:
-            os.makedirs(join(self._dir_tails_sentinel, rr_id), exist_ok=False)
+            makedirs(join(self._dir_tails_sentinel, rr_id), exist_ok=False)
         except FileExistsError:
             LOGGER.warning('Rev reg %s construction already in progress', rr_id)
         else:
@@ -396,7 +332,7 @@ class Issuer(RevRegBuilder):
                         (_, rr_size_suggested) = Tails.next_tag(self._dir_tails, cd_id)
                         rr_id = rev_reg_id(cd_id, '0')
                         try:
-                            os.makedirs(join(self._dir_tails_sentinel, rr_id), exist_ok=False)
+                            makedirs(join(self._dir_tails_sentinel, rr_id), exist_ok=False)
                         except FileExistsError:
                             LOGGER.warning('Rev reg %s construction already in progress', rr_id)
                         else:
@@ -410,7 +346,7 @@ class Issuer(RevRegBuilder):
             for tag in [str(t) for t in range(1, int(Tails.next_tag(self._dir_tails, cd_id)[0]))]:  # '1' to str(next-1)
                 await self._sync_revoc_for_issue(rev_reg_id(cd_id, tag), rr_size if tag == '0' else None)
 
-        os.makedirs(join(self._dir_tails, cd_id), exist_ok=True)  # ensure dir exists for box id collection, revo or not
+        makedirs(join(self._dir_tails, cd_id), exist_ok=True)  # ensure dir exists for box id collection, revo or not
 
         LOGGER.debug('Issuer.send_cred_def <<< %s', rv_json)
         return rv_json
@@ -643,7 +579,7 @@ class Issuer(RevRegBuilder):
 
         LOGGER.debug('Issuer.get_box_ids_issued >>>')
 
-        cd_ids = [d for d in os.listdir(self._dir_tails)
+        cd_ids = [d for d in listdir(self._dir_tails)
             if isdir(join(self._dir_tails, d)) and ok_cred_def_id(d, self.did)]
         s_ids = []
         for cd_id in cd_ids:

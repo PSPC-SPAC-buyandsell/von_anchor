@@ -98,8 +98,9 @@ def encode(orig: Any) -> str:
     if isinstance(orig, int):
         return '{}{}'.format(prefix, str(orig) if -I32_BOUND <= orig < I32_BOUND else str(abs(orig)))
 
-    payload = (str(int.from_bytes(orig.encode() if int(prefix) == Prefix.STR
-        else json.dumps(orig).encode(), 'big') + I32_BOUND))
+    payload = (
+        str(int.from_bytes(orig.encode() if int(prefix) == Prefix.STR else json.dumps(orig).encode(), 'big')
+            + I32_BOUND))
 
     return '{}{}'.format(prefix, payload)
 

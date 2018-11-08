@@ -30,7 +30,7 @@ from von_anchor.codec import canon
 from von_anchor.error import AbsentRevReg, AbsentSchema, BadIdentifier, BadRevStateTime, ClosedPool
 from von_anchor.nodepool import NodePool
 from von_anchor.util import cred_def_id2seq_no, ok_cred_def_id, ok_rev_reg_id, ok_schema_id
-from von_anchor.validate_config import validate_config
+from von_anchor.validcfg import validate_config
 from von_anchor.wallet import Wallet
 
 
@@ -42,7 +42,7 @@ class Verifier(_BaseAnchor):
     Mixin for anchor acting in the role of Verifier. Verifier anchors verify proofs.
     """
 
-    def __init__(self, wallet: Wallet, pool: NodePool, cfg: dict = None) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
         """
         Initializer for Verifier anchor. Retain input parameters; do not open wallet.
 
@@ -80,11 +80,11 @@ class Verifier(_BaseAnchor):
 
         """
 
-        LOGGER.debug('Verifier.__init__ >>> wallet: %s, pool: %s, cfg: %s', wallet, pool, cfg)
+        LOGGER.debug('Verifier.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)
 
-        _BaseAnchor.__init__(self, wallet, pool)
+        super().__init__(wallet, pool, **kwargs)
 
-        self._cfg = cfg or {}
+        self._cfg = kwargs.get('cfg', {})
         validate_config('verifier', self._cfg)
 
         self._dir_cache = join(expanduser('~'), '.indy_client', 'cache', self.wallet.name)
@@ -358,7 +358,7 @@ class Verifier(_BaseAnchor):
 
         LOGGER.debug('Verifier.open >>>')
 
-        await _BaseAnchor.open(self)
+        await super().open()
         if self.cfg.get('parse-caches-on-open', False):
             Caches.parse(self.dir_cache)
 

@@ -48,15 +48,16 @@ class _BaseAnchor:
     with the distributed ledger that its node pool operates.
     """
 
-    def __init__(self, wallet: Wallet, pool: NodePool) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
         """
         Initializer for anchor. Retain wallet and node pool.
 
         :param wallet: wallet for anchor use
         :param pool: node pool for anchor use
+        :param kwargs: place holders for super(); implementation ignores
         """
 
-        LOGGER.debug('_BaseAnchor.__init__ >>> wallet: %s, pool: %s', wallet, pool)
+        LOGGER.debug('_BaseAnchor.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)
 
         self._wallet = wallet
         self._pool = pool
