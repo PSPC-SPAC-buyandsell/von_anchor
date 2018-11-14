@@ -1378,8 +1378,9 @@ async def test_anchors_api(
     assert json.loads(rc_json)
 
     # Create and store SRI registration completion creds, green cred from verified proof + extra data
-    print('\n\n== 59 == Revealed attributes from BC proof: {}'.format(ppjson(revealed_attrs(bc_proof))))
-    revealed = revealed_attrs(bc_proof)[cd_id[S_ID['BC']]]
+    revealed_bc = revealed_attrs(bc_proof)
+    print('\n\n== 59 == Revealed attributes from BC proof: {}'.format(ppjson(revealed_bc)))
+    revealed = revealed_bc[cd_id[S_ID['BC']]]
 
     TODAY = datetime.date.today().strftime('%Y-%m-%d')
     cred_data[S_ID['SRI-1.0']].append({  # map from revealed attrs, taken from indy-sdk proof w/canonicalized attr names
@@ -1516,8 +1517,12 @@ async def test_anchors_api(
     # PSPC Org Book anchor (as HolderProver) creates multi-cred proof (by filter)
     sri_req_creds = json.loads(await pspcoban.build_req_creds_json(sri_creds_filt))
     sri_proof_json = await pspcoban.create_proof(proof_req_sri, sri_creds_filt, sri_req_creds)
-    print('\n\n== 66 == PSPC Org Book proof on cred-ids {}: {}'.format(sri_cred_ids_filt, ppjson(sri_proof_json, 4096)))
     sri_proof = json.loads(sri_proof_json)
+    revealed_sri = revealed_attrs(sri_proof)
+    print('\n\n== 66 == PSPC Org Book proof on cred-ids {}: {}, revealed attrs {}'.format(
+        sri_cred_ids_filt,
+        ppjson(sri_proof_json, 4096),
+        ppjson(revealed_sri)))
 
     # SRI anchor (as Verifier) verifies proof (by filter)
     rc_json = await san.verify_proof(proof_req_sri, sri_proof)

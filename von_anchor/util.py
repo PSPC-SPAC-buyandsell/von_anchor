@@ -21,7 +21,6 @@ import re
 from copy import deepcopy
 from typing import Union
 
-from von_anchor.codec import decode
 from von_anchor.nodepool import Protocol
 from von_anchor.schema_key import SchemaKey
 
@@ -633,7 +632,7 @@ def revoc_info(creds: Union[dict, list], filt: dict = None) -> dict:
     """
     Given a creds structure or a list of cred-briefs, return a dict mapping pairs
     (revocation registry identifier, credential revocation identifier)
-    to (decoded) attribute name:value dicts.
+    to attribute name: (raw) value dicts.
 
     If the caller includes a filter of attribute:value pairs, retain only matching attributes.
 
@@ -648,9 +647,30 @@ def revoc_info(creds: Union[dict, list], filt: dict = None) -> dict:
             'endDate': None
         }
 
-    :return: dict mapping (rev_reg_id, cred_rev_id) pairs to decoded attributes
-    """
+    :return: dict mapping (rev_reg_id, cred_rev_id) pairs to (raw) attributes; e.g.,
 
+    ::
+
+        {
+            ('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:17:tag:CL_ACCUM:1', '2'): {
+                'busId': '11121398',
+                'effectiveDate': '2010-10-10',
+                'endDate': '',
+                'id': '1',
+                'jurisdictionId': '1',
+                'legalName': 'The Original House of Pies',
+                'orgTypeId': '2'},
+            ('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:17:tag:CL_ACCUM:1', '3'): {
+                'busId': '11133333',
+                'effectiveDate': '2011-10-01',
+                'endDate': '',
+                'id': '2',
+                'jurisdictionId': '1',
+                'legalName': 'Planet Cake',
+                'orgTypeId': '1'}
+        }
+
+    """
     def _add(briefs):
         nonlocal rv, filt
         for brief in briefs:
@@ -678,18 +698,18 @@ def revoc_info(creds: Union[dict, list], filt: dict = None) -> dict:
 def revealed_attrs(proof: dict) -> dict:
     """
     Fetch revealed attributes from input proof and return dict mapping credential definition identifiers
-    to dicts, each dict mapping attribute names to (decoded) values, for processing in further creds downstream.
+    to dicts, each dict mapping attribute names to (raw) values, for processing in further creds downstream.
 
     :param: indy-sdk proof as dict
-    :return: dict mapping cred-ids to dicts, each mapping revealed attribute names to (decoded) values
+    :return: dict mapping cred-ids to dicts, each mapping revealed attribute names to (raw) values
     """
 
     rv = {}
     for sub_index in range(len(proof['identifiers'])):
         cd_id = proof['identifiers'][sub_index]['cred_def_id']
-        rv[cd_id] = {
-            attr: decode(proof['proof']['proofs'][sub_index]['primary_proof']['eq_proof']['revealed_attrs'][attr])
-                for attr in proof['proof']['proofs'][sub_index]['primary_proof']['eq_proof']['revealed_attrs']
-        }
+        rv[cd_id] = ({  # uses von_anchor convention for uuid (referent) construction: will break on foreign anchor's
+            '_'.join(uuid.split('_')[1:-1]): proof['requested_proof']['revealed_attrs'][uuid]['raw']
+                for uuid in proof['requested_proof']['revealed_attrs']
+                    if proof['requested_proof']['revealed_attrs'][uuid]['sub_proof_index'] == sub_index})
 
     return rv

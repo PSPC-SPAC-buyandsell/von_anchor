@@ -18,125 +18,40 @@ limitations under the License.
 import json
 import re
 
-from enum import IntEnum
-from math import ceil, log
+from hashlib import sha256
 from typing import Any, Union
 
 from von_anchor.error import BadWalletQuery
 
 
-class Prefix(IntEnum):
-    """
-    Prefixes for indy encoding to numeric strings. For indy-sdk, 32-bit integers must encode
-    to themselves to allow predicates to work.
-
-    A single-digit prefix to identify original type allows the decode to return it, without
-    taking the encoding outside the space of numeric strings.
-    """
-
-    I32 = 0  # purely a formalism, no prefix for indy (32-bit) int values
-    STR = 1
-    BOOL = 2
-    POSINT = 3
-    NEGINT = 4
-    FLOAT = 5
-    JSON = 9
-
-
 I32_BOUND = 2**31
-
-
-def _prefix(orig: Any) -> Prefix:
-    """
-    Return the prefix for an original value to encode.
-
-    :param orig: input value to encode
-    :return: Prefix enum value
-    """
-
-    if isinstance(orig, str):
-        return Prefix.JSON if orig and all(orig[i] == chr(0) for i in range(len(orig))) else Prefix.STR
-    if isinstance(orig, bool):
-        return Prefix.BOOL
-    if isinstance(orig, int):
-        if -I32_BOUND <= orig < I32_BOUND:
-            return Prefix.I32
-        return Prefix.POSINT if orig >= I32_BOUND else Prefix.NEGINT
-    if isinstance(orig, float):
-        return Prefix.FLOAT
-    return Prefix.JSON
 
 
 def encode(orig: Any) -> str:
     """
-    Encode credential attribute value, leaving any (stringified) int32 alone: indy-sdk predicates
-    operate on int32 values properly only when their encoded values match their raw values.
+    Encode credential attribute value, purely stringifying any int32 and leaving numeric int32 strings alone,
+    but mapping any other input to a stringified 256-bit (but not 32-bit) integer. Predicates in indy-sdk operate
+    on int32 values properly only when their encoded values match their raw values.
 
-    To disambiguate for decoding, the operation reserves a sentinel for special values and otherwise adds
-    2**31 to any non-trivial transform of a non-int32 input, then prepends a digit marking the input type:
-      * 1: string (except non-empty string with all characters chr(0))
-      * 2: boolean
-      * 3: positive non-32-bit integer
-      * 4: negative non-32-bit integer
-      * 5: floating point
-      * 9: other (JSON-encodable) - including non-empty string with all characters chr(0).
-
-    The original value must be JSON-encodable.
-
-    :param orig: original JSON-encodable value to encode
+    :param orig: original value to encode
     :return: encoded value
     """
 
-    if orig is None:
-        return str(I32_BOUND)  # sentinel
+    if isinstance(orig, int) and -I32_BOUND <= orig < I32_BOUND:
+        return str(int(orig))  # python bools are ints
 
-    prefix = '{}'.format(_prefix(orig) or '')  # no prefix for indy 32-bit ints
+    try:
+        i32orig = int(str(orig))  # don't encode doubles as ints
+        if -I32_BOUND <= i32orig < I32_BOUND:
+            return str(i32orig)
+    except (ValueError, TypeError):
+        pass
 
-    if isinstance(orig, bool):
-        return '{}{}'.format(prefix, I32_BOUND + 2 if orig else I32_BOUND + 1)  # bool('False') = True; use 2 sentinels
+    rv = int.from_bytes(sha256(raw(orig).encode()).digest(), 'big')
+    while -I32_BOUND <= rv < I32_BOUND:
+        rv = int.from_bytes(sha256(rv.encode()).digest(), 'big')  # sha256 maps no 32-bit int to another: terminates
 
-    if isinstance(orig, int):
-        return '{}{}'.format(prefix, str(orig) if -I32_BOUND <= orig < I32_BOUND else str(abs(orig)))
-
-    payload = (
-        str(int.from_bytes(orig.encode() if int(prefix) == Prefix.STR else json.dumps(orig).encode(), 'big')
-            + I32_BOUND))
-
-    return '{}{}'.format(prefix, payload)
-
-
-def decode(enc_value: str) -> Union[str, None, bool, int, float]:
-    """
-    Decode encoded credential attribute value.
-
-    :param enc_value: numeric string to decode
-    :return: decoded value, stringified if original was neither str, bool, int, nor float
-    """
-
-    assert enc_value.isdigit() or enc_value[0] == '-' and enc_value[1:].isdigit()
-
-    if -I32_BOUND <= int(enc_value) < I32_BOUND:  # it's an i32: it is its own encoding
-        return int(enc_value)
-    if int(enc_value) == I32_BOUND:
-        return None  # sentinel
-
-    (prefix, payload) = (int(enc_value[0]), int(enc_value[1:]))
-    ival = int(payload) - I32_BOUND
-
-    if prefix == Prefix.STR and ival == 0:
-        return ''  # special case: empty string encodes as 2**31
-    if prefix == Prefix.BOOL and ival in (1, 2):
-        return False if ival == 1 else True # sentinels
-    if prefix in (Prefix.POSINT, Prefix.NEGINT):
-        return int(payload) if prefix == Prefix.POSINT else -int(payload)
-
-    blen = max(ceil(log(ival, 16)/2), 1)
-    ibytes = ival.to_bytes(blen, 'big')
-
-    if prefix == Prefix.FLOAT:
-        return float(ibytes.decode())
-
-    return ibytes.decode() if prefix == Prefix.STR else json.loads(ibytes.decode())
+    return str(rv)
 
 
 def raw(orig: Any) -> dict:
