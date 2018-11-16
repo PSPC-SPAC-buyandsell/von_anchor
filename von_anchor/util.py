@@ -254,6 +254,7 @@ def proof_req_infos2briefs(proof_req: dict, infos: Union[dict, tuple, list]) -> 
     :param infos: cred-info, or list/tuple thereof; e.g.,
 
     ::
+    
         [
             {
                 'attrs': {
@@ -312,6 +313,7 @@ def proof_req_briefs2req_creds(proof_req: dict, briefs: Union[dict, tuple, list]
     :param briefs: credential brief or list/tuple thereof, as indy-sdk wallet credential search returns; e.g.,
 
     ::
+
         [
             {
                 "cred_info": {

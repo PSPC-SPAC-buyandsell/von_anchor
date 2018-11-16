@@ -665,9 +665,10 @@ class HolderProver(_BaseAnchor):
         """
         Return json object on lists of all unique box identifiers for credentials in wallet, as
         evidenced by tails directory content:
-          * schema identifiers
-          * credential definition identifiers
-          * revocation registry identifiers.
+
+        * schema identifiers
+        * credential definition identifiers
+        * revocation registry identifiers.
 
         E.g.,
 
@@ -834,6 +835,7 @@ class HolderProver(_BaseAnchor):
         :return: credential infos as json list; i.e.,
 
         ::
+
             [
                 {
                     "referent": string,  # credential identifier in the wallet
@@ -1111,6 +1113,7 @@ class HolderProver(_BaseAnchor):
             referents; e.g.,
 
         ::
+        
             {
                 "17_thing_uuid": { # require attr presence on name 'thing', cred def id from proof req above
                     "$or": [
@@ -1128,6 +1131,7 @@ class HolderProver(_BaseAnchor):
             e.g.,
 
         ::
+
             (
                 {
                     'b42ce5bc-b690-43cd-9493-6fe86ad25e85',
@@ -1164,6 +1168,7 @@ class HolderProver(_BaseAnchor):
                     }
                 ]'
             }
+        
         """
 
         LOGGER.debug(

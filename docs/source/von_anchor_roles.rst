@@ -29,7 +29,7 @@ von\_anchor.anchor.origin module
     :show-inheritance:
 
 von\_anchor.anchor.rrbuilder module
---------------------------------
+-----------------------------------
 
 .. automodule:: von_anchor.anchor.rrbuilder
     :members:
@@ -45,7 +45,7 @@ von\_anchor.anchor.issuer module
     :show-inheritance:
 
 von\_anchor.anchor.holderprover module
-----------------------------------------
+--------------------------------------
 
 .. automodule:: von_anchor.anchor.holderprover
     :members:

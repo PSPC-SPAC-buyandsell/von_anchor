@@ -97,7 +97,7 @@ def canon_wql(query: dict) -> dict:
     Raise BadWalletQuery for WQL mapping '$or' to non-list.
 
     :param query: WQL query
-    :return canonicalized WQL query dict
+    :return: canonicalized WQL query dict
     """
 
     for k in query:
