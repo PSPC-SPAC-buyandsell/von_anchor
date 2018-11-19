@@ -21,7 +21,6 @@ import re
 from copy import deepcopy
 from typing import Union
 
-from von_anchor.codec import decode
 from von_anchor.nodepool import Protocol
 from von_anchor.schema_key import SchemaKey
 
@@ -94,17 +93,19 @@ def cred_def_id(issuer_did: str, schema_seq_no: int, protocol: Protocol = None) 
     return (protocol or Protocol.DEFAULT).cred_def_id(issuer_did, schema_seq_no)
 
 
-def ok_cred_def_id(token: str) -> bool:
+def ok_cred_def_id(token: str, issuer_did: str = None) -> bool:
     """
-    Whether input token looks like a valid credential definition identifier; i.e.,
+    Whether input token looks like a valid credential definition identifier from input issuer DID (default any); i.e.,
     <issuer-did>:3:CL:<schema-seq-no>:<cred-def-id-tag> for protocol >= 1.4, or
     <issuer-did>:3:CL:<schema-seq-no> for protocol == 1.3.
 
     :param token: candidate string
+    :param issuer_did: issuer DID to match, if specified
     :return: whether input token looks like a valid credential definition identifier
     """
 
-    return bool(re.match('[{}]{{21,22}}:3:CL:[1-9][0-9]*(:.+)?$'.format(B58), token))
+    cd_id_m = re.match('([{}]{{21,22}}):3:CL:[1-9][0-9]*(:.+)?$'.format(B58), token)
+    return bool(cd_id_m) and ((not issuer_did) or cd_id_m.group(1) == issuer_did)
 
 
 def cred_def_id2seq_no(cd_id: str) -> int:
@@ -118,7 +119,7 @@ def cred_def_id2seq_no(cd_id: str) -> int:
     return int(cd_id.split(':')[3])  # sequence number is token at 0-based position 3
 
 
-def rev_reg_id(cd_id: str, tag: str) -> str:
+def rev_reg_id(cd_id: str, tag: Union[str, int]) -> str:
     """
     Given a credential definition identifier and a tag, return the corresponding
     revocation registry identifier, repeating the issuer DID from the
@@ -129,20 +130,22 @@ def rev_reg_id(cd_id: str, tag: str) -> str:
     :return: revocation registry identifier
     """
 
-    return '{}:4:{}:CL_ACCUM:{}'.format(cd_id.split(':', 1)[0], cd_id, tag)  # 4 marks rev reg def id
+    return '{}:4:{}:CL_ACCUM:{}'.format(cd_id.split(":", 1)[0], cd_id, tag)  # 4 marks rev reg def id
 
 
-def ok_rev_reg_id(token: str) -> bool:
+def ok_rev_reg_id(token: str, issuer_did: str = None) -> bool:
     """
-    Whether input token looks like a valid revocation registry identifier; i.e.,
+    Whether input token looks like a valid revocation registry identifier from input issuer DID (default any); i.e.,
     <issuer-did>:4:<issuer-did>:3:CL:<schema-seq-no>:<cred-def-id-tag>:CL_ACCUM:<rev-reg-id-tag> for protocol >= 1.4, or
     <issuer-did>:4:<issuer-did>:3:CL:<schema-seq-no>:CL_ACCUM:<rev-reg-id-tag> for protocol == 1.3.
 
     :param token: candidate string
+    :param issuer_did: issuer DID to match, if specified
     :return: whether input token looks like a valid revocation registry identifier
     """
 
-    return bool(re.match('[{}]{{21,22}}:4:[{}]{{21,22}}:3:CL:[1-9][0-9]*(:.+)?:CL_ACCUM:.+$'.format(B58, B58), token))
+    rr_id_m = re.match('([{}]{{21,22}}):4:([{}]{{21,22}}):3:CL:[1-9][0-9]*(:.+)?:CL_ACCUM:.+$'.format(B58, B58), token)
+    return bool(rr_id_m) and ((not issuer_did) or (rr_id_m.group(1) == issuer_did and rr_id_m.group(2) == issuer_did))
 
 
 def rev_reg_id2cred_def_id(rr_id: str) -> str:
@@ -629,7 +632,7 @@ def revoc_info(creds: Union[dict, list], filt: dict = None) -> dict:
     """
     Given a creds structure or a list of cred-briefs, return a dict mapping pairs
     (revocation registry identifier, credential revocation identifier)
-    to (decoded) attribute name:value dicts.
+    to attribute name: (raw) value dicts.
 
     If the caller includes a filter of attribute:value pairs, retain only matching attributes.
 
@@ -644,9 +647,30 @@ def revoc_info(creds: Union[dict, list], filt: dict = None) -> dict:
             'endDate': None
         }
 
-    :return: dict mapping (rev_reg_id, cred_rev_id) pairs to decoded attributes
-    """
+    :return: dict mapping (rev_reg_id, cred_rev_id) pairs to (raw) attributes; e.g.,
 
+    ::
+
+        {
+            ('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:17:tag:CL_ACCUM:1', '2'): {
+                'busId': '11121398',
+                'effectiveDate': '2010-10-10',
+                'endDate': '',
+                'id': '1',
+                'jurisdictionId': '1',
+                'legalName': 'The Original House of Pies',
+                'orgTypeId': '2'},
+            ('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:17:tag:CL_ACCUM:1', '3'): {
+                'busId': '11133333',
+                'effectiveDate': '2011-10-01',
+                'endDate': '',
+                'id': '2',
+                'jurisdictionId': '1',
+                'legalName': 'Planet Cake',
+                'orgTypeId': '1'}
+        }
+
+    """
     def _add(briefs):
         nonlocal rv, filt
         for brief in briefs:
@@ -674,18 +698,18 @@ def revoc_info(creds: Union[dict, list], filt: dict = None) -> dict:
 def revealed_attrs(proof: dict) -> dict:
     """
     Fetch revealed attributes from input proof and return dict mapping credential definition identifiers
-    to dicts, each dict mapping attribute names to (decoded) values, for processing in further creds downstream.
+    to dicts, each dict mapping attribute names to (raw) values, for processing in further creds downstream.
 
     :param: indy-sdk proof as dict
-    :return: dict mapping cred-ids to dicts, each mapping revealed attribute names to (decoded) values
+    :return: dict mapping cred-ids to dicts, each mapping revealed attribute names to (raw) values
     """
 
     rv = {}
     for sub_index in range(len(proof['identifiers'])):
         cd_id = proof['identifiers'][sub_index]['cred_def_id']
-        rv[cd_id] = {
-            attr: decode(proof['proof']['proofs'][sub_index]['primary_proof']['eq_proof']['revealed_attrs'][attr])
-                for attr in proof['proof']['proofs'][sub_index]['primary_proof']['eq_proof']['revealed_attrs']
-        }
+        rv[cd_id] = ({  # uses von_anchor convention for uuid (referent) construction: will break on foreign anchor's
+            '_'.join(uuid.split('_')[1:-1]): proof['requested_proof']['revealed_attrs'][uuid]['raw']
+                for uuid in proof['requested_proof']['revealed_attrs']
+                    if proof['requested_proof']['revealed_attrs'][uuid]['sub_proof_index'] == sub_index})
 
     return rv

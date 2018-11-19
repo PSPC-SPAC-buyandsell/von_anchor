@@ -28,6 +28,14 @@ von\_anchor.error module
     :undoc-members:
     :show-inheritance:
 
+von\_anchor.frill module
+------------------------
+
+.. automodule:: von_anchor.frill
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 von\_anchor.nodepool module
 ---------------------------
 
@@ -52,10 +60,10 @@ von\_anchor.util module
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.validate\_config module
+von\_anchor.validcfg module
 -----------------------------------
 
-.. automodule:: von_anchor.validate_config
+.. automodule:: von_anchor.validcfg
     :members:
     :undoc-members:
     :show-inheritance:

@@ -39,6 +39,7 @@ class ErrorCode(IntEnum):
     AbsentInterval = 1014
     AbsentRevReg = 1015
     BadIdentifier = 1016
+    AbsentProcess = 1017
 
     # Errors to do with wallet operation
     AbsentWallet = 3000
@@ -278,6 +279,21 @@ class BadIdentifier(VonAnchorError):
         """
 
         super().__init__(ErrorCode.BadIdentifier, message)
+
+
+class AbsentProcess(VonAnchorError):
+    """
+    Required external process not running.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.AbsentProcess, message)
 
 
 class AbsentWallet(VonAnchorError):

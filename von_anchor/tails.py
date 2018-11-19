@@ -43,6 +43,8 @@ class Tails:
     to retain association between tails file and corresponding revocation registry identifier.
     """
 
+    MAX_SIZE = 100000
+
     def __init__(self, base_dir: str, cd_id: str, tag: str = None):
         """
         Initialize programmatic association between revocation registry identifier
@@ -195,9 +197,9 @@ class Tails:
     @staticmethod
     def links(base_dir: str, issuer_did: str = None) -> set:
         """
-        Return set of all paths to symbolic links (rev reg ids) associating
-        their respective tails files, in specified base tails directory, on
-        input issuer DID if specified.
+        Return set of all paths to symbolic links (rev reg ids) associating their
+        respective tails files, in specified base tails directory recursively
+        (omitting the .hopper subdirectory), on input issuer DID if specified.
 
         :param base_dir: base directory for tails files, thereafter split by cred def id
         :param issuer_did: issuer DID of interest
@@ -210,16 +212,22 @@ class Tails:
             LOGGER.debug('Tails.links <!< Bad DID %s', issuer_did)
             raise BadIdentifier('Bad DID {}'.format(issuer_did))
 
-        rv = {join(dp, f) for dp, dn, fn in walk(base_dir) for f in fn if islink(join(dp, f))
-            and (not issuer_did or (ok_rev_reg_id(f) and f.startswith('{}:4:'.format(issuer_did))))}
+        rv = set()
+        for dir_path, dir_names, file_names in walk(base_dir, topdown=True):
+            dir_names[:] = [d for d in dir_names if not d.startswith('.')]
+            for file_name in file_names:
+                if islink(join(dir_path, file_name)) and (not issuer_did or ok_rev_reg_id(file_name, issuer_did)):
+                    rv.add(join(dir_path, file_name))
+
         LOGGER.debug('Tails.links <<< %s', rv)
         return rv
 
     @staticmethod
     def unlinked(base_dir: str) -> set:
         """
-        Return all paths to tails files, in specified tails base directory (recursively),
-        without symbolic links associating revocation registry identifiers.
+        Return all paths to tails files, in specified tails base directory recursively
+        (omitting the .hopper subdirectory), without symbolic links associating
+        revocation registry identifiers.
 
         At an Issuer, tails files should not persist long without revocation registry identifier
         association via symbolic link. At a HolderProver, a newly downloaded tails file stays
@@ -232,9 +240,14 @@ class Tails:
 
         LOGGER.debug('Tails.unlinked >>> base_dir: %s', base_dir)
 
-        rv = {join(dp, f) for dp, dn, fn in walk(base_dir)
-            for f in fn if isfile(join(dp, f)) and not islink(join(dp, f))} - {
-                join(dirname(path_link), readlink(path_link)) for path_link in Tails.links(base_dir)}
+        rv = set()
+        for dir_path, dir_names, file_names in walk(base_dir, topdown=True):
+            dir_names[:] = [d for d in dir_names if not d.startswith('.')]
+            for file_name in file_names:
+                if isfile(join(dir_path, file_name)) and Tails.ok_hash(file_name):
+                    rv.add(join(dir_path, file_name))
+        rv -= {join(dirname(path_link), readlink(path_link)) for path_link in Tails.links(base_dir)}
+
         LOGGER.debug('Tails.unlinked <<< %s', rv)
         return rv
 
@@ -258,7 +271,7 @@ class Tails:
 
         tag = 1 + max([int(rev_reg_id2tag(basename(f)))
             for f in Tails.links(base_dir) if cd_id in basename(f)] + [-1])  # -1: next tag is '0' if no tags so far
-        size = min(2**(tag + 8), 4096)
+        size = min(2**(tag + 8), Tails.MAX_SIZE)
 
         rv = (tag, size)
         LOGGER.debug('Tails.next_tag <<< %s', rv)

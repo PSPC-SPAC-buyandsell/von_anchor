@@ -23,32 +23,48 @@ from hashlib import sha256
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
 from von_anchor.error import AbsentMetadata, AbsentWallet, CorruptWallet
-from von_anchor.validate_config import validate_config
+from von_anchor.validcfg import validate_config
 
 
 LOGGER = logging.getLogger(__name__)
 
 
+async def register_wallet_storage_library(storage_type: str, c_library: str, fn_pfx: str = None) -> None:
+    """
+    Load a wallet storage plug-in.
 
-"""
-Utility function for loading a wallet storage plug-in
-This is implemented as a shared library, and must be explicitely loaded before creating or opening a wallet
-Corresponds to the indy-sdk wallet api function:
-async def register_wallet_storage_library(storage_type: str, c_library: str, fn_pfx: str):
-"""
-async def register_wallet_storage_library(storage_type: str, c_library: str, fn_pfx: str=""):
+    An indy-sdk wallet storage plug-in is a shared library; relying parties must explicitly
+    load it before creating or opening a wallet with the plug-in.
+
+    The implementation corresponds to the indy-sdk wallet api function:
+    async def register_wallet_storage_library(storage_type: str, c_library: str, fn_pfx: str):
+
+    :param storage_type: wallet storage type
+    :param c_library: plug-in library
+    :param fn_pfx: function prefix to adopt
+    """
+
+    LOGGER.debug(
+        'register_wallet_storage_library >>> storage_type %s, c_library %s, fn_pfx %s',
+        storage_type,
+        c_library,
+        fn_pfx)
+
     try:
         await wallet.register_wallet_storage_library(
             storage_type=storage_type,
             c_library=c_library,
-            fn_pfx=fn_pfx)
+            fn_pfx=fn_pfx or "")
+
         LOGGER.info('Loaded wallet library type %s (%s)', storage_type, c_library)
     except IndyError as x_indy:
-        LOGGER.error(
+        LOGGER.debug(
             'Wallet.register <!< indy error code %s on load of wallet storage %s %s',
             x_indy.error_code,
             storage_type, c_library)
         raise
+
+    LOGGER.debug('register_wallet_storage_library <<<')
 
 
 class Wallet:
@@ -69,7 +85,7 @@ class Wallet:
         """
         Initializer for wallet. Store input parameters, packing name and wallet_type into cfg (the
         signature retains them independently as a convenience and to retain compatibility with prior releases).
-        Do not create wallet until call to create(). Do not open until call to open() or __aenter__().
+        Does not create wallet until call to create(). Do not open until call to open() or __aenter__().
 
         :param seed: seed for wallet user
         :param name: name of the wallet
@@ -238,7 +254,7 @@ class Wallet:
 
         if not rv:  # seed not in metadata
             LOGGER.debug('Wallet._seed2did <!< no metadata match for seed in wallet %s', self.name)
-            raise AbsentMetadata('No metadata match for seed {} in wallet {}'.format(self._seed, self.name))
+            raise AbsentMetadata('No metadata match for seed in wallet {}'.format(self.name))
 
         return rv
 
@@ -303,9 +319,7 @@ class Wallet:
                         self.did,
                         self.name)
                     raise CorruptWallet(
-                        'No verkey for DID {} on ledger, wallet {} may pertain to another'.format(
-                            self.did,
-                            self.name))
+                        'No verkey for DID {} on ledger, wallet {} may pertain to another'.format(self.did, self.name))
                 LOGGER.info('Wallet %s got verkey %s for existing DID %s', self.name, self.verkey, self.did)
         finally:
             await wallet.close_wallet(self.handle)
@@ -455,8 +469,4 @@ class Wallet:
         :return: representation for current object
         """
 
-        return '{}([SEED], {}, {}, {}, [ACCESS_CREDS])'.format(
-            self.__class__.__name__,
-            self.name,
-            self.xtype,
-            self.cfg)
+        return '{}([SEED], {}, {}, {}, [ACCESS_CREDS])'.format(self.__class__.__name__, self.name, self.xtype, self.cfg)

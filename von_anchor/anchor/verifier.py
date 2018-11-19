@@ -30,7 +30,7 @@ from von_anchor.codec import canon
 from von_anchor.error import AbsentRevReg, AbsentSchema, BadIdentifier, BadRevStateTime, ClosedPool
 from von_anchor.nodepool import NodePool
 from von_anchor.util import cred_def_id2seq_no, ok_cred_def_id, ok_rev_reg_id, ok_schema_id
-from von_anchor.validate_config import validate_config
+from von_anchor.validcfg import validate_config
 from von_anchor.wallet import Wallet
 
 
@@ -42,7 +42,7 @@ class Verifier(_BaseAnchor):
     Mixin for anchor acting in the role of Verifier. Verifier anchors verify proofs.
     """
 
-    def __init__(self, wallet: Wallet, pool: NodePool, cfg: dict = None) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
         """
         Initializer for Verifier anchor. Retain input parameters; do not open wallet.
 
@@ -80,11 +80,11 @@ class Verifier(_BaseAnchor):
 
         """
 
-        LOGGER.debug('Verifier.__init__ >>> wallet: %s, pool: %s, cfg: %s', wallet, pool, cfg)
+        LOGGER.debug('Verifier.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)
 
-        super().__init__(wallet, pool)
+        super().__init__(wallet, pool, **kwargs)
 
-        self._cfg = cfg or {}
+        self._cfg = kwargs.get('cfg', {})
         validate_config('verifier', self._cfg)
 
         self._dir_cache = join(expanduser('~'), '.indy_client', 'cache', self.wallet.name)
@@ -169,11 +169,11 @@ class Verifier(_BaseAnchor):
             try:
                 (_, rr_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_response(resp_json)
             except IndyError:  # ledger replied, but there is no such rev reg available
-                LOGGER.debug('Verifier._build_rr_state_json: <!< no rev reg exists on %s', rr_id)
+                LOGGER.debug('Verifier._build_rr_state_json <!< no rev reg exists on %s', rr_id)
                 raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
         else:
             LOGGER.debug(
-                '_Verifier._build_rr_state_json: <!< Rev reg %s created after asked-for time %s',
+                '_Verifier._build_rr_state_json <!< Rev reg %s created after asked-for time %s',
                 rr_id,
                 timestamp)
             raise BadRevStateTime('Rev reg {} created after asked-for time {}'.format(rr_id, timestamp))
@@ -380,7 +380,7 @@ class Verifier(_BaseAnchor):
             await self.load_cache_for_verification(True)
             Caches.purge_archives(self.dir_cache, True)
 
-        await super().close()
+        await _BaseAnchor.close(self)
 
         LOGGER.debug('Verifier.close <<<')
 
@@ -406,23 +406,22 @@ class Verifier(_BaseAnchor):
             # schema
             s_id = proof_id['schema_id']
             if not ok_schema_id(s_id):
-                LOGGER.debug('Verifier.verify_proof: <!< Bad schema id %s', s_id)
+                LOGGER.debug('Verifier.verify_proof <!< Bad schema id %s', s_id)
                 raise BadIdentifier('Bad schema id {}'.format(s_id))
 
             if s_id not in s_id2schema:
                 schema = json.loads(await self.get_schema(s_id))  # add to cache en passant
                 if not schema:
                     LOGGER.debug(
-                        'Verifier.verify_proof: <!< absent schema %s, proof req may be for another ledger',
+                        'Verifier.verify_proof <!< absent schema %s, proof req may be for another ledger',
                         s_id)
-                    raise AbsentSchema(
-                        'Absent schema {}, proof req may be for another ledger'.format(s_id))
+                    raise AbsentSchema('Absent schema {}, proof req may be for another ledger'.format(s_id))
                 s_id2schema[s_id] = schema
 
             # cred def
             cd_id = proof_id['cred_def_id']
             if not ok_cred_def_id(cd_id):
-                LOGGER.debug('Verifier.verify_proof: <!< Bad cred def id %s', cd_id)
+                LOGGER.debug('Verifier.verify_proof <!< Bad cred def id %s', cd_id)
                 raise BadIdentifier('Bad cred def id {}'.format(cd_id))
 
             if cd_id not in cd_id2cred_def:
@@ -434,7 +433,7 @@ class Verifier(_BaseAnchor):
             if not rr_id:
                 continue
             if not ok_rev_reg_id(rr_id):
-                LOGGER.debug('Verifier.verify_proof: <!< Bad rev reg id %s', rr_id)
+                LOGGER.debug('Verifier.verify_proof <!< Bad rev reg id %s', rr_id)
                 raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
             rr_def_json = await self._get_rev_reg_def(rr_id)

@@ -325,6 +325,8 @@ class RevoCacheEntry:
     * a list of revocation delta frames.
     """
 
+    MARK = (int(sqrt(Tails.MAX_SIZE) * 15 / 16), int(sqrt(Tails.MAX_SIZE) * 17 / 16)) # heuristic: hover about sqrt
+
     def __init__(self, rev_reg_def: dict, tails: Tails = None):
         """
         Initialize with revocation registry definition, optional tails file.
@@ -425,10 +427,9 @@ class RevoCacheEntry:
         LOGGER.debug('RevoCacheEntry.cull >>> delta: %s', delta)
 
         rr_frames = self.rr_delta_frames if delta else self.rr_state_frames
-        mark = sqrt(4096)  # max rev reg size = 4096; heuristic: hover max around sqrt(4096) = 64
-        if len(rr_frames) > int(mark * 1.25):
+        if len(rr_frames) > RevoCacheEntry.MARK[1]:
             rr_frames.sort(key=lambda x: -x.qtime)  # order by descending query time
-            del rr_frames[int(mark * 0.75):]  # retain most recent, grow again from here
+            del rr_frames[RevoCacheEntry.MARK[0]:]  # retain most recent, grow again from here
             LOGGER.info(
                 'Pruned revocation cache entry %s to %s %s frames',
                 self.rev_reg_def['id'],

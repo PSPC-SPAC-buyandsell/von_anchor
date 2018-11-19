@@ -56,7 +56,7 @@ CONFIG_JSON_SCHEMA = {
                 'type': 'boolean'
             }
         },
-        'additionalProperties': False
+        'additionalProperties': True
     },
     'verifier': {
         '$schema': 'http://json-schema.org/draft-04/schema',
@@ -92,7 +92,7 @@ CONFIG_JSON_SCHEMA = {
                 }
             }
         },
-        'additionalProperties': False
+        'additionalProperties': True
     },
     'org-hub': {
         '$schema': 'http://json-schema.org/draft-04/schema',
@@ -146,7 +146,7 @@ def validate_config(key: str, config: dict) -> None:
 
     try:
         jsonschema.validate(config, CONFIG_JSON_SCHEMA[key])
-    except jsonschema.ValidationError as x_validation:
-        raise JSONValidation('JSON validation error on {} configuration: {}'.format(key, x_validation.message))
+    except jsonschema.ValidationError as x_valid:
+        raise JSONValidation('JSON validation error on {} configuration: {}'.format(key, x_valid.message))
     except jsonschema.SchemaError as x_schema:
         raise JSONValidation('JSON schema error on {} specification: {}'.format(key, x_schema.message))

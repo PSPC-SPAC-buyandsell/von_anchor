@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+
 import asyncio
 import json
 import logging
@@ -47,15 +48,16 @@ class _BaseAnchor:
     with the distributed ledger that its node pool operates.
     """
 
-    def __init__(self, wallet: Wallet, pool: NodePool) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
         """
         Initializer for anchor. Retain wallet and node pool.
 
         :param wallet: wallet for anchor use
         :param pool: node pool for anchor use
+        :param kwargs: place holders for super(); implementation ignores
         """
 
-        LOGGER.debug('_BaseAnchor.__init__ >>> wallet: %s, pool: %s', wallet, pool)
+        LOGGER.debug('_BaseAnchor.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)
 
         self._wallet = wallet
         self._pool = pool
@@ -228,6 +230,70 @@ class _BaseAnchor:
         LOGGER.debug('_BaseAnchor.role <<< %s', rv)
         return rv
 
+    async def get_endpoint(self, did: str = None) -> str:
+        """
+        Get endpoint attribute for anchor having input DID (default own DID).
+
+        :param did: DID of anchor for which to find endpoint attribute on ledger
+        :return: endpoint attribute value, or None for no such value
+        """
+
+        LOGGER.debug('_BaseAnchor._get_endpoint >>> : %s', did)
+
+        rv = None
+        req_json = await ledger.build_get_attrib_request(
+            self.did,
+            did or self.did,
+            'endpoint',
+            None,
+            None)
+        resp_json = await self._submit(req_json)
+
+        data_json = (json.loads(resp_json))['result']['data']  # it's double-encoded on the ledger
+        if data_json:
+            rv = json.loads(data_json)['endpoint'].get('endpoint', None)
+        else:
+            LOGGER.info('_AgentCore.get_endpoint: ledger query returned response with no data')
+
+        LOGGER.debug('_BaseAnchor.get_endpoint <<< %s', rv)
+        return rv
+
+    async def send_endpoint(self, endpoint: str) -> None:
+        """
+        Send endpoint attribute for anchor, if ledger does not yet have input value.
+
+        Raise BadLedgerTxn on failure.
+
+        :param endpoint: value to set as endpoint attribute on ledger.
+        """
+
+        LOGGER.debug('_BaseAnchor._send_endpoint >>> : %s', endpoint)
+
+        ledger_endpoint = await self.get_endpoint()
+        if ledger_endpoint == endpoint:
+            LOGGER.info('%s endpoint already set as %s', self.wallet.name, endpoint)
+            LOGGER.debug('_BaseAnchor.send_endpoint <<< (%s already set for %s )')
+            return
+
+        attr_json = json.dumps({
+            'endpoint': {
+                'endpoint': endpoint
+            }  # indy-sdk needs value itself to be a dict; {'endpoint': '...'} is no good
+        })
+        req_json = await ledger.build_attrib_request(self.did, self.did, None, attr_json, None)
+        await self._sign_submit(req_json)
+
+        for _ in range(16):  # reasonable timeout
+            if await self.get_endpoint() == endpoint:
+                break
+            await asyncio.sleep(1)
+            LOGGER.info('Sent endpoint %s to ledger, waiting 1s for its confirmation', endpoint)
+        else:
+            LOGGER.debug('_BaseAnchor.send_endpoint <!< timed out waiting on sent endpoint %s', endpoint)
+            raise BadLedgerTxn('Timed out waiting on sent endpoint {}'.format(endpoint))
+
+        LOGGER.debug('_BaseAnchor.send_endpoint <<<')
+
     async def _submit(self, req_json: str) -> str:
         """
         Submit (json) request to ledger; return (json) result.
@@ -238,7 +304,7 @@ class _BaseAnchor:
         :return: json response
         """
 
-        LOGGER.debug('_BaseAnchor._submit >>> json: %s', req_json)
+        LOGGER.debug('_BaseAnchor._submit >>> req_json: %s', req_json)
 
         if not self.pool.handle:
             LOGGER.debug('_BaseAnchor._submit <!< closed pool %s', self.pool.name)
@@ -249,7 +315,7 @@ class _BaseAnchor:
 
         resp = json.loads(rv_json)
         if resp.get('op', '') in ('REQNACK', 'REJECT'):
-            LOGGER.debug('_BaseAnchor._submit: <!< ledger rejected request: %s', resp['reason'])
+            LOGGER.debug('_BaseAnchor._submit <!< ledger rejected request: %s', resp['reason'])
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
 
         LOGGER.debug('_BaseAnchor._submit <<< %s', rv_json)
@@ -266,7 +332,7 @@ class _BaseAnchor:
         :return: json response
         """
 
-        LOGGER.debug('_BaseAnchor._sign_submit >>> json: %s', req_json)
+        LOGGER.debug('_BaseAnchor._sign_submit >>> req_json: %s', req_json)
 
         if not self.pool.handle:
             LOGGER.debug('_BaseAnchor._submit <!< closed pool %s', self.pool.name)
@@ -278,15 +344,16 @@ class _BaseAnchor:
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.WalletIncompatiblePoolError:
                 LOGGER.debug(
-                    '_BaseAnchor._sign_submit: <!< Corrupt wallet %s is not compatible with pool %s',
+                    '_BaseAnchor._sign_submit <!< Corrupt wallet %s is not compatible with pool %s',
                     self.wallet.name,
                     self.pool.name)
-                raise CorruptWallet(
-                    'Corrupt wallet {} is not compatible with pool {}'.format(self.wallet.name, self.pool.name))
+                raise CorruptWallet('Corrupt wallet {} is not compatible with pool {}'.format(
+                    self.wallet.name,
+                    self.pool.name))
             else:
                 LOGGER.debug(
-                    '_BaseAnchor._sign_submit: <!<  cannot sign/submit request for ledger: indy error code %s',
-                    self.wallet.name)
+                    '_BaseAnchor._sign_submit <!< cannot sign/submit request for ledger: indy error code %s',
+                    x_indy.error_code)
                 raise BadLedgerTxn('Cannot sign/submit request for ledger: indy error code {}'.format(
                     x_indy.error_code))
 
@@ -333,7 +400,7 @@ class _BaseAnchor:
                     (_, rv_json) = await ledger.parse_get_revoc_reg_def_response(resp_json)
                     rr_def = json.loads(rv_json)
                 except IndyError:  # ledger replied, but there is no such rev reg
-                    LOGGER.debug('_BaseAnchor._get_rev_reg_def: <!< no rev reg exists on %s', rr_id)
+                    LOGGER.debug('_BaseAnchor._get_rev_reg_def <!< no rev reg exists on %s', rr_id)
                     raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
 
                 if revo_cache_entry is None:
@@ -377,12 +444,12 @@ class _BaseAnchor:
             resp_json = await self._submit(req_json)
             resp = json.loads(resp_json)
             if not ('result' in resp and resp['result'].get('data', None)):
-                LOGGER.debug('_BaseAnchor.get_cred_def: <!< no cred def exists on %s', cd_id)
+                LOGGER.debug('_BaseAnchor.get_cred_def <!< no cred def exists on %s', cd_id)
                 raise AbsentCredDef('No cred def exists on {}'.format(cd_id))
             try:
                 (_, rv_json) = await ledger.parse_get_cred_def_response(resp_json)
             except IndyError:  # ledger replied, but there is no such cred def
-                LOGGER.debug('_BaseAnchor.get_cred_def: <!< no cred def exists on %s', cd_id)
+                LOGGER.debug('_BaseAnchor.get_cred_def <!< no cred def exists on %s', cd_id)
                 raise AbsentCredDef('No cred def exists on {}'.format(cd_id))
             CRED_DEF_CACHE[cd_id] = json.loads(rv_json)
             LOGGER.info('_BaseAnchor.get_cred_def: got cred def %s from ledger', cd_id)
@@ -423,12 +490,12 @@ class _BaseAnchor:
                 resp = json.loads(resp_json)
 
                 if not ('result' in resp and resp['result'].get('data', {}).get('attr_names', None)):
-                    LOGGER.debug('_BaseAnchor.get_schema: <!< no schema exists on %s', index)
+                    LOGGER.debug('_BaseAnchor.get_schema <!< no schema exists on %s', index)
                     raise AbsentSchema('No schema exists on {}'.format(index))
                 try:
                     (_, rv_json) = await ledger.parse_get_schema_response(resp_json)
                 except IndyError:  # ledger replied, but there is no such schema
-                    LOGGER.debug('_BaseAnchor.get_schema: <!< no schema exists on %s', index)
+                    LOGGER.debug('_BaseAnchor.get_schema <!< no schema exists on %s', index)
                     raise AbsentSchema('No schema exists on {}'.format(index))
                 SCHEMA_CACHE[s_key] = json.loads(rv_json)  # cache indexes by both txn# and schema key en passant
                 LOGGER.info('_BaseAnchor.get_schema: got schema %s from ledger', index)
@@ -442,7 +509,7 @@ class _BaseAnchor:
                     LOGGER.info('_BaseAnchor.get_schema: no schema at seq #%s on ledger', index)
 
             else:
-                LOGGER.debug('_BaseAnchor.get_schema: <!< bad schema index type')
+                LOGGER.debug('_BaseAnchor.get_schema <!< bad schema index type')
                 raise AbsentSchema('Attempt to get schema on ({}) {} , must use schema key or an int'.format(
                     type(index),
                     index))

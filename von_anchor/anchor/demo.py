@@ -17,18 +17,18 @@ limitations under the License.
 
 import logging
 
-from os import makedirs
-from os.path import basename, expanduser, join
+from os.path import basename
 
-from von_anchor.anchor.holder_prover import HolderProver
+from von_anchor.anchor.holderprover import HolderProver
 from von_anchor.anchor.issuer import Issuer
+from von_anchor.anchor.origin import Origin
 from von_anchor.anchor.smith import AnchorSmith
 from von_anchor.anchor.verifier import Verifier
 from von_anchor.cache import Caches
 from von_anchor.error import ClosedPool
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
-from von_anchor.validate_config import validate_config
+from von_anchor.validcfg import validate_config
 from von_anchor.wallet import Wallet
 
 LOGGER = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class TrusteeAnchor(AnchorSmith):
     pass
 
 
-class BCRegistrarAnchor(Issuer):
+class BCRegistrarAnchor(Origin, Issuer):
     """
     BCRegistrarAnchor demonstrator class acts as an issuer.
     """
@@ -58,19 +58,19 @@ class OrgBookAnchor(HolderProver):
     pass
 
 
-class OrgHubAnchor(OrgBookAnchor, Issuer, Verifier):
+class OrgHubAnchor(Verifier, Origin, Issuer, OrgBookAnchor):
     """
-    OrgHubAnchor demonstrator class acts as an issuer and verifier for its own credentials
+    OrgHubAnchor demonstrator class acts as an origin, issuer and verifier for its own credentials
     (principally metadata), and as a holder-prover for its own and any of its registrars' credentials.
     """
 
-    def __init__(self, wallet: Wallet, pool: NodePool, cfg: dict = None) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
         """
-        Initializer for org hub anchor. Retain input parameters; do not open wallet nor tails writer.
+        Initializer for org hub anchor. Retain input parameters; do not open wallet.
 
         :param wallet: wallet for anchor use
         :param pool: pool for anchor use
-        :param cfg: configuration dict for cache archive behaviour; e.g.,
+        :param cfg: configuration dict for cache archive behaviour qua Issuer and Verifier roles; e.g.,
 
         ::
 
@@ -101,21 +101,15 @@ class OrgHubAnchor(OrgBookAnchor, Issuer, Verifier):
                 }
             }
 
+        :param rrbx: whether revocation registry builder is an external process
         """
 
-        LOGGER.debug('OrgHubAnchor.__init__ >>> wallet: %s, pool: %s, cfg: %s', wallet, pool, cfg)
+        LOGGER.debug('OrgHubAnchor.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)
 
-        super().__init__(wallet, pool)
-        self._link_secret = None
+        super().__init__(wallet, pool, **kwargs)
 
-        self._dir_tails = join(expanduser('~'), '.indy_client', 'tails')
-        makedirs(self._dir_tails, exist_ok=True)
-
-        self._cfg = cfg or {}
+        self._cfg = kwargs.get('cfg', {})
         validate_config('org-hub', self._cfg)
-
-        self._dir_cache = join(expanduser('~'), '.indy_client', 'cache', self.wallet.name)
-        makedirs(self._dir_cache, exist_ok=True)
 
         LOGGER.debug('OrgHubAnchor.__init__ <<<')
 
@@ -158,18 +152,34 @@ class OrgHubAnchor(OrgBookAnchor, Issuer, Verifier):
         for path_rr_id in Tails.links(self._dir_tails):
             rr_id = basename(path_rr_id)
             try:
-                await self._sync_revoc(rr_id)
+                await HolderProver._sync_revoc_for_proof(self, rr_id)
             except ClosedPool:
                 LOGGER.warning('OrgHubAnchor sync-revoc on close required ledger for %s but pool was closed', rr_id)
 
         LOGGER.debug('OrgHubAnchor.close <<<')
 
 
-class SRIAnchor(Verifier, Issuer):  # Put Verifier first in MRO for its __init__() configuration processing
+class SRIAnchor(Verifier, Origin, Issuer):
     """
-    SRIAnchor demonstrator class acts as both an issuer of its own credentials and a verifier
+    SRIAnchor demonstrator class acts as an origin and issuer of its own credentials and a verifier
     of any holder-prover's.
     """
+
+    def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
+        """
+        Initializer for SRI anchor. Retain input parameters; do not open wallet.
+
+        :param wallet: wallet for anchor use
+        :param pool: pool for anchor use
+        :param cfg: configuration dict for cache archive behaviour qua Verifier role
+        :param rrbx: whether revocation registry builder is an external process
+        """
+
+        LOGGER.debug('SRIAnchor.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)
+
+        super().__init__(wallet, pool, **kwargs)
+
+        LOGGER.debug('SRIAnchor.close <<<')
 
     @staticmethod
     def role() -> str:

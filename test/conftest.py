@@ -27,19 +27,20 @@ import pytest
 from indy import wallet, pool, ledger
 
 
-logging.basicConfig(level=logging.WARN, format='%(levelname)-8s | %(name)-12s | %(message)s')
+logging.basicConfig(level=logging.WARNING, format='%(levelname)-8s | %(name)-12s | %(message)s')
 logging.getLogger('test.conftest').setLevel(logging.INFO)
-logging.getLogger('asyncio').setLevel(logging.WARN)
-logging.getLogger('von_anchor').setLevel(logging.WARN)
+logging.getLogger('asyncio').setLevel(logging.WARNING)
+logging.getLogger('von_anchor').setLevel(logging.WARNING)
 logging.getLogger('indy').setLevel(logging.ERROR)
-logging.getLogger('urllib3').setLevel(logging.ERROR)
-logging.getLogger('requests').setLevel(logging.ERROR)
 
 
 @pytest.fixture(scope="session")
 def event_loop():
     loop = asyncio.get_event_loop()
     yield loop
+
+    pending = asyncio.all_tasks(loop)
+    loop.run_until_complete(asyncio.gather(*pending))
     loop.close()
 
 
