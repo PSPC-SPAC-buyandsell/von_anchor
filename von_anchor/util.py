@@ -18,11 +18,12 @@ limitations under the License.
 import json
 import re
 
+from collections.abc import Iterable
 from copy import deepcopy
 from typing import Union
 
 from von_anchor.nodepool import Protocol
-from von_anchor.schema_key import SchemaKey
+from von_anchor.indytween import Predicate, SchemaKey
 
 
 B58 = '1-9A-HJ-NP-Za-km-z'
@@ -39,6 +40,18 @@ def schema_id(origin_did: str, name: str, version: str) -> str:
     """
 
     return '{}:2:{}:{}'.format(origin_did, name, version)  # 2 marks indy-sdk schema id
+
+
+def ok_wallet_reft(token: str) -> bool:
+    """
+    Whether input token looks like a valid wallet credential identifier
+    (aka wallet referent, wallet cred id, wallet cred uuid).
+
+    :param token: candidate string
+    :return: whether input token looks like a valid wallet credential identifier
+    """
+
+    return bool(re.match(r'[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$', token))
 
 
 def ok_did(token: str) -> bool:
@@ -185,39 +198,47 @@ def rev_reg_id2cred_def_id_tag(rr_id: str) -> (str, str):
     )
 
 
-def box_ids(creds: Union[dict, list], cred_ids: list = None) -> dict:
+def iter_briefs(briefs: Union[Iterable, dict]) -> tuple:
     """
-    Given a credentials structure and an optional list of credential identifiers
-    (aka wallet cred-ids, referents; specify None to include all), return dict mapping each
+    Given a cred-brief, iterable collection thereof, or mapping from wallet cred-ids to cred-briefs
+    (as HolderProver.get_cred_briefs_by_proof_req_q() returns), return tuple with all contained cred-briefs.
+
+    :param briefs: cred-brief, iterable collection thereof, or mapping from wallet cred-ids to cred-briefs
+    :return: tuple of cred-briefs
+    """
+
+    if isinstance(briefs, dict):
+        if all(ok_wallet_reft(k) for k in briefs):
+            return tuple(briefs.values())
+        return (briefs,)
+    return tuple(briefs)
+
+
+def box_ids(briefs: Union[Iterable, dict], cred_ids: Union[Iterable, str] = None) -> dict:
+    """
+    Given one or more cred-briefs, and an optional iterable collection of credential identifiers
+    (aka wallet cred ids, referents; specify None to include all), return dict mapping each
     credential identifier to a box ids structure (i.e., a dict specifying its corresponding
     schema identifier, credential definition identifier, and revocation registry identifier,
     the latter being None if cred def does not support revocation).
 
-    :param creds: indy-sdk creds (dict) structure or human-readable display (list of synopses)
-    :param cred_ids: list of credential identifiers for which to find corresponding schema identifiers, None for all
+    :param briefs: cred-briefs, iterable thereof, or dict mapping wallet cred ids to cred-briefs
+    :param cred_ids: credential identifier or iterable thereof for which to find corresponding
+        schema identifiers, None for all
     :return: dict mapping each credential identifier to its corresponding box ids (empty dict if
         no matching credential identifiers present)
     """
 
-    def _update(briefs):
-        nonlocal rv, cred_ids
-
-        for brief in briefs:  # cred is a dict in a list of dicts
-            cred_info = brief['cred_info']
-            cred_id = cred_info['referent']
-            if (cred_id not in rv) and (not cred_ids or cred_id in cred_ids):
-                rv[cred_id] = {
-                    'schema_id': cred_info['schema_id'],
-                    'cred_def_id': cred_info['cred_def_id'],
-                    'rev_reg_id': cred_info['rev_reg_id']
-                }
-
     rv = {}
-    if isinstance(creds, dict):  # it's a proper creds structure
-        for briefs in {**creds.get('attrs', {}), **creds.get('predicates', {})}.values():
-            _update(briefs)
-    else:  # creds is a list of synopses
-        _update(creds)
+    for brief in iter_briefs(briefs):
+        cred_info = brief['cred_info']
+        cred_id = cred_info['referent']
+        if ((cred_id not in rv) and (not cred_ids or cred_id in [cred_ids, [cred_ids]][isinstance(cred_ids, str)])):
+            rv[cred_id] = {
+                'schema_id': cred_info['schema_id'],
+                'cred_def_id': cred_info['cred_def_id'],
+                'rev_reg_id': cred_info['rev_reg_id']
+            }
 
     return rv
 
@@ -226,7 +247,7 @@ def prune_creds_json(creds: dict, cred_ids: set) -> str:
     """
     Strip all creds out of the input json structure that do not match any of the input credential identifiers.
 
-    :param creds: creds structure returned by (HolderProver anchor) get_creds()
+    :param creds: indy-sdk creds structure
     :param cred_ids: the set of credential identifiers of interest
     :return: the reduced creds json
     """
@@ -243,17 +264,18 @@ def prune_creds_json(creds: dict, cred_ids: set) -> str:
     return json.dumps(rv)
 
 
-def proof_req_infos2briefs(proof_req: dict, infos: Union[dict, tuple, list]) -> list:
+def proof_req_infos2briefs(proof_req: dict, infos: Union[Iterable, dict]) -> list:
     """
     Given a proof request and corresponding cred-info(s), return a list of cred-briefs
     (i.e., cred-info plus interval).
 
     The proof request must have cred def id restrictions on all requested attribute specifications.
 
-    :param proof_req: proof request json
-    :param infos: cred-info, or list/tuple thereof; e.g.,
+    :param proof_req: proof request
+    :param infos: cred-info or iterable collection thereof; e.g.,
 
     ::
+
         [
             {
                 'attrs': {
@@ -262,9 +284,9 @@ def proof_req_infos2briefs(proof_req: dict, infos: Union[dict, tuple, list]) -> 
                     'legalName': 'Tart City'
                 },
                 'cred_rev_id': '48',
-                'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:17:0',
+                'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:17:tag',
                 'referent': 'c15674a9-7321-440d-bbed-e1ac9273abd5',
-                'rev_reg_id': 'WgWxqztrNooG92RXvxSTWv:4:WgWxqztrNooG92RXvxSTWv:3:CL:17:0:CL_ACCUM:0',
+                'rev_reg_id': 'WgWxqztrNooG92RXvxSTWv:4:WgWxqztrNooG92RXvxSTWv:3:CL:17:tag:CL_ACCUM:0',
                 'schema_id': 'WgWxqztrNooG92RXvxSTWv:2:green:1.0'
             },
             ...
@@ -302,23 +324,25 @@ def proof_req_infos2briefs(proof_req: dict, infos: Union[dict, tuple, list]) -> 
 
     return rv
 
-def proof_req_briefs2req_creds(proof_req: dict, briefs: Union[dict, tuple, list]) -> dict:
+def proof_req_briefs2req_creds(proof_req: dict, briefs: Union[Iterable, dict]) -> dict:
     """
     Given a proof request and cred-brief(s), return a requested-creds structure.
 
     The proof request must have cred def id restrictions on all requested attribute specifications.
 
-    :param proof_req_json: proof request json
-    :param briefs: credential brief or list/tuple thereof, as indy-sdk wallet credential search returns; e.g.,
+    :param proof_req: proof request
+    :param briefs: credential brief, iterable collection thereof (as indy-sdk wallet credential search returns),
+        or dict mapping wallet cred ids to briefs (as HolderProver.get_cred_briefs_for_proof_req_q() returns); e.g.,
 
     ::
+
         [
             {
                 "cred_info": {
                     "cred_rev_id": "149",
-                    "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:15:0",
+                    "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:15:tag",
                     "schema_id": "LjgpST2rjsoxYegQDRm7EL:2:bc-reg:1.0",
-                    "rev_reg_id": "LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:15:0:CL_ACCUM:1",
+                    "rev_reg_id": "LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:15:tag:CL_ACCUM:1",
                     "referent": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
                     "attrs": {
                         "busId": "11144444",
@@ -338,51 +362,57 @@ def proof_req_briefs2req_creds(proof_req: dict, briefs: Union[dict, tuple, list]
             ...
         ]
 
-    :return: indy-sdk requested credentials json to pass to proof creation request; e.g.,
+    :return: indy-sdk requested creds json to pass to proof creation request; e.g.,
 
     ::
 
         {
             "requested_attributes": {
                 "15_endDate_uuid": {
-                    "timestamp": 1532444072,
-                    "cred_id": "5732809d-b2eb-4eb4-a754-aaa3844b8086",
+                    "timestamp": 1532448939,
+                    "cred_id": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
                     "revealed": true
                 },
                 "15_id_uuid": {
-                    "timestamp": 1532444072,
-                    "cred_id": "5732809d-b2eb-4eb4-a754-aaa3844b8086",
+                    "timestamp": 1532448939,
+                    "cred_id": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
                     "revealed": true
                 },
                 "15_effectiveDate_uuid": {
-                    "timestamp": 1532444072,
-                    "cred_id": "5732809d-b2eb-4eb4-a754-aaa3844b8086",
+                    "timestamp": 1532448939,
+                    "cred_id": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
                     "revealed": true
                 },
                 "15_busId_uuid": {
-                    "timestamp": 1532444072,
-                    "cred_id": "5732809d-b2eb-4eb4-a754-aaa3844b8086",
+                    "timestamp": 1532448939,
+                    "cred_id": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
                     "revealed": true
                 },
                 "15_orgTypeId_uuid": {
-                    "timestamp": 1532444072,
-                    "cred_id": "5732809d-b2eb-4eb4-a754-aaa3844b8086",
-                    "revealed": true
+                    "timestamp": 1532448939,
+                    "cred_id": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
+                    "revealed": false
                 },
                 "15_jurisdictionId_uuid": {
-                    "timestamp": 1532444072,
-                    "cred_id": "5732809d-b2eb-4eb4-a754-aaa3844b8086",
+                    "timestamp": 1532448939,
+                    "cred_id": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
                     "revealed": true
                 },
                 "15_legalName_uuid": {
-                    "timestamp": 1532444072,
-                    "cred_id": "5732809d-b2eb-4eb4-a754-aaa3844b8086",
+                    "timestamp": 1532448939,
+                    "cred_id": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
                     "revealed": true
                 }
             },
-            "requested_predicates": {},
+            "requested_predicates": {
+                "15_orgTypeId_GE_uuid": {
+                    "timestamp": 1532448939,
+                    "cred_id": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
+                }
+            },
             "self_attested_attributes": {}
         }
+
     """
 
     rv = {
@@ -391,31 +421,41 @@ def proof_req_briefs2req_creds(proof_req: dict, briefs: Union[dict, tuple, list]
         'requested_predicates': {}
     }
 
-    refts = proof_req_attr_referents(proof_req)
-    for brief in [briefs] if isinstance(briefs, dict) else briefs:
+    attr_refts = proof_req_attr_referents(proof_req)
+    pred_refts = proof_req_pred_referents(proof_req)
+    for brief in iter_briefs(briefs):
         cred_info = brief['cred_info']
         timestamp = (brief['interval'] or {}).get('to', None)
-        for attr in brief['cred_info']['attrs']:
-            if attr not in refts[cred_info['cred_def_id']]:
-                continue
-            req_attr = {
-                'cred_id': cred_info['referent'],
-                'revealed': True,
-                'timestamp': timestamp
-            }
-            if not timestamp:
-                req_attr.pop('timestamp')
-            rv['requested_attributes'][refts[cred_info['cred_def_id']][attr]] = req_attr
-
+        for attr in cred_info['attrs']:
+            if attr in attr_refts.get(cred_info['cred_def_id'], {}):
+                req_attr = {
+                    'cred_id': cred_info['referent'],
+                    'revealed': attr not in pred_refts.get(cred_info['cred_def_id'], {}),
+                    'timestamp': timestamp
+                }
+                if not timestamp:
+                    req_attr.pop('timestamp')
+                rv['requested_attributes'][attr_refts[cred_info['cred_def_id']][attr]] = req_attr
+            if attr in pred_refts.get(cred_info['cred_def_id'], {}):
+                for uuid in pred_refts[cred_info['cred_def_id']][attr]:
+                    req_pred = {
+                        'cred_id': cred_info['referent'],
+                        'timestamp': timestamp
+                    }
+                    if not timestamp:
+                        req_pred.pop('timestamp')
+                    rv['requested_predicates'][uuid] = req_pred
     return rv
 
 
-def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) -> dict:
+def creds_display(creds: Union[Iterable, dict], filt: dict = None, filt_dflt_incl: bool = False) -> dict:
     """
     Find indy-sdk creds matching input filter from within input creds structure,
-    json-loaded as returned via HolderProver.get_creds(), and return human-legible summary.
+    iterable collection of cred-briefs, or dict mapping wallet cred ids to briefs,
+    return human-legible summary.
 
-    :param creds: credentials structure; e.g.,
+    :param creds: creds structure, iterable collection of cred-briefs,
+        or dict mapping wallet cred ids to cred-briefs; e.g., creds
 
     ::
 
@@ -432,7 +472,7 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
                             },
                             "referent": "00000000-0000-0000-0000-000000000000",
                             "schema_id": "Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0",
-                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:0",
+                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:tag",
                             "cred_rev_id": null,
                             "rev_reg_id": null
                         }
@@ -447,7 +487,7 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
                             },
                             "referent": "00000000-0000-0000-0000-111111111111",
                             "schema_id": "Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0",
-                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:0",
+                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:tag",
                             "cred_rev_id": null,
                             "rev_reg_id": null
                         }
@@ -464,7 +504,7 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
                             },
                             "referent": "00000000-0000-0000-0000-000000000000",
                             "schema_id": "Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0",
-                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:0",
+                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:tag",
                             "cred_rev_id": null,
                             "rev_reg_id": null
                         }
@@ -479,7 +519,7 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
                             },
                             "referent": "00000000-0000-0000-0000-111111111111",
                             "schema_id": "Q4zqM7aXqm7gDQkUVLng9h:2:bc-reg:1.0",
-                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:0",
+                            "cred_def_id": "Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:tag",
                             "cred_rev_id": null,
                             "rev_reg_id": null
                         }
@@ -497,7 +537,7 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
     ::
 
         {
-            'Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:0': {
+            'Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:tag': {
                 'attr0': 1,  # operation stringifies en passant
                 'attr1': 'Nice'
             },
@@ -506,17 +546,14 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
 
     :param: filt_dflt_incl: whether to include (True) all attributes for schema that filter does not identify
         or to exclude (False) all such attributes
-    :return: human-legible dict mapping credential identifiers to human-readable creds synopses -- not proper
-        indy-sdk creds structures (each as per HolderProver.get_creds_display_coarse()) -- for creds matching
-        input filter
+    :return: human-legible dict mapping credential identifiers to human-readable credential briefs
+        (not proper indy-sdk creds structures) for creds matching input filter
     """
 
-    rv = {}
-    if filt is None:
-        filt = {}
-    for cred_uuid in creds.get('attrs', {}):
-        for cred in creds['attrs'][cred_uuid]:  # creds['attrs'][cred_uuid] is a list of dict
-            cred_info = cred['cred_info']
+    def _add(briefs):
+        nonlocal rv, filt
+        for brief in briefs:
+            cred_info = brief['cred_info']
             if cred_info['referent'] in rv:
                 continue
             cred_cd_id = cred_info['cred_def_id']
@@ -527,10 +564,22 @@ def creds_display(creds: dict, filt: dict = None, filt_dflt_incl: bool = False) 
                 if ({k: str(filt[cred_cd_id][k]) for k in filt[cred_cd_id]}.items() <= cred_info['attrs'].items()):
                     rv[cred_info['referent']] = cred_info
 
+    rv = {}
+    if filt is None:
+        filt = {}
+    if isinstance(creds, dict):
+        if all(ok_wallet_reft(k) for k in creds):
+            _add(creds.values())
+        else:
+            for uuid2briefs in (creds.get('attrs', {}), creds.get('predicates', {})):
+                for briefs in uuid2briefs.values():
+                    _add(briefs)
+    else:
+        _add(creds)
     return rv
 
 
-def proof_req2wql_all(proof_req: dict, except_cd_ids: list = None) -> dict:
+def proof_req2wql_all(proof_req: dict, x_cd_ids: Union[Iterable, str] = None) -> dict:
     """
     Given a proof request and a list of cred def ids to omit, return an extra WQL query dict
     that will find all corresponding credentials in search.
@@ -539,13 +588,14 @@ def proof_req2wql_all(proof_req: dict, except_cd_ids: list = None) -> dict:
     At present, the utility does not support predicates.
 
     :param proof_req: proof request
+    :param x_cd_ids: cred def identifier or iterable collection thereof to omit
     :return: extra WQL dict to fetch all corresponding credentials in search.
     """
 
     rv = {}
-    refts = proof_req_attr_referents(proof_req)
-    for cd_id in [k for k in refts if k not in (except_cd_ids or [])]:
-        rv[set(refts[cd_id].values()).pop()] = {"cred_def_id": cd_id}
+    attr_refts = proof_req_attr_referents(proof_req)
+    for cd_id in [k for k in attr_refts if k not in ([x_cd_ids] if isinstance(x_cd_ids, str) else x_cd_ids or [])]:
+        rv[set(attr_refts[cd_id].values()).pop()] = {"cred_def_id": cd_id}
 
     return rv
 
@@ -563,40 +613,42 @@ def proof_req_attr_referents(proof_req: dict) -> dict:
     ::
 
         {
-            "name": "proof_req",
-            "version": "0.0",
-            "requested_attributes": {
-                "18_greenLevel_uuid": {
-                    "restrictions": [
+            'name": 'proof_req',
+            'version': '0.0',
+            'requested_attributes': {
+                '18_greenLevel_uuid': {
+                    'restrictions': [
                         {
-                            "cred_def_id": "WgWxqztrNooG92RXvxSTWv:3:CL:18:0"
+                            'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:18:tag'
                         }
                     ],
-                    "name": "greenLevel",
-                    "non_revoked": {
-                        "to": 1532367957,
-                        "from": 1532367957
+                    'name': 'greenLevel',
+                    'non_revoked': {
+                        'to': 1532367957,
+                        'from': 1532367957
                     }
                 },
-                "18_legalName_uuid": {
-                    "restrictions": [
+                '18_legalName_uuid': {
+                    'restrictions': [
                         {
-                            "cred_def_id": "WgWxqztrNooG92RXvxSTWv:3:CL:18:0"
+                            'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:18:tag'
                         }
                     ],
-                    "name": "legalName",
-                    "non_revoked": {
-                        "to": 1532367957,
-                        "from": 1532367957
+                    'name': 'legalName',
+                    'non_revoked': {
+                        'to': 1532367957,
+                        'from': 1532367957
                     }
                 },
-                "15_id_uuid": {  # this specification will not show up in response: no cred def id restriction :-(
-                    "name": "id",
-                    "non_revoked": {
-                        "to": 1532367957,
-                        "from": 1532367957
+                '15_id_uuid': {  # this specification will not show up in response: no cred def id restriction :-(
+                    'name': 'id',
+                    'non_revoked': {
+                        'to': 1532367957,
+                        'from': 1532367957
                     }
                 }
+            }
+            'requested_predicates': {
             }
         }
 
@@ -605,11 +657,12 @@ def proof_req_attr_referents(proof_req: dict) -> dict:
     ::
 
         {
-            'WgWxqztrNooG92RXvxSTWv:3:CL:18:0': {
+            'WgWxqztrNooG92RXvxSTWv:3:CL:18:tag': {
                 'legalName': '18_legalName_uuid'
                 'greenLevel': '18_greenLevel_uuid'
             }
         }
+
     """
 
     rv = {}
@@ -628,15 +681,145 @@ def proof_req_attr_referents(proof_req: dict) -> dict:
     return rv
 
 
-def revoc_info(creds: Union[dict, list], filt: dict = None) -> dict:
+def proof_req_pred_referents(proof_req: dict) -> dict:
     """
-    Given a creds structure or a list of cred-briefs, return a dict mapping pairs
+    Given a proof request with all requested predicates having cred def id restrictions,
+    return its predicate referents by cred def id and attribute, mapping a predicate and a limit.
+
+    The returned structure can be useful in downstream processing to filter cred-infos for predicates.
+
+    :param proof_req: proof request with all requested predicate specifications having cred def id restriction; e.g.,
+
+    ::
+
+        {
+            'name': 'proof_req',
+            'version': '0.0',
+            'requested_attributes': {
+                ...
+            }
+            'requested_predicates': {
+                '194_highscore_GE_uuid': {
+                    'name': 'highscore',
+                    'p_type': '>=',
+                    'p_value': '100000',
+                    'restrictions': [
+                        {
+                            'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:194:tag'
+                        }
+                    ],
+                    'non_revoked': {
+                        ...
+                    }
+                },
+                '194_level_GE_uuid': {
+                    'name': 'level',
+                    'p_type': '>=',
+                    'p_value': '10',
+                    'restrictions': [
+                        {
+                            'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:194:tag'
+                        }
+                    ],
+                    'non_revoked': {
+                        ...
+                    }
+                },
+                '194_attempts_LE_uuid': {
+                    'name': 'attempts',
+                    'p_type': '<=',
+                    'p_value': '3',
+                    'restrictions': [
+                        {
+                            'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:194:tag'
+                        }
+                    ],
+                    'non_revoked': {
+                        ...
+                    }
+                },
+                '198_employees_LT_uuid': {
+                    'name': 'employees',
+                    'p_type': '<',
+                    'p_value': '100',
+                    'restrictions': [
+                        {
+                            'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:198:tag'
+                        }
+                    ],
+                    'non_revoked': {
+                        ...
+                    }
+                },
+                '198_employees_GE_uuid': {
+                    'name': 'employees',
+                    'p_type': '>=',
+                    'p_value': '50',
+                    'restrictions': [
+                        {
+                            'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:198:tag'
+                        }
+                    ],
+                    'non_revoked': {
+                        ...
+                    }
+                },
+            }
+        }
+
+    :return: nested dict mapping cred def id to name to proof request referent to predicate and limit; e.g.,
+
+    ::
+
+        {
+            'WgWxqztrNooG92RXvxSTWv:3:CL:194:tag': {
+                'highscore': {
+                    '194_level_GE_uuid': lambda x: Predicate.GE.value.yes(x, 100000)
+                },
+                'level': {
+                    '194_level_GE_uuid': lambda x: Predicate.GE.value.yes(x, 10)
+                },
+                'attempts': {
+                    '194_attempts_LE_uuid': lambda x: Predicate.LE.value.yes(x, 3)
+                }
+            },
+            'WgWxqztrNooG92RXvxSTWv:3:CL:198:tag': {
+                'employees': {  # may have many preds per attr, but always 1 uuid and 1 relation per pred
+                    '198_LT_employees_uuid': ['<=', 100]
+                    '198_GE_employees_uuid': ['>=', 50]
+                }
+            }
+        }
+
+    """
+
+    rv = {}
+    for uuid, spec in proof_req['requested_predicates'].items():
+        cd_id = None
+        for restriction in spec.get('restrictions', []):
+            cd_id = restriction.get('cred_def_id', None)
+            if cd_id:
+                break
+        if not cd_id:
+            continue
+        if cd_id not in rv:  # cd_id of None is not OK
+            rv[cd_id] = {}
+        if spec['name'] not in rv[cd_id]:
+            rv[cd_id][spec['name']] = {}
+        rv[cd_id][spec['name']][uuid] = [spec['p_type'], Predicate.to_int(spec['p_value'])]
+
+    return rv
+
+
+def revoc_info(briefs: Union[Iterable, dict], filt: dict = None) -> dict:
+    """
+    Given a cred-brief or iterable collection thereof, return a dict mapping pairs
     (revocation registry identifier, credential revocation identifier)
     to attribute name: (raw) value dicts.
 
     If the caller includes a filter of attribute:value pairs, retain only matching attributes.
 
-    :param creds: creds structure or list of briefs
+    :param briefs: cred-brief or iterable thereof
     :param filt: dict mapping attributes to values of interest; e.g.,
 
     ::
@@ -671,26 +854,18 @@ def revoc_info(creds: Union[dict, list], filt: dict = None) -> dict:
         }
 
     """
-    def _add(briefs):
-        nonlocal rv, filt
-        for brief in briefs:
-            cred_info = brief['cred_info']
-            (rr_id, cr_id) = (cred_info['rev_reg_id'], cred_info['cred_rev_id'])
-            if (rr_id, cr_id) in rv or rr_id is None or cr_id is None:
-                continue
-            if not filt:
-                rv[(rr_id, cr_id)] = cred_info['attrs']
-                continue
-            if ({attr: str(filt[attr]) for attr in filt}.items() <= cred_info['attrs'].items()):
-                rv[(rr_id, cr_id)] = cred_info['attrs']
 
     rv = {}
-    if isinstance(creds, dict):
-        for uuid2creds in (creds.get('attrs', {}), creds.get('predicates', {})):
-            for briefs in uuid2creds.values():
-                _add(briefs)
-    else:
-        _add(creds)
+    for brief in iter_briefs(briefs):
+        cred_info = brief['cred_info']
+        (rr_id, cr_id) = (cred_info['rev_reg_id'], cred_info['cred_rev_id'])
+        if (rr_id, cr_id) in rv or rr_id is None or cr_id is None:
+            continue
+        if not filt:
+            rv[(rr_id, cr_id)] = cred_info['attrs']
+            continue
+        if ({attr: str(filt[attr]) for attr in filt}.items() <= cred_info['attrs'].items()):
+            rv[(rr_id, cr_id)] = cred_info['attrs']
 
     return rv
 
@@ -709,7 +884,7 @@ def revealed_attrs(proof: dict) -> dict:
         cd_id = proof['identifiers'][sub_index]['cred_def_id']
         rv[cd_id] = ({  # uses von_anchor convention for uuid (referent) construction: will break on foreign anchor's
             '_'.join(uuid.split('_')[1:-1]): proof['requested_proof']['revealed_attrs'][uuid]['raw']
-                for uuid in proof['requested_proof']['revealed_attrs']
-                    if proof['requested_proof']['revealed_attrs'][uuid]['sub_proof_index'] == sub_index})
+            for uuid in proof['requested_proof']['revealed_attrs']
+            if proof['requested_proof']['revealed_attrs'][uuid]['sub_proof_index'] == sub_index})
 
     return rv

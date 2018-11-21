@@ -74,7 +74,7 @@ class RevRegBuilder(_BaseAnchor):
 
         LOGGER.debug('RevRegBuilder.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)
 
-        super().__init__(wallet, pool)
+        super().__init__(wallet, pool, **kwargs)
         self._rrbx = kwargs.get('rrbx', False)
         self._dir_tails = RevRegBuilder.dir_tails()
         self._dir_tails_hopper = join(self._dir_tails, '.hopper')

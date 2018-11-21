@@ -32,8 +32,8 @@ from von_anchor.error import (
     BadLedgerTxn,
     ClosedPool,
     CorruptWallet)
+from von_anchor.indytween import SchemaKey
 from von_anchor.nodepool import NodePool
-from von_anchor.schema_key import SchemaKey
 from von_anchor.util import ok_cred_def_id, ok_did, ok_rev_reg_id, ok_schema_id, schema_id, schema_key
 from von_anchor.wallet import Wallet
 

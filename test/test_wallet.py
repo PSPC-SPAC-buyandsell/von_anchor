@@ -15,15 +15,16 @@ limitations under the License.
 """
 
 
+from pathlib import Path
+
+import pytest
+
 from indy import IndyError
 from indy.error import ErrorCode
-from pathlib import Path
 
 from von_anchor.error import JSONValidation
 from von_anchor.frill import Ink
 from von_anchor.wallet import Wallet
-
-import pytest
 
 
 @pytest.mark.asyncio

@@ -23,13 +23,11 @@ from enum import Enum
 
 from indy import pool
 from indy.error import IndyError, ErrorCode
-from von_anchor.schema_key import SchemaKey
+from von_anchor.indytween import SchemaKey
 from von_anchor.validcfg import validate_config
 
 
 ProtocolMap = namedtuple('ProtocolMap', 'name indy')
-
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -44,13 +42,13 @@ class Protocol(Enum):
     V_16 = ProtocolMap('1.6', 2)
     DEFAULT = ProtocolMap('1.6', 2)
 
-    @classmethod
-    def value_of(cls, version: str) -> 'Protocol':
+    @staticmethod
+    def get(version: str) -> 'Protocol':
         """
         Return enum instance corresponding to input version value ('1.6' etc.)
         """
 
-        return cls.V_13 if version == cls.V_13.value.name else cls.DEFAULT  # default case includes version None
+        return Protocol.V_13 if version == Protocol.V_13.value.name else Protocol.DEFAULT
 
     def __str__(self) -> str:
         return self.name
@@ -170,7 +168,7 @@ class NodePool:
 
         # pop and retain configuration specific to von_anchor.NodePool, extrinsic to indy-sdk
         self._auto_remove = self._cfg.pop('auto-remove') if self._cfg and 'auto-remove' in self._cfg else False
-        self._protocol = Protocol.value_of(self._cfg.pop('protocol', None))
+        self._protocol = Protocol.get(self._cfg.pop('protocol', None))
         if 'refresh_on_open' not in self._cfg:
             self._cfg['refresh_on_open'] = True
         if 'auto_refresh_time' not in self._cfg:

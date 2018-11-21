@@ -17,16 +17,17 @@ limitations under the License.
 
 import asyncio
 import json
-import pytest
-
 
 from math import ceil
 from random import shuffle
 from threading import Thread
 from time import time as epoch
+
+import pytest
+
 from von_anchor.cache import CRED_DEF_CACHE, SCHEMA_CACHE
 from von_anchor.error import CacheIndex
-from von_anchor.frill import Ink, ppjson
+from von_anchor.frill import Ink
 from von_anchor.util import cred_def_id, schema_id, SchemaKey
 
 

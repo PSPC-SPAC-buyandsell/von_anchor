@@ -12,10 +12,10 @@ von\_anchor.cache module
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.codec module
+von\_anchor.canon module
 ------------------------
 
-.. automodule:: von_anchor.codec
+.. automodule:: von_anchor.canon
     :members:
     :undoc-members:
     :show-inheritance:
@@ -32,6 +32,14 @@ von\_anchor.frill module
 ------------------------
 
 .. automodule:: von_anchor.frill
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+von\_anchor.indytween module
+----------------------------
+
+.. automodule:: von_anchor.indytween
     :members:
     :undoc-members:
     :show-inheritance:
@@ -61,7 +69,7 @@ von\_anchor.util module
     :show-inheritance:
 
 von\_anchor.validcfg module
------------------------------------
+---------------------------
 
 .. automodule:: von_anchor.validcfg
     :members:
