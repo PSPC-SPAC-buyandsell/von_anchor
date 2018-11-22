@@ -1,5 +1,5 @@
-von\_anchor\_utils package
-==========================
+Package: VON Anchor Utilities
+====================================
 
 Submodules
 ----------

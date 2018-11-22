@@ -1,4 +1,4 @@
-von\_anchor\_demo package
+Package: VON Anchor Demo
 =========================
 
 .. automodule:: von_anchor.anchor.demo
