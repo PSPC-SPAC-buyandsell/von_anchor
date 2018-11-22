@@ -20,7 +20,7 @@ import asyncio
 import json
 import logging
 
-from enum import Enum, auto
+from enum import Enum
 from os import getpid, kill, listdir, makedirs, remove
 from os.path import basename, dirname, expanduser, isdir, isfile, join, realpath
 from shutil import rmtree
@@ -49,9 +49,9 @@ class State(Enum):
     Class encapsulating state of revocation registry builder process
     """
 
-    ABSENT = auto()
-    RUNNING = auto()
-    STOPPING = auto()
+    ABSENT = 1
+    RUNNING = 2
+    STOPPING = 3
 
 
 class RevRegBuilder(_BaseAnchor):
@@ -334,7 +334,7 @@ class RevRegBuilder(_BaseAnchor):
             cd_id,
             json.dumps({
                 'max_cred_num': rr_size,
-                'issuance_type': 'ISSUANCE_ON_DEMAND'
+                'issuance_type': 'ISSUANCE_ON_DEMAND'  # TODO: investigate 'ISSUANCE_BY_DEFAULT' and knock-on effects
             }),
             tails_writer_handle)
 

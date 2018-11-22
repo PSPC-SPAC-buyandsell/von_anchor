@@ -21,7 +21,7 @@ import logging
 
 from typing import Union
 
-from indy import ledger
+from indy import crypto, did, ledger
 from indy.error import IndyError, ErrorCode
 from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.error import (
@@ -29,6 +29,7 @@ from von_anchor.error import (
     AbsentRevReg,
     AbsentSchema,
     BadIdentifier,
+    BadKey,
     BadLedgerTxn,
     ClosedPool,
     CorruptWallet)
@@ -189,24 +190,24 @@ class _BaseAnchor:
 
         LOGGER.debug('_BaseAnchor.reseed_init <<<')
 
-    async def get_nym(self, did: str) -> str:
+    async def get_nym(self, target_did: str) -> str:
         """
         Get json cryptonym (including current verification key) for input (anchor) DID from ledger.
 
         Raise BadLedgerTxn on failure.
 
-        :param did: DID of cryptonym to fetch
+        :param target_did: DID of cryptonym to fetch
         :return: cryptonym json
         """
 
-        LOGGER.debug('_BaseAnchor.get_nym >>> did: %s', did)
+        LOGGER.debug('_BaseAnchor.get_nym >>> target_did: %s', target_did)
 
-        if not ok_did(did):
-            LOGGER.debug('_BaseAnchor._get_nym <!< Bad DID %s', did)
-            raise BadIdentifier('Bad DID {}'.format(did))
+        if not ok_did(target_did):
+            LOGGER.debug('_BaseAnchor._get_nym <!< Bad DID %s', target_did)
+            raise BadIdentifier('Bad DID {}'.format(target_did))
 
         rv = json.dumps({})
-        get_nym_req = await ledger.build_get_nym_request(self.did, did)
+        get_nym_req = await ledger.build_get_nym_request(self.did, target_did)
         resp_json = await self._submit(get_nym_req)
 
         data_json = (json.loads(resp_json))['result']['data']  # it's double-encoded on the ledger
@@ -230,20 +231,20 @@ class _BaseAnchor:
         LOGGER.debug('_BaseAnchor.role <<< %s', rv)
         return rv
 
-    async def get_endpoint(self, did: str = None) -> str:
+    async def get_endpoint(self, target_did: str = None) -> str:
         """
         Get endpoint attribute for anchor having input DID (default own DID).
 
-        :param did: DID of anchor for which to find endpoint attribute on ledger
+        :param target_did: DID of anchor for which to find endpoint attribute on ledger
         :return: endpoint attribute value, or None for no such value
         """
 
-        LOGGER.debug('_BaseAnchor._get_endpoint >>> : %s', did)
+        LOGGER.debug('_BaseAnchor._get_endpoint >>> : %s', target_did)
 
         rv = None
         req_json = await ledger.build_get_attrib_request(
             self.did,
-            did or self.did,
+            target_did or self.did,
             'endpoint',
             None,
             None)
@@ -516,6 +517,56 @@ class _BaseAnchor:
 
         LOGGER.debug('_BaseAnchor.get_schema <<< %s', rv_json)
         return rv_json
+
+    async def encrypt(self, message: bytes, authn: bool = False, recip_did: str = None) -> bytes:
+        """
+        Encrypt plaintext for owner of DID, anonymously or via authenticated encryption scheme.
+
+        :param message: plaintext, as bytes
+        :param authn: whether to use authenticated encryption scheme
+        :param recip_did: DID of recipient, None for own DID
+        :return: ciphertext, as bytes
+        """
+
+        LOGGER.debug('_BaseAnchor.encrypt >>> message: %s, authn: %s, recip_did: %s', message, authn, recip_did)
+
+        if recip_did:
+            key = await did.key_for_did(self.pool.handle, self.wallet.handle, recip_did)
+        else:
+            key = self.wallet.verkey
+        if authn:
+            rv = await crypto.auth_crypt(self.wallet.handle, self.wallet.verkey, key, message)
+        else:
+            rv = await crypto.anon_crypt(key, message)
+
+        LOGGER.debug('_BaseAnchor.auth_encrypt <<< %s', rv)
+        return rv
+
+    async def decrypt(self, ciphertext: bytes, sender_did: str = None) -> bytes:
+        """
+        Decrypt ciphertext and optionally authenticate sender.
+
+        Raise BadKey if authentication operation reveals sender key distinct from
+        current verification key of owner of input DID.
+
+        :param ciphertext: ciphertext, as bytes
+        :param sender_did: DID of sender, None for anonymously encrypted ciphertext
+        :return: decrypted bytes
+        """
+
+        LOGGER.debug('_BaseAnchor.auth_decrypt >>> ciphertext: %s, sender_did: %s', ciphertext, sender_did)
+
+        if sender_did:
+            expect_key = await did.key_for_did(self.pool.handle, self.wallet.handle, sender_did)
+            (sender_verkey, rv) = await crypto.auth_decrypt(self.wallet.handle, self.wallet.verkey, ciphertext)
+            if sender_verkey != expect_key:
+                LOGGER.debug('_BaseAnchor.auth_decrypt <!< Authentication revealed unexpected sender key on decryption')
+                raise BadKey('Authentication revealed unexpected sender key on decryption')
+        else:
+            rv = await crypto.anon_decrypt(self.wallet.handle, self.wallet.verkey, ciphertext)
+
+        LOGGER.debug('_BaseAnchor.auth_decrypt <<< %s', rv)
+        return rv
 
     async def get_txn(self, seq_no: int) -> str:
         """
