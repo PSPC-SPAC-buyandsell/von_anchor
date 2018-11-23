@@ -24,6 +24,7 @@ from time import time
 
 from indy import anoncreds, ledger
 from indy.error import IndyError
+
 from von_anchor.anchor.base import _BaseAnchor
 from von_anchor.cache import Caches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.canon import canon

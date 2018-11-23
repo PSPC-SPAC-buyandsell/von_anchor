@@ -23,6 +23,7 @@ from typing import Union
 
 from indy import crypto, did, ledger
 from indy.error import IndyError, ErrorCode
+
 from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.error import (
     AbsentCredDef,
@@ -395,8 +396,8 @@ class _BaseAnchor:
                 LOGGER.info('_BaseAnchor._get_rev_reg_def: rev reg def for %s from cache', rr_id)
                 rv_json = json.dumps(rr_def)
             else:
-                get_rrd_req_json = await ledger.build_get_revoc_reg_def_request(self.did, rr_id)
-                resp_json = await self._submit(get_rrd_req_json)
+                get_rr_def_req_json = await ledger.build_get_revoc_reg_def_request(self.did, rr_id)
+                resp_json = await self._submit(get_rr_def_req_json)
                 try:
                     (_, rv_json) = await ledger.parse_get_revoc_reg_def_response(resp_json)
                     rr_def = json.loads(rv_json)

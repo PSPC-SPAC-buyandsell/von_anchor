@@ -26,6 +26,7 @@ from typing import Union
 
 from indy import anoncreds, ledger
 from indy.error import IndyError, ErrorCode
+
 from von_anchor.anchor.base import _BaseAnchor
 from von_anchor.cache import Caches, RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.canon import canon_wql
@@ -178,8 +179,8 @@ class HolderProver(_BaseAnchor):
                 try:
                     tails = await Tails(self._dir_tails, cd_id, tag).open()
                 except AbsentTails:  # get hash from ledger and check for tails file
-                    rrdef = json.loads(await self._get_rev_reg_def(rr_id))
-                    tails_hash = rrdef['value']['tailsHash']
+                    rr_def = json.loads(await self._get_rev_reg_def(rr_id))
+                    tails_hash = rr_def['value']['tailsHash']
                     path_tails = join(Tails.dir(self._dir_tails, rr_id), tails_hash)
                     if not isfile(path_tails):
                         LOGGER.debug('HolderProver._sync_revoc_for_proof <!< No tails file present at %s', path_tails)
@@ -476,10 +477,10 @@ class HolderProver(_BaseAnchor):
         cred = json.loads(cred_json)
         cred_def_json = await self.get_cred_def(cred['cred_def_id'])
         rr_id = cred['rev_reg_id']
-        rrdef_json = None
+        rr_def_json = None
         if rr_id:
             await self._sync_revoc_for_proof(rr_id)
-            rrdef_json = await self._get_rev_reg_def(rr_id)
+            rr_def_json = await self._get_rev_reg_def(rr_id)
 
         rv = await anoncreds.prover_store_credential(
             self.wallet.handle,
@@ -487,7 +488,7 @@ class HolderProver(_BaseAnchor):
             cred_req_metadata_json,
             cred_json,
             cred_def_json,
-            rrdef_json)
+            rr_def_json)
 
         LOGGER.debug('HolderProver.store_cred <<< %s', rv)
         return rv

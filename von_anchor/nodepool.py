@@ -23,6 +23,7 @@ from enum import Enum
 
 from indy import pool
 from indy.error import IndyError, ErrorCode
+
 from von_anchor.indytween import SchemaKey
 from von_anchor.validcfg import validate_config
 

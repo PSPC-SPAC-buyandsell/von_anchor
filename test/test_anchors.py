@@ -507,10 +507,11 @@ async def test_anchors_api(
         origin_did = schema_key(s_id).origin_did
         EPOCH_CRED_CREATE[s_id] = []
         for c in cred_data[s_id]:
-            (cred_json[s_id], cred_revoc_id, epoch_creation) = await did2an[origin_did].create_cred(
+            (cred_json[s_id], cred_revoc_id) = await did2an[origin_did].create_cred(
                 cred_offer_json[s_id],
                 cred_req_json[s_id],
                 c)
+            epoch_creation = int(time())
             EPOCH_CRED_CREATE[s_id].append(epoch_creation)
             if s_id != S_ID['NON-REVO']:
                 sleep(2)  # put an interior second between each cred creation
@@ -915,7 +916,7 @@ async def test_anchors_api(
     assert json.loads(orghub_cred_req_json)
 
     print('\n\n== 27 == BC Org Hub creating credential')
-    (orghub_cred_json, _, _) = await bcohan.create_cred(
+    (orghub_cred_json, _) = await bcohan.create_cred(
         orghub_cred_offer_json,
         orghub_cred_req_json,
         {
@@ -1256,10 +1257,11 @@ async def test_anchors_api(
             continue
         s_key = schema_key(s_id)
         for c in cred_data[s_id]:
-            (cred_json[s_id], cred_rev_id, epoch_creation) = await did2an[s_key.origin_did].create_cred(
+            (cred_json[s_id], cred_rev_id) = await did2an[s_key.origin_did].create_cred(
                 cred_offer_json[s_id],
                 cred_req_json[s_id],
                 c)
+            epoch_creation = int(time())
             EPOCH_CRED_CREATE[s_id].append(epoch_creation)
             sleep(2)  # put an interior second between each cred creation
             assert json.loads(cred_json[s_id])
@@ -1340,32 +1342,32 @@ async def test_anchors_api(
     print('\n\n== 54 == SRI anchor verifies PSPC Org Book proof by query as: {}'.format(ppjson(rc_json)))
     assert json.loads(rc_json)
 
-    # PSPC Org Book anchor (as HolderProver) creates multi-cred non-proof; back-dated between Bronze, Silver issue
-    x_proof_req_sri = json.loads(await san.build_proof_req_json({
+    # PSPC Org Book anchor (as HolderProver) creates multi-cred proof; back-dated between Bronze, Silver issue
+    bd_proof_req_sri = json.loads(await san.build_proof_req_json({
         cd_id[s_id]: {
             'interval': EPOCH_CRED_CREATE[S_ID['GREEN']][1] - 1
         } for s_id in schema_data if s_id != S_ID['BC']
     }))
-    x_sri_refts = proof_req_attr_referents(x_proof_req_sri)
+    bd_sri_refts = proof_req_attr_referents(bd_proof_req_sri)
     wql_silver = proof_req2wql_all(proof_req_sri, [cd_id[S_ID['GREEN']]])
-    wql_silver[x_sri_refts[cd_id[S_ID['GREEN']]]['greenLevel']] = {
+    wql_silver[bd_sri_refts[cd_id[S_ID['GREEN']]]['greenLevel']] = {
         'attr::greenLevel::value': 'Silver'
     }
-    x_sri_briefs_q = json.loads(await pspcoban.get_cred_briefs_by_proof_req_q(
-        json.dumps(x_proof_req_sri),
+    bd_sri_briefs_q = json.loads(await pspcoban.get_cred_briefs_by_proof_req_q(
+        json.dumps(bd_proof_req_sri),
         json.dumps(wql_silver)))
-    x_sri_req_creds_q = proof_req_briefs2req_creds(x_proof_req_sri, x_sri_briefs_q.values())
-    x_sri_proof_q_json = await pspcoban.create_proof(x_proof_req_sri, x_sri_briefs_q.values(), x_sri_req_creds_q)
+    bd_sri_req_creds_q = proof_req_briefs2req_creds(bd_proof_req_sri, bd_sri_briefs_q.values())
+    bd_sri_proof_q_json = await pspcoban.create_proof(bd_proof_req_sri, bd_sri_briefs_q.values(), bd_sri_req_creds_q)
 
     print('\n\n== 55 == PSPC Org Book proof pre-revoc, just before Silver cred creation {}'.format(
-        ppjson(x_sri_proof_q_json, 4096)))
-    x_sri_proof_q = json.loads(x_sri_proof_q_json)
+        ppjson(bd_sri_proof_q_json, 4096)))
+    bd_sri_proof_q = json.loads(bd_sri_proof_q_json)
 
-    # SRI anchor (as Verifier) fails to verify non-proof
-    rc_json = await san.verify_proof(x_proof_req_sri, x_sri_proof_q)
+    # SRI anchor (as Verifier) verifies proof
+    rc_json = await san.verify_proof(bd_proof_req_sri, bd_sri_proof_q)
     print('\n\n== 56 == SRI anchor verifies PSPC proof pre-revocation just before Silver creation as: {}'.format(
         ppjson(rc_json)))
-    assert not json.loads(rc_json)
+    assert json.loads(rc_json)  # issue to rev reg is by default, so rev reg creation < timestamp < issue is OK
 
     # PSPC Org Book anchor (as HolderProver) tries to create multi-cred (non-)proof; post-dated in future
     TOMORROW = int(time()) + 86400
@@ -1451,43 +1453,50 @@ async def test_anchors_api(
     assert json.loads(rc_json)
 
     # PSPC Org Book (as HolderProver) creates multi-cred proof w/revoked cred, between 1st cred creation and its own
-    x_proof_req_sri = json.loads(await san.build_proof_req_json({
+    bd_proof_req_sri = json.loads(await san.build_proof_req_json({
         cd_id[s_id]: {
             'interval': EPOCH_CRED_CREATE[S_ID['GREEN']][0] + 1
         } for s_id in schema_data if s_id != S_ID['BC']
     }))
-    x_sri_briefs_q = json.loads(await pspcoban.get_cred_briefs_by_proof_req_q(
-        json.dumps(x_proof_req_sri),
+    bd_sri_briefs_q = json.loads(await pspcoban.get_cred_briefs_by_proof_req_q(
+        json.dumps(bd_proof_req_sri),
         json.dumps(wql_silver)))
-    x_sri_req_creds_q = proof_req_briefs2req_creds(x_proof_req_sri, x_sri_briefs_q.values())
-    x_sri_proof_q = json.loads(await pspcoban.create_proof(x_proof_req_sri, x_sri_briefs_q.values(), x_sri_req_creds_q))
-    print('\n\n== 63 == PSPC multi-cred proof just before Silver cred creation: {}'.format(ppjson(x_sri_proof_q, 4096)))
+    bd_sri_req_creds_q = proof_req_briefs2req_creds(bd_proof_req_sri, bd_sri_briefs_q.values())
+    bd_sri_proof_q = json.loads(await pspcoban.create_proof(
+        bd_proof_req_sri,
+        bd_sri_briefs_q.values(),
+        bd_sri_req_creds_q))
+    print('\n\n== 63 == PSPC multi-cred proof just before Silver cred creation: {}'.format(
+        ppjson(bd_sri_proof_q, 4096)))
 
-    # SRI anchor (as Verifier) attempts to verify multi-cred proof with revoked cred
-    rc_json = await san.verify_proof(x_proof_req_sri, x_sri_proof_q)
+    # SRI anchor (as Verifier) verifies multi-cred proof with revoked cred on non-revo timestamp before its creation
+    rc_json = await san.verify_proof(bd_proof_req_sri, bd_sri_proof_q)
     print('\n\n== 64 == SRI anchor verifies multi-cred proof just before Silver cred creation as {}'.format(
         ppjson(rc_json)))
-    assert not json.loads(rc_json)
+    assert json.loads(rc_json)  # issue to rev reg is by default, so rev reg creation < timestamp < issue is OK
 
-    # PSPC Org Book anchor (as HolderProver) creates non-proof for revoked cred, between cred def and 1st cred creation
-    x_proof_req_sri = json.loads(await san.build_proof_req_json({
+    # PSPC Org Book anchor (as HolderProver) creates proof for revoked cred, between cred def and 1st cred creation
+    bd_proof_req_sri = json.loads(await san.build_proof_req_json({
         cd_id[s_id]: {
             'interval': EPOCH_CRED_CREATE[S_ID['GREEN']][0] - 1
         } for s_id in schema_data if s_id != S_ID['BC']
     }))
-    x_sri_briefs_q = json.loads(await pspcoban.get_cred_briefs_by_proof_req_q(
-        json.dumps(x_proof_req_sri),
+    bd_sri_briefs_q = json.loads(await pspcoban.get_cred_briefs_by_proof_req_q(
+        json.dumps(bd_proof_req_sri),
         json.dumps(wql_silver)))
-    x_sri_req_creds_q = proof_req_briefs2req_creds(x_proof_req_sri, x_sri_briefs_q.values())
-    x_sri_proof_q = json.loads(await pspcoban.create_proof(x_proof_req_sri, x_sri_briefs_q.values(), x_sri_req_creds_q))
+    bd_sri_req_creds_q = proof_req_briefs2req_creds(bd_proof_req_sri, bd_sri_briefs_q.values())
+    bd_sri_proof_q = json.loads(await pspcoban.create_proof(
+        bd_proof_req_sri,
+        bd_sri_briefs_q.values(),
+        bd_sri_req_creds_q))
     print('\n\n== 65 == PSPC Org Book multi-cred proof before any Green cred creation: {}'.format(
-        ppjson(x_sri_proof_q, 4096)))
+        ppjson(bd_sri_proof_q, 4096)))
 
-    # SRI anchor (as Verifier) attempts to verify multi-cred proof before cred creation
-    rc_json = await san.verify_proof(x_proof_req_sri, x_sri_proof_q)
+    # SRI anchor (as Verifier) verifies multi-cred proof on non-revo timestamp before cred creation
+    rc_json = await san.verify_proof(bd_proof_req_sri, bd_sri_proof_q)
     print('\n\n== 66 == SRI anchor verifies multi-cred proof before any Green cred creation as: {}'.format(
         ppjson(rc_json)))
-    assert not json.loads(rc_json)
+    assert json.loads(rc_json)  # issue to rev reg is by default, so rev reg creation < timestamp < issue is OK
 
     # PSPC Org Book anchor (as HolderProver) tries to create (non-)proof for revoked cred in future
     x_proof_req_sri = json.loads(await san.build_proof_req_json({
@@ -1865,47 +1874,48 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
             ppjson(cred_req_json)))
         assert json.loads(cred_req_json)
 
-        print('\n\n== 5 == Creating {} credentials'.format(RR_SIZE))
-        creation2cred_json = {}  # map creation epoch to cred
-        creation2cred_data = {}
+        print('\n\n== 5 == Creating and revoking {} credentials'.format(RR_SIZE))
+        revocation2cred_json = {}  # map creation epoch to cred
+        revocation2cred_data = {}
         now = int(time())
         for i in range(RR_SIZE):
             while int(time()) == now:
-                sleep(0.1)
-            now = int(time())
+                sleep(0.1)  # ensure unique timestamps
             print('.', end='' if (i + 1) % 10 else '{}\n'.format(i + 1), flush=True)
             now = int(time())
             cred_data = {
                 'id': i,
                 'favourite_number': now
             }
-            (cred_json, _, epoch_creation) = await san.create_cred(
+            (cred_json, cr_id) = await san.create_cred(
                 cred_offer_json,
                 cred_req_json,
                 cred_data)
-            creation2cred_json[epoch_creation] = cred_json
-            creation2cred_data[epoch_creation] = cred_data
+
+            epoch_revocation = await san.revoke_cred(rr_id, cr_id)
+            revocation2cred_json[epoch_revocation] = cred_json
+            revocation2cred_data[epoch_revocation] = cred_data
             assert json.loads(cred_json)
 
             await pspcoban.store_cred(cred_json, cred_req_metadata_json)
 
         assert len(REVO_CACHE[rr_id].rr_delta_frames) == 0  # no queries on it yet
 
-        # PSPC Org Book anchor finds each cred and creates a proof, SRI anchor verifies; each touches revo cache frames
+        # PSPC Org Book anchor finds each cred and creates a proof; SRI anchor verifies, which touches revo cache frames
         print('\n\n== 6 == Creating and verifying {} proofs'.format(RR_SIZE))
         cache_frames_size = {}
         i = 0
-        for creation_epoch in creation2cred_data:
+        for revocation_epoch in revocation2cred_data:
             proof_req = json.loads(await san.build_proof_req_json({
                 cd_id: {
-                    'interval': creation_epoch
+                    'interval': revocation_epoch
                 }
             }))
             attr_refts = proof_req_attr_referents(proof_req)
             wql_json = json.dumps({
                 attr_refts[cd_id][attr]: {
-                    'attr::{}::value'.format(attr): creation2cred_data[creation_epoch][attr]
-                } for attr in creation2cred_data[creation_epoch]
+                    'attr::{}::value'.format(attr): revocation2cred_data[revocation_epoch][attr]
+                } for attr in revocation2cred_data[revocation_epoch]
             })
             briefs_q = json.loads(await pspcoban.get_cred_briefs_by_proof_req_q(json.dumps(proof_req), wql_json))
             assert len(briefs_q) == 1
@@ -1914,13 +1924,13 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
             proof_json = await pspcoban.create_proof(proof_req, briefs_q.values(), req_creds_q)
             assert await san.verify_proof(proof_req, json.loads(proof_json))
 
-            cache_frames_size[creation_epoch] = (
+            cache_frames_size[revocation_epoch] = (
                 len(REVO_CACHE[rr_id].rr_delta_frames),
                 len(REVO_CACHE[rr_id].rr_state_frames))
             print('  .. 6.{}: after proof for {}, {} revo cache reg (delta, state) frames'.format(
                 i,
-                creation_epoch,
-                cache_frames_size[creation_epoch]))
+                revocation_epoch,
+                cache_frames_size[revocation_epoch]))
             i += 1
 
         assert RevoCacheEntry.MARK[0] <= len(REVO_CACHE[rr_id].rr_delta_frames) <= RevoCacheEntry.MARK[1]
@@ -2308,11 +2318,12 @@ async def test_anchors_cache_only(
                 'char': choice(printable) if (i//3) else 'Q'  # set fixed points for querying
             }
         ][i % len(cd_id)]
-        (cred_json, _, epoch_creation) = await san.create_cred(
+        (cred_json, _) = await san.create_cred(
             cred_offer_json[s_id],
             cred_req_json[s_id],
             cred_data,
             RR_SIZE)
+        epoch_creation = int(time())
         cd_id2creation2cred_json[cd_id[s_id]][epoch_creation] = cred_json
         cd_id2creation2cred_data[cd_id[s_id]][epoch_creation] = cred_data
         assert json.loads(cred_json)
@@ -2673,14 +2684,13 @@ async def test_util_wranglers(
             }
         }
 
-        EPOCH_CRED_CREATE = {}
         i = 0
         for s_id in cred_data:
-            (cred_json[s_id], cred_revoc_id, epoch_creation) = await san.create_cred(
+            (cred_json[s_id], cred_revoc_id) = await san.create_cred(
                 cred_offer_json[s_id],
                 cred_req_json[s_id],
                 cred_data[s_id])
-            EPOCH_CRED_CREATE[s_id] = epoch_creation
+            epoch_creation = int(time())
             assert json.loads(cred_json[s_id])
             print('\n\n== 5.{} == Issuer created cred (revoc id {}) at epoch {}: {}'.format(
                 i,
