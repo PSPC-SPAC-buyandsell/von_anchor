@@ -26,8 +26,9 @@ from indy import anoncreds, ledger
 from indy.error import IndyError
 from von_anchor.anchor.base import _BaseAnchor
 from von_anchor.cache import Caches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
-from von_anchor.codec import canon
+from von_anchor.canon import canon
 from von_anchor.error import AbsentRevReg, AbsentSchema, BadIdentifier, BadRevStateTime, ClosedPool
+from von_anchor.indytween import Predicate
 from von_anchor.nodepool import NodePool
 from von_anchor.util import cred_def_id2seq_no, ok_cred_def_id, ok_rev_reg_id, ok_schema_id
 from von_anchor.validcfg import validate_config
@@ -189,10 +190,14 @@ class Verifier(_BaseAnchor):
         :param cd_id2spec: dict mapping cred def ids to:
 
             - (optionally) 'attrs': lists of names of attributes of interest (omit for all, empty list or None for none)
-            - (optionally) 'minima': (pred) integer lower-bounds of interest (omit, empty list, or None for none)
-            - (optionally), 'interval': (2-tuple) pair of epoch second counts marking 'from' and 'to' timestamps,
-                or single epoch second count to set 'from' and 'to' the same: default (now, now) for
-                cred defs supporting revocation or None otherwise; e.g.,
+            - (optionally) '>=': (pred) inclusive int lower-bounds of interest (omit, empty list, or None for none)
+            - (optionally) '>': (pred) exclusive int lower-bounds of interest (omit, empty list, or None for none)
+            - (optionally) '<=': (pred) inclusive int upper-bounds of interest (omit, empty list, or None for none)
+            - (optionally) '<': (pred) exclusive int upper-bounds of interest (omit, empty list, or None for none)
+            - (optionally), 'interval': either
+                - (2-tuple) pair of epoch second counts marking 'from' and 'to' timestamps, or
+                - single epoch second count to set 'from' and 'to' the same;
+                default (now, now) for cred defs supporting revocation or None otherwise; e.g.,
 
         ::
 
@@ -202,8 +207,11 @@ class Verifier(_BaseAnchor):
                         'name',
                         'favouriteDrink'
                     ],
-                    'minima': {  # request predicate score>=80 from this cred def
+                    '>=': {  # request predicate score>=80 from this cred def
                         'score': 80
+                    }
+                    '<=': {  # request ranking <=10 from this cred def
+                        'ranking': 10
                     }
                     'interval': 1528116008  # same instant for all attrs and preds of corresponding schema
                 },
@@ -212,15 +220,19 @@ class Verifier(_BaseAnchor):
                 'Z9ccax812j...:3:CL:27:tag': {  # request all attrs, no preds, this interval on all attrs
                     'interval': (1528112408, 1528116008)
                 },
-                '9cHbp54C8n...:3:CL:37:tag': {  # request no attrs, one pred, specify interval on pred
+                '9cHbp54C8n...:3:CL:37:tag': {  # request no attrs and some predicates; specify interval
                     'attrs': [],  # or equivalently, 'attrs': None
-                    'minima': {
+                    '>=': {
                         'employees': '50'  # nicety: implementation converts to int for caller
                     },
+                    '>=': {
+                        'revenue': '10000000'  # nicety: implementation converts to int for caller
+                        'ebidta': 0
+                    }
                     'interval': (1528029608, 1528116008)
                 },
                 '6caBcmLi33...:3:CL:41:tag': {  # all attrs, one pred, default intervals to now on attrs & pred
-                    'minima': {
+                    '>': {
                         'regEpoch': 1514782800
                     }
                 },
@@ -271,25 +283,27 @@ class Verifier(_BaseAnchor):
                 if interval:
                     proof_req['requested_attributes'][attr_uuid]['non_revoked'] = interval
 
-            for attr in (cd_id2spec[cd_id].get('minima', {}) or {} if cd_id2spec[cd_id] else {}):
-                pred_uuid = '{}_{}_uuid'.format(seq_no, canon(attr))
-                try:
-                    proof_req['requested_predicates'][pred_uuid] = {
-                        'name': attr,
-                        'p_type': '>=',
-                        'p_value': int(cd_id2spec[cd_id]['minima'][attr]),
-                        'restrictions': [{
-                            'cred_def_id': cd_id
-                        }]
-                    }
-                except ValueError:
-                    LOGGER.info(
-                        'cannot build predicate on non-int minimum %s for %s',
-                        cd_id2spec[cd_id]['minima'][attr],
-                        attr)
-                    continue  # int conversion failed - reject candidate
-                if interval:
-                    proof_req['requested_predicates'][pred_uuid]['non_revoked'] = interval
+            for pred in Predicate:
+                for attr in (cd_id2spec[cd_id].get(pred.value.math, {}) or {} if cd_id2spec[cd_id] else {}):
+                    pred_uuid = '{}_{}_{}_uuid'.format(seq_no, canon(attr), pred.value.fortran)
+                    try:
+                        proof_req['requested_predicates'][pred_uuid] = {
+                            'name': attr,
+                            'p_type': pred.value.math,
+                            'p_value': Predicate.to_int(cd_id2spec[cd_id][pred.value.math][attr]),
+                            'restrictions': [{
+                                'cred_def_id': cd_id
+                            }]
+                        }
+                    except ValueError:
+                        LOGGER.info(
+                            'cannot build %s predicate on non-int bound %s for %s',
+                            pred.value.fortran,
+                            cd_id2spec[cd_id][pred.value.math][attr],
+                            attr)
+                        continue  # int conversion failed - reject candidate
+                    if interval:
+                        proof_req['requested_predicates'][pred_uuid]['non_revoked'] = interval
 
         rv_json = json.dumps(proof_req)
         LOGGER.debug('Verifier.build_proof_req_json <<< %s', rv_json)

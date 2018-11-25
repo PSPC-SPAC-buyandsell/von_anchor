@@ -19,7 +19,7 @@ import json
 import subprocess
 import time
 
-from os.path import dirname, realpath, isfile, join
+from os.path import isfile, join
 
 import pytest
 
@@ -40,7 +40,7 @@ def rrbx_prox():
     return int(subprocess.check_output('ps -ef | grep rrbuilder.py | wc -l', stderr=subprocess.STDOUT, shell=True))
 
 async def beep(msg, n):
-    print(f'(waiting for {msg})')
+    print('(waiting for {})'.format(msg))
     for _ in range(n):
         await asyncio.sleep(1)
         print('.', end='', flush=True)
@@ -56,7 +56,7 @@ async def test_anchors_tails_load(
         seed_trustee1):
 
     rrbx = True
-    print(Ink.YELLOW(f'\n\n== Load-testing tails on {"ex" if rrbx else "in"}ternal rev reg builder =='))
+    print(Ink.YELLOW('\n\n== Load-testing tails on {}ternal rev reg builder ==').format("ex" if rrbx else "in"))
 
     WALLET_NAME = 'superstar'
     await RevRegBuilder.stop(WALLET_NAME)  # in case of re-run
@@ -68,13 +68,13 @@ async def test_anchors_tails_load(
     tan = TrusteeAnchor(await Wallet(seed_trustee1, 'trust-anchor').create(), p)
     no_prox = rrbx_prox()
     san = OrgHubAnchor(await Wallet('Superstar-Anchor-000000000000000', WALLET_NAME).create(), p, rrbx=True)
-    await beep(f'external rev reg builder process on {WALLET_NAME}', 5)
+    await beep('external rev reg builder process on {}'.format(WALLET_NAME), 5)
     assert rrbx_prox() == no_prox + 1
     async with OrgHubAnchor(
             await Wallet('Superstar-Anchor-000000000000000', WALLET_NAME).create(),
             p,
-            rrbx=True) as xan:  # check for exactly 1 external rev reg builder process
-        await beep(f'external rev reg builder process on {WALLET_NAME}', 5)
+            rrbx=True):  # check for exactly 1 external rev reg builder process
+        await beep('external rev reg builder process uniqueness test on {}'.format(WALLET_NAME), 5)
         assert rrbx_prox() == no_prox + 1
 
     assert p.handle
@@ -157,7 +157,7 @@ async def test_anchors_tails_load(
 
     # Setup link secret for creation of cred req or proof
     await san.create_link_secret('LinkSecret')
-    
+
     # SRI anchor create, store, publish cred definitions to ledger; create cred offers
     i = 0
     for s_id in schema_data:
@@ -216,7 +216,7 @@ async def test_anchors_tails_load(
     for s_id in cred_data:
         for number in range(CREDS):
             swatch.mark()
-            (cred_json[s_id], cred_revoc_id, epoch_creation) = await san.create_cred(
+            (cred_json[s_id], _, _) = await san.create_cred(
                 cred_offer_json[s_id],
                 cred_req_json[s_id],
                 {
@@ -232,13 +232,13 @@ async def test_anchors_tails_load(
                 optima[tag] = (min(optima[tag][0], elapsed), max(optima[tag][1], elapsed))
             print('.', end='', flush=True)
             if ((i + 1) % 100) == 0:
-                print('{}: #{}: {}-{}s'.format(i + 1, tag, *optima[tag]), flush=True)
+                print('{}: #{}: {:.2f}-{:.2f}s'.format(i + 1, tag, *optima[tag]), flush=True)
 
             assert json.loads(cred_json[s_id])
 
             i += 1
 
-    print('\n\n== 6 == best, worst times by revocation registry: {}'.format(ppjson(optima))) 
+    print('\n\n== 6 == best, worst times by revocation registry: {}'.format(ppjson(optima)))
     assert all(optima[tag][1] < optima[tag][0] * 6 for tag in optima)  # if ever waiting on rev reg, will be slower
 
     await san.close()

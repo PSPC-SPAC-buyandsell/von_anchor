@@ -27,7 +27,6 @@ from indy import anoncreds, ledger
 from indy.error import IndyError, ErrorCode
 from von_anchor.anchor.rrbuilder import RevRegBuilder
 from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE
-from von_anchor.codec import cred_attr_value
 from von_anchor.error import (
     AbsentCredDef,
     AbsentSchema,
@@ -37,6 +36,7 @@ from von_anchor.error import (
     BadLedgerTxn,
     BadRevocation,
     CorruptWallet)
+from von_anchor.indytween import cred_attr_value
 from von_anchor.tails import Tails
 from von_anchor.util import (
     cred_def_id,

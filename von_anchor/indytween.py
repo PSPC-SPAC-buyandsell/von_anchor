@@ -18,10 +18,14 @@ limitations under the License.
 import json
 import re
 
+from collections import namedtuple
+from enum import Enum
 from hashlib import sha256
-from typing import Any, Union
+from typing import Any
 
-from von_anchor.error import BadWalletQuery
+
+SchemaKey = namedtuple('SchemaKey', 'origin_did name version')
+Relation = namedtuple('Relation', 'fortran wql math yes no')
 
 
 I32_BOUND = 2**31
@@ -41,7 +45,7 @@ def encode(orig: Any) -> str:
         return str(int(orig))  # python bools are ints
 
     try:
-        i32orig = int(str(orig))  # don't encode doubles as ints
+        i32orig = int(str(orig))  # don't encode floats as ints
         if -I32_BOUND <= i32orig < I32_BOUND:
             return str(i32orig)
     except (ValueError, TypeError):
@@ -75,50 +79,56 @@ def cred_attr_value(orig: Any) -> dict:
     return {'raw': raw(orig), 'encoded': encode(orig)}
 
 
-def canon(raw_attr_name: str) -> str:
+class Predicate(Enum):
     """
-    Canonicalize input attribute name as it appears in proofs and credential offers: strip out
-    white space and convert to lower case.
-
-    :param raw_attr_name: attribute name
-    :return: canonicalized attribute name
+    Enum for predicate types that indy-sdk supports.
     """
 
-    if raw_attr_name:  # do not dereference None, and '' is already canonical
-        return raw_attr_name.replace(' ', '').lower()
-    return raw_attr_name
+    LT = Relation(
+        'LT',
+        '$lt',
+        '<',
+        lambda x, y: Predicate.to_int(x) < Predicate.to_int(y),
+        lambda x, y: Predicate.to_int(x) >= Predicate.to_int(y))
+    LE = Relation(
+        'LE',
+        '$lte',
+        '<=',
+        lambda x, y: Predicate.to_int(x) <= Predicate.to_int(y),
+        lambda x, y: Predicate.to_int(x) > Predicate.to_int(y))
+    GE = Relation(
+        'GE',
+        '$gte',
+        '>=',
+        lambda x, y: Predicate.to_int(x) >= Predicate.to_int(y),
+        lambda x, y: Predicate.to_int(x) < Predicate.to_int(y))
+    GT = Relation(
+        'GT',
+        '$gt',
+        '>',
+        lambda x, y: Predicate.to_int(x) > Predicate.to_int(y),
+        lambda x, y: Predicate.to_int(x) <= Predicate.to_int(y))
 
+    @staticmethod
+    def get(relation: str) -> 'Predicate':
+        """
+        Return enum instance corresponding to input relation string
+        """
 
-def canon_wql(query: dict) -> dict:
-    """
-    Canonicalize WQL attribute marker and value keys for input to indy-sdk wallet credential filtration.
-    Canonicalize original values to proper indy-sdk raw values as per raw().
+        for pred in Predicate:
+            if relation.upper() in (pred.value.fortran, pred.value.wql.upper(), pred.value.math):
+                return pred
+        return None
 
-    Raise BadWalletQuery for WQL mapping '$or' to non-list.
+    @staticmethod
+    def to_int(value: Any) -> int:
+        """
+        Cast a value as its equivalent int for indy predicate argument. Raise ValueError for any input but
+        int, stringified int, or boolean.
 
-    :param query: WQL query
-    :return: canonicalized WQL query dict
-    """
+        :param value: value to coerce.
+        """
 
-    for k in query:
-        attr_match = re.match('attr::([^:]+)::(marker|value)$', k)
-        if isinstance(query[k], dict):  # only subqueries are dicts: recurse
-            query[k] = canon_wql(query[k])
-        if k == '$or':
-            if not isinstance(query[k], list):
-                raise BadWalletQuery('Bad WQL; $or value must be a list in {}'.format(json.dumps(query)))
-            query[k] = [canon_wql(subq) for subq in query[k]]
-        if attr_match:
-            qkey = 'attr::{}::{}'.format(canon(attr_match.group(1)), canon(attr_match.group(2)))
-            query[qkey] = query.pop(k)
-            tag_value = query[qkey]
-            if isinstance(tag_value, dict) and len(tag_value) == 1:
-                if '$in' in tag_value:
-                    tag_value['$in'] = [raw(val) for val in tag_value.pop('$in')]
-                else:
-                    wql_op = set(tag_value.keys()).pop()  # $neq, $gt, $gte, etc.
-                    tag_value[wql_op] = raw(tag_value[wql_op])
-            else:  # equality
-                query[qkey] = raw(query[qkey])
-
-    return query
+        if isinstance(value, (bool, int)):
+            return int(value)
+        return int(str(value))  # kick out floats
