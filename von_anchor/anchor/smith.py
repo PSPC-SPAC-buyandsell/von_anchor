@@ -18,6 +18,7 @@ limitations under the License.
 import logging
 
 from indy import ledger
+
 from von_anchor.anchor.base import _BaseAnchor
 from von_anchor.error import BadIdentifier
 from von_anchor.util import ok_did

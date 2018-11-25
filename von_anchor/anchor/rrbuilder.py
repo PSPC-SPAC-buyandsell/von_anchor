@@ -20,7 +20,7 @@ import asyncio
 import json
 import logging
 
-from enum import Enum, auto
+from enum import Enum
 from os import getpid, kill, listdir, makedirs, remove
 from os.path import basename, dirname, expanduser, isdir, isfile, join, realpath
 from shutil import rmtree
@@ -44,14 +44,7 @@ from von_anchor.wallet import Wallet
 LOGGER = logging.getLogger(__name__)
 
 
-class State(Enum):
-    """
-    Class encapsulating state of revocation registry builder process
-    """
-
-    ABSENT = auto()
-    RUNNING = auto()
-    STOPPING = auto()
+State = Enum('State', 'ABSENT RUNNING STOPPING')
 
 
 class RevRegBuilder(_BaseAnchor):
@@ -292,7 +285,7 @@ class RevRegBuilder(_BaseAnchor):
         target directory is hopper directory.
 
         :param rr_id: revocation registry identifier
-        :param rr_size: revocation registry size (defaults to 256)
+        :param rr_size: revocation registry size (defaults to 64)
         """
 
         LOGGER.debug('RevRegBuilder._create_rev_reg >>> rr_id: %s, rr_size: %s', rr_id, rr_size)
@@ -301,7 +294,7 @@ class RevRegBuilder(_BaseAnchor):
             LOGGER.debug('RevRegBuilder._create_rev_reg <!< Bad rev reg id %s', rr_id)
             raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
-        rr_size = rr_size or 256
+        rr_size = rr_size or 64
 
         (cd_id, tag) = rev_reg_id2cred_def_id_tag(rr_id)
 
@@ -326,7 +319,7 @@ class RevRegBuilder(_BaseAnchor):
                 'uri_pattern': ''
             }))
 
-        (rr_id, rrd_json, rre_json) = await anoncreds.issuer_create_and_store_revoc_reg(
+        (rr_id, rr_def_json, rr_ent_json) = await anoncreds.issuer_create_and_store_revoc_reg(
             self.wallet.handle,
             self.did,
             'CL_ACCUM',
@@ -334,15 +327,15 @@ class RevRegBuilder(_BaseAnchor):
             cd_id,
             json.dumps({
                 'max_cred_num': rr_size,
-                'issuance_type': 'ISSUANCE_ON_DEMAND'
+                'issuance_type': 'ISSUANCE_BY_DEFAULT'
             }),
             tails_writer_handle)
 
         tails_hash = basename(Tails.unlinked(dir_target).pop())
-        with open(join(dir_target, 'rrd.json'), 'w') as rrd_fh:
-            print(rrd_json, file=rrd_fh)
-        with open(join(dir_target, 'rre.json'), 'w') as rre_fh:
-            print(rre_json, file=rre_fh)
+        with open(join(dir_target, 'rr_def.json'), 'w') as rr_def_fh:
+            print(rr_def_json, file=rr_def_fh)
+        with open(join(dir_target, 'rr_ent.json'), 'w') as rr_ent_fh:
+            print(rr_ent_json, file=rr_ent_fh)
         Tails.associate(dir_tails, rr_id, tails_hash)  # associate last: it signals completion
 
         LOGGER.debug('RevRegBuilder._create_rev_reg <<<')
