@@ -64,7 +64,7 @@ As part of the technology demonstrator project using Hyperledger indy to explore
 
 As the SRI integration exercise developed, it adopted an intermediary layer (initially, The Org Book and Permitify, then VON-X) to engage the SRI agent rather than using agent-to-agent communication directly. The agent design dropped its inter-agent communication layer via the provisional VON protocol and the VON agent became headless, serving primarily as a back-end conduit to the distributed ledger for the intermediary layers as they developed.
 
-Then, the design an indy (contrast VON) agent emerged, implementing a communications framework between indy-sdk trust anchors facilitating write operations to the distributed ledger. To disambiguate these projects, the VON agent became the VON anchor circa v1.6.
+Then, as the design of the indy (contrast VON) agent emerged, implementing a communications framework between indy-sdk trust anchors facilitating write operations to the distributed ledger. To disambiguate these projects, the VON agent became the VON anchor circa v1.6.
 
 The current generation of von_anchor (v1.x series) design allows interoperability with the Hyperledger indy distributed ledger via the indy-sdk toolkit, without prejudice to any particular use case – it is not geared specifically to SRI integration. In addition to (Government of Canada) integration of the SRI system with the indy distributed ledger, the British Columbia Government is currently using the anchors to facilitate a variety of use cases such as The Org Book, Permitify, and VON-X.
 

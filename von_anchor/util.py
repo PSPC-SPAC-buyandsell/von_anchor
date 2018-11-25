@@ -275,11 +275,7 @@ def proof_req_infos2briefs(proof_req: dict, infos: Union[Iterable, dict]) -> lis
     :param infos: cred-info or iterable collection thereof; e.g.,
 
     ::
-<<<<<<< HEAD
-    
-=======
 
->>>>>>> upstream/master
         [
             {
                 'attrs': {
