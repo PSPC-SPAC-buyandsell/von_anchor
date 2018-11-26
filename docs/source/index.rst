@@ -7,8 +7,17 @@
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents
+   :caption: Overview and Code
 
+   anchors
+   anchor-interactions
+   revocation-and-tails-files
+   schema-cache-node-wallet
+   utility-functions
+   exceptions
+   class-hierarchy
+   packaging
+   configuration-validation
    modules.rst
 
 Indices and tables

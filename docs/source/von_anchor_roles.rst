@@ -1,4 +1,4 @@
-von\_anchor\_roles package
+Package: VON Anchor Roles
 ==========================
 
 Submodules
