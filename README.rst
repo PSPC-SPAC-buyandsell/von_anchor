@@ -1,6 +1,6 @@
 VON Anchor
 ==========
-VON anchor is a Python 3 library that presents a set of useful abstractions and conveniences by which developers may use the Hyperledger Indy's indy-sdk toolkit to interact with the any instance of an Indy distributed ledger, including the Sovrin Network. Originally called "VON Agent" - VON Anchor is not an Agent, but rather the core capabilities and abstractions (the "Anchor") needed for building an agent. While VON Anchor is an Agent implemention-agnostic, it was initially implemented to be the foundation of the Verifiable Organizations Network (https://vonx.io), a production implemntation of Indy that has issued more than 10M (to date) production Verifiable Credentials about all of the incorporated entities in both British Columbia and Ontario. Those VCs are likewise held in community wallets by TheOrgBook, a VON Anchor-based Holder/Prover/Verifier component.
+VON anchor is a Python 3 library that presents a set of useful abstractions and conveniences by which developers may use the Hyperledger Indy's indy-sdk toolkit to interact with the any instance of an Indy distributed ledger, including the Sovrin Network. Originally called "VON Agent" - VON Anchor is not an Agent, but rather the core capabilities and abstractions (the "Anchor") needed for building an agent. While VON Anchor is an Agent implemention-agnostic, it was initially implemented to be the foundation of the Verifiable Organizations Network (https://vonx.io), a production implementation of Indy that has issued more than 10M (to date) production Verifiable Credentials about all of the incorporated entities in both British Columbia and Ontario. Those VCs are likewise held in community wallets by TheOrgBook, a VON Anchor-based Holder/Prover/Verifier component.
 
 For full documentation, please go to: https://von-anchor.readthedocs.io/en/latest/
 
@@ -12,44 +12,60 @@ VON Anchor's abstractions enable the implementation of Indy Agents with various 
 
 In doing so, VON Anchor implements a range of necessary Agent capabilities, including:
 
-- Wallet and wallet seed management, including creating, reopening and key rotating.
-- Ledger read actions to synchronize an Agent with the Ledger on restart.
-- Ledger caching to minimize ledger interactions.
-- Ledger writing of Agent entities - schema, credential definitions and revocation registries
-- Full Revocation support, including the creation of Revoation Registries and the efficient generation/management of tails files.
-- A Tails Files server implementation.
-- Claim Encode/Decode support as part of the Credential Issuance and Proof process
-- Proof handling support for predicates (GT and new predicates)
-- Proof handling credential selection using Wallet Query Language (WQL) and Credential IDs
-- Support for Offline operation of Provers and Verifiers
-- A series of utilities to simplify the implementation of Indy Agents
+- wallet and wallet seed management including creating, reopening and key rotating
+- ledger read actions to synchronize an Agent with the Ledger on restart
+- ledger caching to minimize ledger interactions
+- ledger writing of Agent entities - schemata, credential definitions and revocation registries
+- full revocation support, including the creation of revocation registries and the efficient generation/management of tails files
+- a Tails File server implementation (via the von_tails project)
+- claim attribute value encoding support as part of the Credential Issuance and Proof process
+- proof handling support for predicates (GE and new predicates)
+- proof handling credential selection using Wallet Query Language (WQL) and Credential IDs
+- support for offline operation of Provers and Verifiers
+- a series of utilities to simplify the implementation of Indy Agents.
 
 VON Anchor continues to evolve in lock step with the capabilities in indy-node and indy-sdk, shielding the Agent Developer from much of the churn in those applications. Feature development of VON Anchor is also driven the needs of the indy-agent developer community.
 
 VON Anchor does not currently implement the Indy Community's Agent to Agent Protocol. As the definition of that protoocol clarifies, we expect underlying support of the protocol will be added to VON Anchor.
 
-VON Anchor Demo
-================
+.. _demo_anchors:
 
-The VON Anchor repo includes a demonstration that includes the following anchors:
+VON Anchor Demonstration
+========================
+
+The VON Anchor repository includes a demonstration that includes the following anchors in their roles:
 
 - the Trustee anchor as:
-  - the anchor writing further anchors onto the distributed ledger
+
+  - the anchor smith writing further anchors onto the distributed ledger
 
 - the BC Registrar anchor as:
-  - a schema originator for its own credentials
+
+  - a schema origin for its own credentials
   - an issuer of credentials
 
-- the BC Org Book anchor as, for credentials that the BC Registrar issues:
-  - a W3C credentials holder
-  - an indy-sdk prover
+- the BC Org Book anchor as,
+
+  - for credentials that the BC Registrar issues:
+
+    - a W3C credentials holder
+    - an indy-sdk prover
+
+  - for its own credentials,
+
+    - an issuer
+    - a W3C credentials holder
+    - an indy-sdk prover
+    - a verifier of proofs
 
 - the SRI anchor as:
-  - a schema originator for its own credentials
+
+  - a schema origin for its own credentials
   - an issuer of credentials
-  - a verifier of credentials, whether itself or the BC Registrar anchor issued them
+  - a verifier of proofs, whether itself or the BC Registrar anchor issued them
 
 - the PSPC Org Book as, for credentials that the SRI anchor issues:
+
   - a W3C credentials holder
   - an indy-sdk prover.
 
@@ -60,7 +76,7 @@ The latest release of the ``von_anchor`` python package is available at <https:/
 History
 =======
 
-As part of the technology demonstrator project using Hyperledger indy to explore the use of the distributed ledger with PSPC Supplier Registration Information (SR, the original von_agent (v0 series) design specified anchors with service wrapper APIs to facilitate interoperability, including the capacity to relay messages to other agents. An appendix includes a synopsis of the original technology demonstrator project.
+As part of the technology demonstrator project using Hyperledger indy to explore the use of the distributed ledger with PSPC Supplier Registration Information (SRI), the original von_agent (v0 series) design specified anchors with service wrapper APIs to facilitate interoperability, including the capacity to relay messages to other agents.
 
 As the SRI integration exercise developed, it adopted an intermediary layer (initially, The Org Book and Permitify, then VON-X) to engage the SRI agent rather than using agent-to-agent communication directly. The agent design dropped its inter-agent communication layer via the provisional VON protocol and the VON agent became headless, serving primarily as a back-end conduit to the distributed ledger for the intermediary layers as they developed.
 
@@ -71,38 +87,14 @@ The current generation of von_anchor (v1.x series) design allows interoperabilit
 Taxonomy
 ========
 
-This section introduces abstractions at project level and at anchor level.
-
-Project Level
--------------
-
 Throughout this project, "VON anchor" refers to the layer implementing the trust anchor technology using the indy-sdk; "VON connector" refers to a service wrapper API accepting transport layer messages and delegating them to its underlying VON anchor (potentially, among other back ends). "VON-X" is a BC Government initiative to generalize communications between anchors (e.g., from an issuer of credentials to a holder-prover, or from a holder-prover to a verifier).
 
 Anchor Level
 ------------
 
-The indy-sdk mechanism presents a role engineering model for anchors specifying issuers, provers, and verifiers. The W3C model, roughly in alignment, uses issuers, holders, and verifiers. The design of the von_anchor toolkit includes the following demonstration anchors:
+The indy-sdk mechanism presents a role engineering model for anchors specifying anchor smiths, (schema) origins, issuers, provers, and verifiers (plus anchor smiths and schema origins). The W3C model of https://www.w3.org/TR/verifiable-claims-data-model, roughly in alignment with the subset implementing credential operations, uses issuers, holders, and inspector-verifiers.
 
-- the Trustee anchor as:
-  - the smith consecrating all anchors on the distributed ledger including itself
-- the (PSPC) SRI anchor as:
-  - a verifier for proofs of credentials that the BC Registrar anchor issues
-  - an issuer and verifier for proofs of credentials that the SRI anchor issues
-  - a schema origin for credentials that it issues
-- the PSPC Org Book anchor as, for credentials that the SRI anchor issues:
-  - a W3C credential holder
-  - an indy-sdk prover
-- the BC Registrar anchor as:
-  - an issuer of BC Registrar credentials
-  - a schema origin for credentials that it issues
-- the BC instance of TheOrgBook (also known as BC TheOrgBook) anchor as, for BC Registrar credentials, both
-  - a W3C credential holder
-  - an indy-sdk prover
-- the BC instance of TheOrgBook (also known as BC TheOrgBook) anchor as, for all credentials it holds
-  - an indy-sdk prover
-  - an indy-sdk verifier (to display in the UI).
-
-In the context of the Alice story of https://github.com/hyperledger/indy-sdk/blob/master/doc/getting-started/getting-started.md, the von_anchor toolkit would allow for the development of:
+The design of the von_anchor toolkit includes demonstration anchors as :ref:`demo_anchors` outlines. In the context of the Alice story of https://github.com/hyperledger/indy-sdk/blob/master/doc/getting-started/getting-started.md, the von_anchor toolkit would allow for the development of:
 
 - the Steward anchor as an anchor smith
 - a Government anchor as an origin of schemata for transcripts and job certificates
@@ -118,7 +110,7 @@ Since version 1.6, the von_anchor major and minor version numbers (i.e., x.y in 
 
 `x.(y-1).z-dev-nnn < x.y.z.rc-n <= x.y.z`
 
-for any release x.y.z, where, to date, z has always been zero. For example, releases 1.5.0-dev-nnn follow release 1.5 but precede release candidate 1.6.0-rc-n and release 1.6.0. Any corresponding von_anchor releases would take version number series 1.6.z. The micro (i.e., z in x.y.z), and any numbers beyond, count only VON anchor increments, and have no relation to any external information.
+for any release x.y.z. For example, releases 1.5.0-dev-nnn follow release 1.5 but precede release candidate 1.6.0-rc-n and release 1.6.0. Any corresponding von_anchor releases would take version number series 1.6.z. The micro (i.e., z in x.y.z), and any numbers beyond, count only VON anchor increments, and have no relation to any external information.
 
 References
 ==========

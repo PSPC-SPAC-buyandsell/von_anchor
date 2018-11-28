@@ -1,0 +1,92 @@
+@startuml
+/'
+Copyright 2017-2018 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+'/
+
+skinparam ParticipantPadding 20
+skinparam BoxPadding 20
+
+title External Revocation Registry Builder Start and Stop
+
+participant "External Rev Reg Builder" as rrbx
+box "Operating System" #Linen
+    participant "Process" as proc
+    participant "Shell" as bash
+    participant "File System" as fs
+endbox
+participant "Issuer" as issuer
+
+actor "Actuator" as ator
+
+=== INITIALIZING ISSUER WITH EXTERNAL REVOCATION REGISTRY BUILDER ==
+
+ator -> issuer: init()
+group init() implements
+    issuer -> fs: ensure tails sentinel, hopper\ndirectories present
+    fs --> issuer:
+    issuer -> issuer: get_state()
+    group get_state() implements
+        fs -> fs: check sentinel directory
+        alt .stop present
+            fs --> issuer: STOPPING
+        else .start or .pid present
+            fs --> issuer: RUNNING
+        else
+            fs --> issuer: ABSENT
+        end
+    end
+    alt STOPPING
+        issuer -> fs: remove .stop
+        fs --> issuer:
+    else ABSENT
+        issuer -> fs: write config data to .start
+        fs --> issuer:
+        issuer -> bash: spawn process
+        bash --> issuer:
+        group new process implements
+            bash -> proc: spawn
+            proc -> fs: read and remove .start
+            proc -> rrbx: init()
+            rrbx --> proc:
+            proc -> rrbx: serve()
+            group serve() implements
+                rrbx -> fs: write pid file
+                fs --> rrbx:
+                rrbx -> fs: monitor sentinel directory
+            end
+        end
+    end
+    
+    issuer --> ator:
+end
+
+=== STOPPING EXTERNAL REVOCATION REGISTRY BUILDER ==
+ator -> issuer: stop external rev reg builder
+group stop() implements
+    issuer -> fs: touch .stop in sentinel directory
+    fs --> issuer:
+    group while true
+        issuer -> fs: any rr_id/.in-progress in sentinel directory?
+        fs --> issuer: Yes
+        issuer -> issuer: wait
+    end
+end
+issuer --> ator:
+rrbx -> fs: .stop in sentinel directory?
+fs --> rrbx: Yes
+rrbx --> proc: Done
+proc --> shell: Done
+
+@enduml

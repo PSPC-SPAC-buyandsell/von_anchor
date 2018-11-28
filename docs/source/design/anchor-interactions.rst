@@ -26,28 +26,27 @@ The node pool's genesis transactions must specify the trustee VON anchor's crypt
 
 The following figure illustrates the boot sequence for a trustee VON anchor.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/boot.trust-anchor.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/boot.trust-anchor.png
     :align: center
     :alt: Trustee VON Anchor Boot Sequence
  
 Issuer Anchor Boot Sequence
 ***********************************************
 
-At present, for simplicity, the design of von_anchor automatically sets up all issuer anchors (creating credentials) as origin anchors (defining schemata).
-At boot time, the issuer anchor must check the ledger for its own nym; if absent, it must prompt the trustee VON anchor (via its service wrapper API) to write it to the ledger.
+At present, for simplicity, the design of von_anchor automatically sets up all issuer anchors (creating credentials) as origin anchors (defining schemata). At boot time, the issuer anchor must check the ledger for its own nym; if absent, it must prompt the trustee VON anchor (via its service wrapper API) to write it to the ledger.
 
 The anchor must look up each schema and associated credential definition for which it is responsible as an origin and issuer (respectively). It must create and send all such absent productions to the ledger. If creating a new credential definition with revocation support, the call to send the credential definition creates an initial revocation registry (plus a corresponding tails file) and writes the registry state with its initial entry to the ledger, then schedules the creation of the next tails file and revocation registry in the hopper to run when possible, to avoid a long delay when a future credential creation requires such.
 
 The following figure illustrates the boot sequence for an issuer anchor.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/boot.origin+issuer.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source//pic/boot.origin+issuer.png
     :align: center
     :alt: Issuer VON Anchor Boot Sequence
 
 Holder-Prover Anchor Boot Sequence
 ***********************************************
 
-Recall that indy-sdk condenses the W3C holder and prover roles.
+Recall that indy-sdk condenses the W3C holder and indy-sdk prover roles.
 
 The holder-prover anchor may operate on-line (with the distributed ledger available via the node pool) or off-line.
 At boot time, if on-line, the holder-prover anchor must check the ledger for its own nym; if absent, it must prompt the trustee VON anchor to write it to the ledger. If off-line, its configuration should prod the operation to load the schema, credential definition, and revocation caches with archived content. Since all anchors in a process share these caches, a holder-prover anchor operating off-line should be the only anchor in the process.
@@ -56,7 +55,7 @@ On boot, the anchor must set its link secret, which it uses to create proofs.
 
 The following figure illustrates the (on-line) boot sequence for a holder-prover anchor.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/boot.holderprover.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/boot.holderprover.png
     :align: center
     :alt: Holder-Prover VON Anchor (On-Line) Boot Sequence
 
@@ -69,7 +68,7 @@ At boot time, if on-line, the verifier anchor must check the ledger for its own 
 
 The following figure illustrates the (on-line) boot sequence for a verifier anchor.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/boot.verifier.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/boot.verifier.png
     :align: center
     :alt: Verifier VON Anchor (On-Line) Boot Sequence
 
@@ -89,7 +88,7 @@ Then the actuator must prompt the holder-prover anchor to create a credential re
 
 For each credential, the actuator must prompt the issuer anchor to create it on the credential offer, the credential request, and the attribute name/value pairs comprising the content. The issuer anchor returns the credential, with its credential revocation identifier if the credential definition supports revocation. The actuator then must prompt the holder-prover anchor to store the credential (passing the metadata from the credential offer). At this point, the implementation on holder-prover anchor checks whether it has any required tails file in its tails tree. If it does not, it raises an exception and the actuator must fetch it from the issuer and supply it for a subsequent attempt.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/cred-load.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/cred-load.png
     :align: center
     :alt: Credential Load Sequence
  
@@ -102,14 +101,14 @@ The actuator must isolate the revocation information, comprising a revocation re
 
 The actuator must call on the issuer anchor to revoke the credential by its revocation information. The issuer implementation updates the revocation registry state on the ledger and returns the transaction time in epoch seconds.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/cred-revoc.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/cred-revoc.png
     :align: center
     :alt: Credential Revocation Sequence
  
 Credential Request
 ***********************************************
 
-This section outlines the interactions required to prompt an issuer to request credentials.
+This section outlines the interactions required to prompt an issuer to return credentials from its wallet.
 
 The actuator must call upon the holder-prover anchor to get credentials by desired filtration parameters:
 
@@ -120,16 +119,16 @@ The actuator must call upon the holder-prover anchor to get credentials by desir
     - schema origin DID
     - schema name
     - schema version
-- by attribute value filtration
+- by attribute and/or predicate value filtration
 - by credential identifier in the wallet (a.k.a. referent in credential info context).
 
-The implementation on the holder-prover anchor fetches and filters credentials from its wallet as requested, and returns credentials structures accordingly. The utilities provide further filtration and display options, to facilitate user selection, credential tree pruning, and refinement via feedback to augment filtration in further calls to get credentials from the holder-prover anchor.
+The implementation on the holder-prover anchor fetches and filters credentials from its wallet as requested, and returns cred-info or cred-brief (as per :ref:`holder-prover-cred-like-ops`) structures accordingly. The utilities provide further filtration and display options, to facilitate user selection and refinement via feedback to augment filtration in further calls to get credentials from the holder-prover anchor.
 
 Note that no filtration can isolate credentials by revocation status at this stage: all credentials in a wallet are subject to return, whether revoked or not. Issuers publish revocation updates to the ledger, not to any holder-prover's wallet.
 
 The following figure illustrates.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/cred-request.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/cred-request.png
     :align: center
     :alt: Credential Request Sequence
  
@@ -142,7 +141,7 @@ The actuator calls upon VON anchor to reset its wallet; the implementation on th
 
 The following figure illustrates.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/creds-reset.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/creds-reset.png
     :align: center
     :alt: Credential Reset Sequence
 
@@ -170,17 +169,17 @@ Both downloading and uploading the tails files present interesting achievable go
 Proof Creation
 ===================================
 
-The actuator calls upon the holder-prover anchor to build indy-sdk proof request and requested credentials structures. Alternatively, the actuator may craft these structures manually, but using the builders guarantees that they exhibit a sensible configuration that VON anchor proof creation supports.
+The actuator calls upon the verifier anchor to build indy-sdk proof requests. Alternatively, the actuator may craft these structures manually, but using the builders guarantees that they exhibit a sensible configuration that VON anchor proof creation supports. Typically, the actuator calls upon the holder-prover to retrieve cred-briefs for a proof request (with attributes to retrieve and predicates to satisfy) and any additional WQL queries to apply. The ``proof_req_infos2briefs()`` utility generates an indy-sdk ``requested_credentials`` structure from a proof request and the cred-briefs that the holder returned, possibly filtered through human interaction.
 
-The actuator calls upon the holder-prover anchor to create proof on a proof request, an indy-sdk credentials structure, and an indy-sdk requested credentials structure. Note that the _BaseAnchor class provides helpers to build indy-sdk proof request and requested credentials structures, and the test code demonstrates their use.
+The actuator calls upon the holder-prover anchor to create proof on a proof request, an iterable collection of cred-briefs, and an indy-sdk requested credentials structure. The test harnesses provides several concrete examples.
 
 The holder-prover anchor implementation then gets (from the distributed ledger or, where possible, from the caches) such schemata and credential definitions as are required for proof, plus any revocation registry definitions. If any tails files are required and not present in its tails tree, the holder-prover anchor raises an exception noting the absent tails file; the actuator must marshal it to the holder-prover anchor (or await synchronization as per [VT]) as above. Otherwise, the implementation consults the distributed ledger to get the revocation registry deltas to the timestamp in the requested credentials structure, and constructs revocation registry states as required to create a proof (however, some credential definitions may not support revocation; such credential definitions require no tails files content nor revocation registry states to contribute to the proof).
 
 Finally, the holder-prover returns the proof to the actuator.
 
-The following figure illustrates the proof sequences above.
+The following figure illustrates the proof sequence above.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/proof.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/proof.png
     :align: center
     :alt: Proof Sequences
 
@@ -193,7 +192,7 @@ The actuator calls upon the verifier anchor to verify a proof against a proof re
 
 The following figure illustrates the verification sequence.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/verification.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/verification.png
     :align: center
     :alt: Verification Sequences
 

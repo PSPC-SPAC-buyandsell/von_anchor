@@ -23,6 +23,7 @@ This section outlines the Exception descendants that the von_anchor package defi
     "AbsentRevReg", "1015", "Revocation registry not present on distributed ledger", "Verifier anchor receives proof citing revocation registry that does not exist on the distributed ledger"
     "BadIdentifier", "1016", "Encountered bad tails hash, DID, schema id, cred def id, rev reg id", "Holder-prover anchor attempts to create proof on credentials citing bad cred def id"
     "AbsentProcess", "1017", "Required external process not running", "Issuer could not spawn external revocation registry builder"
+    "BadKey", "1018", "Cryptographic operation revealed bad key", "Authenticated decryption operation revealed unexpected proof of origin"
     "AbsentWallet", "3000", "Wallet cannot open as its control files do not exist", "Anchor attempts to open a wallet that is not yet created"
     "BadWalletQuery", "3001", "Bad WQL", "Caller attempts to search wallet with bad WQL"
     "AbsentCred", "3002", "No such credential in wallet", "Caller calls to get cred info on missing cred identifier"
@@ -30,4 +31,4 @@ This section outlines the Exception descendants that the von_anchor package defi
     "CacheIndex", "5000", "Schema cache, credential definition cache, or revocation cache has no entry at given index", "Anchor attempts to retrieve schema for a transaction number or schema key that it has not yet cached"
     "JSONValidation", "9000", "JSON schema is corrupt or JSON form does not match schema", "Node pool configuration dict missing required properties"
 
-Table 3: Exception Particulars
+Table: Exception Particulars

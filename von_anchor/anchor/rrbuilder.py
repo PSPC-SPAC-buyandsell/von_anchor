@@ -44,7 +44,7 @@ from von_anchor.wallet import Wallet
 LOGGER = logging.getLogger(__name__)
 
 
-State = Enum('State', 'ABSENT RUNNING STOPPING')
+_State = Enum('_State', 'ABSENT RUNNING STOPPING')
 
 
 class RevRegBuilder(_BaseAnchor):
@@ -77,17 +77,17 @@ class RevRegBuilder(_BaseAnchor):
             makedirs(self._dir_tails_hopper, exist_ok=True)  # self is RevRegBuilder or descendant: spawn rrbx proc
             makedirs(self._dir_tails_sentinel, exist_ok=True)
 
-            rrb_state = RevRegBuilder.get_state(wallet.name)
+            rrb_state = RevRegBuilder._get_state(wallet.name)
 
-            if rrb_state == State.STOPPING:
+            if rrb_state == _State.STOPPING:
                 try:  # cancel the stop order
                     remove(join(RevRegBuilder.dir_tails_sentinel(wallet.name), '.stop'))
                 except FileNotFoundError:
                     pass  # too late, it's gone
                 else:
-                    rrb_state = State.ABSENT
+                    rrb_state = _State.ABSENT
 
-            if rrb_state == State.ABSENT:  # run it
+            if rrb_state == _State.ABSENT:  # run it
                 with open(join(RevRegBuilder.dir_tails_sentinel(wallet.name), '.start'), 'w') as fh_start:
                     print(wallet._seed, file=fh_start)  # keep seed out of arguments where it shows in ps, in the clear
 
@@ -132,12 +132,12 @@ class RevRegBuilder(_BaseAnchor):
         LOGGER.debug('RevRegBuilder.__init__ <<<')
 
     @staticmethod
-    def get_state(wallet_name: str) -> State:
+    def _get_state(wallet_name: str) -> _State:
         """
         Return current state of revocation registry builder process.
 
         :param wallet_name: name of wallet for corresponding Issuer
-        :return: current process state as State enum.
+        :return: current process state as _State enum.
         """
 
         dir_sentinel = RevRegBuilder.dir_tails_sentinel(wallet_name)
@@ -146,12 +146,12 @@ class RevRegBuilder(_BaseAnchor):
         file_stop = join(dir_sentinel, '.stop')
 
         if isfile(file_stop):
-            return State.STOPPING
+            return _State.STOPPING
 
         if isfile(file_start) or isfile(file_pid):
-            return State.RUNNING
+            return _State.RUNNING
 
-        return State.ABSENT
+        return _State.ABSENT
 
     @staticmethod
     def dir_tails() -> str:

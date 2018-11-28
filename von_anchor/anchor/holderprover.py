@@ -610,6 +610,14 @@ class HolderProver(_BaseAnchor):
 
     async def get_cred_infos_by_q(self, query_json: str, limit: int = None) -> str:
         """
+        A cred-info aggregates:
+        * its wallet cred-id (aka wallet referent)
+        * its attribute names and values
+        * its schema identifier
+        * its credential definition identifier
+        * its revocation registry identifier
+        * its credential revocation identifier.
+
         Return list of cred-infos from wallet by input WQL query;
         return cred-infos for all credentials in wallet for no query.
 
@@ -785,8 +793,11 @@ class HolderProver(_BaseAnchor):
 
     async def get_cred_briefs_by_proof_req_q(self, proof_req_json: str, x_queries_json: str = None) -> str:
         """
-        Return json object mapping wallet credential identifiers to cred-briefs by proof request
-        and WQL queries by proof request referent. Return no cred-briefs on no WQL query and
+        A cred-brief aggregates a cred-info and a non-revocation interval. A cred-brief-dict maps
+        wallet cred-ids to their corresponding cred-briefs.
+
+        Return json (cred-brief-dict) object mapping wallet credential identifiers to cred-briefs by
+        proof request and WQL queries by proof request referent. Return empty dict on no WQL query and
         empty requested predicates specification within proof request. Utility util.proof_req2wql_all()
         builds WQL to retrieve all cred-briefs for (some or all) cred-def-ids in a proof request.
 
@@ -842,7 +853,7 @@ class HolderProver(_BaseAnchor):
                 },
             }
 
-        :return: json object mapping wallet cred ids to cred briefs; e.g.,
+        :return: json (cred-brief-dict) object mapping wallet cred ids to cred briefs; e.g.,
 
         ::
 
@@ -936,8 +947,8 @@ class HolderProver(_BaseAnchor):
             * AbsentLinkSecret if link secret not set
             * CredentialFocus on attempt to create proof on no briefs or multiple briefs for a credential definition
             * AbsentTails if missing required tails file
-            * BadRevStateTime if a timestamp for a revocation registry state in the proof request
-              occurs before revocation registry creation
+            * | BadRevStateTime if a timestamp for a revocation registry state in the proof request
+              | occurs before revocation registry creation
             * IndyError for any other indy-sdk error.
             * AbsentInterval if briefs missing non-revocation interval, but cred def supports revocation
 

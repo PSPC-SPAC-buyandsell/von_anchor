@@ -195,9 +195,10 @@ class Verifier(_BaseAnchor):
             - (optionally) '>': (pred) exclusive int lower-bounds of interest (omit, empty list, or None for none)
             - (optionally) '<=': (pred) inclusive int upper-bounds of interest (omit, empty list, or None for none)
             - (optionally) '<': (pred) exclusive int upper-bounds of interest (omit, empty list, or None for none)
-            - (optionally), 'interval': either            
+            - (optionally), 'interval': either
                 - (2-tuple) pair of epoch second counts marking 'from' and 'to' timestamps, or
-                - single epoch second count to set 'from' and 'to' the same; default (now, now) for cred defs supporting revocation or None otherwise; e.g.,
+                - | single epoch second count to set 'from' and 'to' the same; default
+                  | (now, now) for cred defs supporting revocation or None otherwise; e.g.,
 
         ::
 

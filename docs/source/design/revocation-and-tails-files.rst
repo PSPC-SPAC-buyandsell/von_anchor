@@ -10,10 +10,11 @@ The Tails class forms an abstraction layer to manage tails file for issuer and h
 Revocation Registries
 ****************************************************
 
-A revocation registry comprises metadata regarding a credential definition, in addition to specifying the revocation strategy (whether new credentials issue, non-revoked, by default or on demand), the revocation accumulator, and the associated tails file. Issuer anchors write revocation registry definitions and states to the distributed ledger.
+A revocation registry comprises metadata regarding a credential definition, in addition to specifying the credential issue strategy (by default or on demand), the revocation accumulator, and the associated tails file. Issuer anchors write revocation registry definitions and states to the distributed ledger. The strategy of issue by default requires longer to create tails files, but obviates the need to write a revocation registry delta per credential issue to the ledger. Since VON Anchor allows for an external revocation registry builder posture, its design adopts issue by default as more efficient overall.
 
-In addition to delimiters and numeric identifier type markers (both invariant), each revocation registry has an identifier that comprises its issuer DID, its credential definition identifier, and a trailing tag specific to the revocation registry.
-The convention for von_anchor revocation registry tags is to begin on tag (stringified) 0 and increment with each new revocation registry on any given credential definition. In this way, Tails operation can discover the current revocation registry for a new credential, and default to the next tag on creation of a new revocation registry.
+In addition to delimiters and numeric identifier type markers (both invariant), each revocation registry identifier comprises its issuer DID, its credential definition identifier, and a trailing tag specific to the revocation registry.
+
+The convention for von_anchor revocation registry tags is to begin on tag (stringified) ``'0'`` and increment with each new revocation registry on any given credential definition. In this way, Tails operation can discover the current revocation registry for a new credential, and default to the next tag on creation of a new revocation registry.
 
 Tails Files
 ****************************************************
@@ -21,6 +22,8 @@ Tails Files
 The issuer anchor uses the indy-sdk library to create a tails file to back a new revocation registry. Tails file generation requires an issuer anchor's private key. A tails file contains (randomly generated, enormous) factors multiplying into a revocation accumulator for as many potential credentials as the capacity of the revocation registry. Once generated, tails files are invariant and public. Note that [VT] presents the von_tails package, which includes an external tails file server and synchronization scripts to make them available.
 
 Tails files are potentially enormous and expensive to generate – so much so that using an underlying libindy.so compiled for debug produces unacceptable performance for credential definitions supporting revocation. Tails file generation time scales linearly on the size of the revocation registry; hence, one expects every credential definition that supports revocation to produces many revocation registries. Revocation registry identifiers include a trailing tag to disambiguate between revocation registries for any given credential definition.
+
+.. _tails-tree:
 
 Tails Tree
 ****************************************************
@@ -33,7 +36,7 @@ An additional .hopper subdirectory houses control files for an issuer to queue s
 
 The figure illustrates the structure of the tails tree.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/dir_tails.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/dir_tails.png
     :align: center
     :alt: Tails Tree
  
@@ -54,6 +57,8 @@ The ``reader_handle()``, ``rr_id()``, and ``path()`` methods implement propertie
 Effectively, the only use of the instance methods is to ensure that required files are present (on initialization), to use the tails file reader, and to query 
 either side of the (symbolic link to tails file) association. As the indy-sdk does not currently provide a means to close the tails file reader, the Tails file instance goes into a revocation cache entry that all anchors share, thus minimizing the number of open tails file handles.
 
+.. _tails-static-methods:
+
 Static Methods
 ****************************************************
 
@@ -69,9 +74,11 @@ The ``links()`` method takes a base directory and an optional issuer DID, and re
 
 The ``unlinked()`` method finds all tails files in the tree, excluding the .hopper subdirectory, without associations via symbolic link. A tails file has no association until its issuer anchor associates it with its revocation registry identifier (immediately after creation). Neither does it have an association when a holder-prover anchor's service wrapper uploads it to its location in the tails tree – the holder-prover's revocation registry synchronization  Note that the synchronization scripts in [VT] perform the association on download to the holder-prover.
 
-The ``next_tag()`` method returns the next tag name available for a new revocation registry identifier on an input credential definition identifier, plus a size suggestion for the revocation registry. Given the expense of tails file creation, there is naturally a tension between the creation of large revocation registries for seldom-used credential definitions (too much compute time initially), against the creation of small revocation registries for often-used credential definitions (too many revocation registries and tails files). As such, the default behaviour of the von_anchor package is to begin with an initial revocation registry size of 256, doubling with each new revocation registry to a maximum of 16384.
+The ``next_tag()`` method returns the next tag name available for a new revocation registry identifier on an input credential definition identifier, plus a size suggestion for the revocation registry. Given the expense of tails file creation, there is naturally a tension between the creation of large revocation registries for seldom-used credential definitions (too much compute time initially), against the creation of small revocation registries for often-used credential definitions (too many revocation registries and tails files). As such, the default behaviour of the von_anchor package is to begin with an initial revocation registry size of 64, doubling with each new revocation registry to a maximum of 100000.
 
 The ``current_rev_reg_id()`` method returns the current (with highest value tag, numerically) revocation registry identifier for the input credential definition identifier. With no tag specified, the initializer uses this method to determine the current revocation registry per credential definition identifier, for new credential issue. The operation ignores the .hopper subdirectory as its content builds.
+
+.. _rev-reg-update-frame:
 
 RevRegUpdateFrame
 ###########################################
@@ -85,11 +92,13 @@ A revocation registry update frame f retains cached information about deltas or 
 
 The revocation registry identifier is extrinsic; the revocation cache entry itself retains it in its revocation registry definition as per section ``3.2.1.3``.
 
-Note that a query at a given time must be for a timestamp in the past or present, and the ledger timestamp for the most recent update on the ledger corresponds to a revocation or credential issuer, and hence it must precede the requested timestamp (since an issuer anchor neither issue nor revoke in the future); i.e.,
+Note that a query at a given time must be for a timestamp in the past or present, and the ledger timestamp for the most recent revocation registry update on the ledger corresponds to initial revocation registry creation or a revocation (not credential issue, since VON anchor adopts issue by default). Hence it must precede the requested timestamp (since an issuer anchor cannot mark revocation time in the future); i.e.,
 
 ``f.timestamp <= f.to <= f.qtime``
 
 for all frames ``f``.
+
+.. _revo-cache-entry:
 
 RevoCacheEntry
 ###########################################
@@ -100,18 +109,18 @@ Each revocation cache entry, implemented in von_anchor/cache.py, retains:
 - its associated Tails instance, and
 - two managed lists of frames, housing revocation registry deltas (for proof creation) and updates (for proof verification).
 
-The revocation cache entry implementation exposes methods get_delta_json() and get_state_json() as wrappers for workhorse _get_update_json() to retrieve its revocation registry's delta or state frame for a requested query interval (fro, to), in epoch seconds, past or present. The query interval represents goalposts on the window of interest for a revocation update; any information in that interval suffices.
+The revocation cache entry implementation exposes methods ``get_delta_json()`` and ``get_state_json()`` as wrappers for workhorse ``_get_update_json()`` to retrieve its revocation registry's delta or state frame for a requested query interval ``(fro, to)``, in epoch seconds, past or present. The query interval represents goalposts on the window of interest for a revocation update; any information in that interval suffices.
 
 The diagram illustrates actionable state cases; further elaboration follows.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/revo-cache-reg-upd-frames.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/revo-cache-reg-upd-frames.png
     :align: center
     :alt: Querying Revocation Cache Update Frames
 
 Case 1: Prior Request for Posterior Update Got Frame on Earlier Timestamp
 *****************************************************************************
 
-If a frame f exists in the list where interval ``[f.timestamp, f.to]`` spans ``q.to`` for query ``q`` (i.e., ``f.timestamp <= q.to <= f.to``), then any new update between this frame and the call's requested timestamp would represent a retroactive issue or revocation, which indy-sdk does not support. The frame satisfies the update request: the execution updates its query time and returns its revocation registry update along with the ledger timestamp.
+If a frame f exists in the list where interval ``[f.timestamp, f.to]`` spans ``q.to`` for query ``q`` (i.e., ``f.timestamp <= q.to <= f.to``), then any new update between this frame and the call's requested timestamp would represent a retroactive revocation, which indy-sdk does not support. The frame satisfies the update request: the execution updates its query time and returns its revocation registry update along with the ledger timestamp.
 
 Non-Case: Prior Request for Posterior Update Got Frame on Exact Timestamp
 *****************************************************************************
@@ -122,7 +131,7 @@ Consider such a frame ``f`` in the list.
 
 Since the above case does not apply, ``f.to < q.to``.
 
-But ``f.timestamp <= f.to``, as per section ``3.2.1.2zz``.
+But ``f.timestamp <= f.to``, as per :ref:`rev-reg-update-frame`.
 
 Hence  ``f.timestamp <= f.to < q.to == f.timestamp``,
 
@@ -150,7 +159,7 @@ If the query's requested timestamp ``q.to`` precedes any cached frame's ledger t
 Pruning Heuristic
 *****************************************************************************
 
-The revocation cache prunes registry update frame lists, when they exceed 144 frames, to retain the  most recent 112 frames by query time. Given a typical maximum revocation registry size of 16384, the motivation is to hover the cache size about the the square root (128) of this figure.
+The revocation cache prunes registry update frame lists, when they exceed 346 frames, to retain the  most recent 296 frames by query time. Given a typical maximum revocation registry size of 100 000, the motivation is to hover the cache size about the the square root (326) of this figure.
 
-In case of (say) about 16 million drivers licences, this could yield up to 1000 revocation registries on a credential definition. Since each registry update frame list (json-deserialized) requires about 300 bytes per frame, this heuristic sets a maximum memory requirement of about 43 MB per credential definition for revocation registry delta cache operation.
+In case of (say) about 16 million drivers licences, the tails file sizing strategy of :ref:`tails-static-methods` yields up to 164 revocation registries on a credential definition. Since each registry update frame list (json-deserialized) requires about 300 bytes per frame, this heuristic sets a maximum memory requirement of about 32 MB per credential definition for revocation registry delta cache operation.
 

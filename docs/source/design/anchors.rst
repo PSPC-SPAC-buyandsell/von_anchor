@@ -4,6 +4,8 @@ Anchors
 
 This section outlines the design of the classes implementing anchor functionality. Anchor source code resides in ``von_anchor/anchor/``. Anchors of use principally for the demonstration in scope reside in file  ``von_anchor/anchor/demo.py``.; the remainder of the source code implements purely indy-sdk concepts.
 
+.. _base-anchor:
+
 _BaseAnchor
 ****************************************************
 
@@ -25,6 +27,8 @@ Its (static) ``role()`` method returns the ``TRUST_ANCHOR`` indicator, sufficing
 
 Its ``get_schema()`` and ``get_cred_def()`` methods retrieve schema and credential definitions the ledger. Typically the result comes from its cache; if it goes to the ledger, the implementation populates the applicable cache before returning.
 
+Its ``encrypt()`` and ``decrypt()`` methods delegate to indy-sdk to encrypt, anonymously or with (proof-of-origin) authentication, for itself or another anchor owning an input DID. The actuator packs encrypted values into JWTs for agent-to-agent communications.
+
 The ``get_txn()`` method returns a distributed ledger transaction's content by sequence number.
 
 The ``reseed()`` method updates the private signing and public verification key in anchor's the wallet and its corresponding nym on the ledger as per the following illustration.
@@ -36,7 +40,7 @@ The ``reseed()`` method updates the private signing and public verification key 
 AnchorSmith
 ****************************************************
 
-The ``AnchorSmith`` class (formerly ``AgentSmith``) exposes ``send_nym()`` to fulfill calls to send a cryptonym to the ledger.
+The ``AnchorSmith`` class exposes ``send_nym()`` to fulfill calls to send a cryptonym to the ledger.
 
 Its (static) ``role()`` method returns the ``TRUSTEE`` indicator.
 
@@ -48,12 +52,15 @@ The ``Origin`` class exposes ``send_schema()`` to fulfill calls to send a schema
 RevRegBuilder
 ****************************************************
 
-The RevRegBuilder class builds revocation registries.
+The ``RevRegBuilder`` class builds revocation registries. It is tightly bound as the parent class for ``Issuer``: conceptually, every issuer is a revocation registry builder.
 
-The design admits two postures for a revocation registry builder: internal or external to its Issuer instance. Both configurations use the methods to initialize and to build revocation registries, and its utilities to return locations in the tails tree for the issuer implementation.
+Its initializer method sets up key tails directory locations and starts the revocation registry builder if necessary. The design admits two postures for a revocation registry builder: internal or external to its ``Issuer`` instance. Both configurations use ``RevRegBuilder`` methods to initialize and to build revocation registries, and ``RevRegBuilder`` utilities to return locations in the tails tree for issuer implementation.
 
-Internal
-===================================
+Actuators need not call  ``_create_rev_reg()`` method; the issuer uses it internally as required to create new revocation registries and tails files, and to synchronize their associations.
+
+
+Internal Revocation Registry Builder Posture
+============================================
 
 An internal revocation registry builder operates within the issuer anchor's process to build a new revocation registry when there is no revocation registry with space.
 
@@ -61,16 +68,28 @@ Specifying internal posture takes less time at initialization, but much more tim
 
 The design recommends specifying internal posture only for issuer anchors known to use only credential definitions not supporting revocation.
 
-External
-===================================
+.. _rrbx:
 
-An external revocation registry builder operates in a process separate and detached from its issuer anchor's process to build a new revocation registry on demand.
+External Revocation Registry Builder Posture
+============================================
+
+An external revocation registry builder operates in a process separate and detached from its issuer anchor's process to build a new revocation registry on demand. All issuers on a wallet name share a common external revocation registry process, if their initializers specify external revocation registry posture.
 
 Specifying external posture takes more time at initialization (to spawn a new process for the issuer anchor if one is not running), but less time to issue a credential when it requires a new revocation registry. When an issuer anchor uses an external revocation registry builder, it signals it to pre-generate one revocation registry ahead (in the tails hopper directory) and moves it into place on demand.
 
 The design recommends specifying external posture for issuer anchors that may use credential definitions supporting revocation.
 
-The external posture uses the RevRegBuilder methods get_state(), serve(), stop(), the (free) main line, and the RevRegBuilder.State enum to manage the operation of the external process running the external revocation registry builder.
+Within the initializer, an external revocation registry builder checks the state of the revocation registry process. If starting a new process, it first writes configuration data (the seed and logging directives) to a file in the tails tree for the new process to pick up and delete nearly instantaneously. The seed is sensitive; in this way the process obviates exposing it as a parameter in the operating system's process tree, in the clear.
+
+The external posture uses the RevRegBuilder methods ``_get_state()``, ``serve()``, ``stop()``, the (free) ``main()`` line, and the ``RevRegBuilder._State`` enum to manage the operation of the external process running the external revocation registry builder.
+
+The ``_State`` enum encapsulates the operational state of an external revocation registry builder process: absent, running, or stopping (gracefully).
+
+The ``serve()`` method writes the pid file to signal its running state, then runs the message loop for an external revocation registry builder to monitor its subdirectory within ``tails/.sentinel/`` to parse directions to create revocation registries and to stop gracefully.
+
+The ``stop()`` method directs the message loop to stop, then waits for any revocation registry builds in progress to complete. The indy-sdk's aggressive removal of its temporary directory structure makes the waiting an essential part of the operation for the external revocation registry builder posture.
+
+The free ``main()`` line picks up configuration parameters from its location in the tails tree and starts the new revocation registry builder process.
 
 The figure illustrates the process of starting and stopping an external revocation registry builder for an issuer anchor.
 
@@ -81,7 +100,7 @@ The figure illustrates the process of starting and stopping an external revocati
 Issuer
 ****************************************************
 
-The Issuer class inherits from ``RevRegBuilder``. It has its own initializer and ``open()`` methods to manage and to synchronize its tails tree content (revocation registry identifiers to tails files). Actuators need not call its ``_create_rev_reg()`` and ``_sync_revoc()`` methods; it uses them internally as required to create new revocation registries and tails files, and to synchronize their associations.
+The Issuer class inherits from ``RevRegBuilder``. It has its own ``open()`` method to synchronize its tails tree content (revocation registry identifiers to tails files). Actuators need not call its ``_sync_revoc_for_issue()`` methods; ``Issuer`` uses them internally as required to synchronize tails file associations on startup.
 
 Housekeeping Operations
 ===================================
@@ -110,22 +129,24 @@ Its ``send_cred_def()`` method attempts to create a credential definition, given
 - **Present only in Wallet:** Create in wallet, log warning (private key operations not possible), and carry on: sometimes anchors have many roles and so public key operations may suffice for the session (e.g., forensic scenario)
 - **Present only on Ledger:** Raise ``CorruptWallet``: anchor wallet does not correspond to anchor's node pool
 
-If the call indicates revocation non-support, the operation creates a subdirectory for the credential definition identifier in the tails directory against future box identifier collection. Otherwise, the process creates an initial (tiny) revocation registry and tails file in place for immediate use, and starts asynchronous creation of the next revocation registry and tails file against near-term necessity in the Tails ``.hopper`` subdirectory as per section ``3.2.1.1.3zz``.
+On creating a new credential definition with revocation support, the process signals the revocation registry builder to create an initial (tiny) revocation registry, awaiting its completion before proceeding. Even if the call indicates revocation non-support, the operation creates a subdirectory for the credential definition identifier in the tails directory against future box identifier collection. Finally, the method synchronizes tails files against revocation registries; this call fires the next revocation registry build asynchronously against near-term need in the case of external revocation registry builder posture as per :ref:`rrbx`.
 
 Its  ``create_cred_offer()`` method creates and returns a credential offer for a schema on a given sequence (transaction) number. Note that the schema sequence number is the last token in a credential definition identifier.
 
-Its ``create_cred()`` method takes an indy-sdk credential offer structure, an indy-sdk credential request structure, and a dict of attribute names and values comprising the credential to issue. The operation finds the requisite credential definition from the credential offer and the distributed ledger (typically, from the cache). If the credential definition supports revocation and the current revocation registry is full, the operation awaits the next revocation registry and tails file, which it finds in the Tails ``.hopper``  subdirectory, sends its definition and initial entry to the ledger, then sets tails content in the Tails directory as per section ``3.2.1.1.3zz``. If its revocation registry builder is external, it also signals its process to create the next revocation registry out-of-band in the tails hopper directory. Once a revocation registry is in place for the current credential, the operation issues the new credential. It returns a triple with the new credential and, if the credential definition supports revocation, its credential revocation identifier and the ledger timestamp of its revocation registry delta entry.
+Its ``create_cred()`` method takes an indy-sdk credential offer structure, an indy-sdk credential request structure, and a dict of attribute names and values comprising the credential to issue. The operation finds the requisite credential definition from the credential offer and the distributed ledger (typically, from the cache). If the credential definition supports revocation and the current revocation registry is full, the operation awaits the next revocation registry and tails file, which it finds in the Tails ``.hopper``  subdirectory, sends its definition and initial entry to the ledger, then sets tails content in the Tails directory as per :ref:`tails-tree`. If its revocation registry builder is external, it also signals its process to create the next revocation registry out-of-band in the tails hopper directory. Once a revocation registry is in place for the current credential, the operation issues the new credential. It returns a pair with the new credential and, if the credential definition supports revocation, its credential revocation identifier.
 
 Its  ``revoke_cred()`` method revokes a credential by revocation registry identifier and credential revocation identifier, updating the revocation registry state on the distributed ledger and returning the time of the ledger transaction in epoch seconds.
 
 HolderProver
 ****************************************************
 
-The HolderProver class has its own initializer method to set up a place holder for its link secret, to set its directory for cache archives, and to set any configuration parameters. Actuators need not call its ``_sync_revoc()`` nor ``_build_rr_delta_json()`` methods; the implementation uses them internally as required to create manage tails file associations, and to build revocation registry delta structures (as a callback per section ``3.2.1.3zz``).
+The HolderProver class has its own initializer method to set up a place holder for its link secret, to set its directory for cache archives, and to set any configuration parameters. Actuators need not call its ``_sync_revoc_for_proof()`` nor ``_build_rr_delta_json()`` methods; the implementation uses them internally as required to create manage tails file associations, and to build revocation registry delta structures (as a callback per :ref:`revo-cache-entry`).
 
 It implements properties for access to its configuration and cache directory.
 
-Its configuration dict, specified on initialization, has boolean settings for keys ``parse-caches-on-open`` and a``rchive-holder-prover-caches-on-close``.
+Its configuration dict, specified on initialization, has boolean settings for keys ``parse-caches-on-open`` and ``archive-holder-prover-caches-on-close``.
+
+.. _holder-prover-ctx-mgr-caching-offline-op:
 
 Context Manager Methods, Caching, and Off-Line Operation
 ====================================================================
@@ -146,7 +167,7 @@ Because cache loading operations could monopolize the (shared) caches, it is bes
     :align: center
     :alt: Priming Holder-Prover Anchor for Off-Line Operation
  
-The class's ``offline_intervals()`` helper takes list of credential definition identifiers. It returns a specification dict on credential definition identifiers, mapping to default non-revocation intervals by current cache content. The actuator can augment this specification structure with desired attributes and minima to pass to the Verifier's ``build_proof_req()`` method to build a proof request.
+The class's ``offline_intervals()`` helper takes an iterable collection of credential definition identifiers. It returns a specification dict on credential definition identifiers, mapping to default non-revocation intervals by current cache content. The actuator can augment this specification structure with desired attributes and minima to pass to the Verifier's ``build_proof_req()`` method to build a proof request.
 
 Tails and Revocation Registry Helpers
 ====================================================
@@ -154,6 +175,8 @@ Tails and Revocation Registry Helpers
 Its  ``dir_tails()`` method returns the path to the subdirectory of the tails tree where an incoming tails file should go - the service wrapper layer must implement the upload itself.
 
 Its  ``rev_regs()`` method returns a list of revocation registry identifiers for which the anchor has associated tails files, creating such associations for newly landed tails files without (so that an actuator may poll this method to find a listing for a tails file as soon as it lands). A service wrapper layer (or possibly VON-X) may use this to determine whether it needs a tails file for an upcoming operation.
+
+.. _cred-like-data:
 
 Operations with Credential-Like Data
 ========================================================
@@ -177,10 +200,18 @@ Cred-Brief
 
 The design defines a cred-brief as a dict nesting a cred-info structure on key cred_info and a non-revocation interval on key interval (the non-revocation interval has a null value if the corresponding credential definition does not support revocation).
 
+Cred-Brief-Dict
+-----------------------------------------
+
+The design defines a cred-brief-dict as a dict mapping wallet cred identifiers to corresponding cred-briefs. As per :ref:`holder-prover-cred-like-ops`, ``HolderProver.get_cred_briefs_by_proof_req_q()`` returns a cred-brief-dict.
+
 Credentials
 -----------------------------------------
 
 A credentials (in indy-sdk, "credentials for proof request") structure, is a dict on predicates (key predicates) and attributes (key attrs) identifying each attribute (or predicate) by item referent (formerly known as UUID) to a list of credential briefs for credentials containing it. To create a proof on such a credentials structure, indy-sdk requires exactly one such brief per item referent in its corresponding list.
+
+
+.. _holder-prover-cred-like-ops:
 
 Methods Implementing Operations with Credential-Like Data
 ==============================================================
@@ -196,43 +227,27 @@ Its ``build_req_creds_json()`` helper builds an indy-sdk requested credentials s
 
 The filter itself maps credential definition identifiers to criteria for attribute values and minima to include in the requested credentials via the following specifications per credential definition identifier:
 
-- '``attr-match``' to a dict mapping attribute names to values to match
+- ``'attr-match'`` to a dict mapping attribute names to values to match
     - if the key is absent or the value is null or empty, match everything
-- '``minima``' to a dict of lower bound values to respect (by predicate) per attribute
-    - if the key is absent or the value is null or empty, match everything.
-
-Its  ``get_creds_display_coarse()`` method returns a human-readable synopsis of credentials in the wallet, filtered coarsely (or not at all) by components of schema identifier and/or credential definition identifier. Its operation returns a list of credentials, not a true indy-sdk credentials structure. The actuator may use this facility iteratively with a human user to identify credentials of interest by attribute and predicate filter, or by wallet identifier (a.k.a. referent), to pass into ``get_creds()`` or ``get_creds_by_id()`` and hence to retrieve a proper indy-sdk credentials structure.
-
-The class's  ``get_creds_by_id()`` method takes an indy-sdk proof request and wallet credential identifiers (a.k.a. referents) of interest. The operation returns an indy-sdk credentials structure on those specified credential identifiers.
-
-Note a credential's revocation status does not affect whether any anchor returns it via the methods above.
+- ``'>'``, ``'>='``, ``'<='``, ``'<'`` to a dict of corresponding bound values to respect (by predicate) per attribute
+    - if such a key is absent or its value is null or empty, match everything.
 
 Its  ``get_cred_infos_by_q()`` method takes a WQL query and an optional result limit; its operation retrieves cred-infos for credentials satisfying it, applying the search within the indy-sdk wallet.
 
-Its  ``get_cred_infos_by_filter()`` method takes a coarse filter (on any of schema identifier, schema origin DID, schema name, schema version, credential issuer DID, or credential definition identifier). Its operation retrieves cred-infos for each corresponding credential in the wallet, searching within indy-sdk itself.
+Its  ``get_cred_infos_by_filter()`` method takes a coarse filter (matching values against any schema identifier, schema origin DID, schema name, schema version, credential issuer DID, and/or credential definition identifier). Its operation retrieves cred-infos for each corresponding credential in the wallet, searching the wallet within indy-sdk itself.
 
 Its  ``get_cred_info_by_id()`` method takes a wallet credential identifier and retrieves cred-info for the corresponding credential in the wallet.
 
-Its  ``get_creds()`` method returns a tuple on a set of wallet credential identifiers and an indy-sdk credentials structure on credentials of interest. This method is deprecated because it applies filtration after the wallet response, at the VON anchor layer rather than the indy-sdk layer. It takes an indy-sdk proof request structure and an optional filter to apply, plus an additional optional boolean specifying default behaviour for that filter as follows:
+Its  ``get_cred_briefs_by_proof_req_q()`` method takes a proof request and a structure of extra [WQL] queries, indexed as a dict by their referents in the proof request (the ``proof_req_attr_referents()`` and ``proof_req2wql_all()`` utilities of :ref:`wranglers` can aid in the construction of this WQL). It uses indy-sdk to search within the wallet to retrieve credential briefs matching the extra WQL queries. It filters the results against any predicates within the proof request before returning. Note however that predicate filtration is relatively expensive, since it occurs outside the wallet: indy-sdk supports only exact attribute matches for (WQL) in-wallet filtration. The method returns a cred-briefs-dict as per :ref:`cred-like-data`.
 
-- an absent filter parameter means no filter: include all credentials
-- otherwise, include any credential on a credential definition identifer that is not present in the filter if and only if the boolean is set (True).
-
-The filter itself maps credential definition identifiers to criteria for attribute values and minima to include in the requested credentials via the following specifications per credential definition identifier:
-
-- '``attr-match``' to a dict mapping attribute names to values specifying credentials to include
-    - if the key is absent or the value is null or empty, do not filter by attribute value
-- '``minima``' to a dict of lower bound values to require per attribute in credentials to include
-    - if the key is absent or the value is null or empty, do not filter by attribute minimum.
-
-Its  ``get_cred_briefs_by_proof_req_q()`` method takes a proof request and a structure of extra [WQL] queries, indexed as a dict by their referents in the proof request (the ``proof_req_attr_referents()`` and ``proof_req2wql_all()`` utilities of section ``3.2.3.3zz`` can aid in the construction of this WQL). It uses indy-sdk to search within the wallet to retrieve and return credential briefs matching the extra WQL queries.
+Note that a credential's revocation status does not affect whether any anchor returns it via the methods above.
 
 Proof Methods
 ===================================
 
 The class's  ``create_link_secret()`` method sets the link secret, for proof creation, in the wallet.
 
-Its  ``create_proof()`` method creates a proof for input indy-sdk proof request, credentials (or list of credential briefs), and requested-credentials structures.
+Its  ``create_proof()`` method creates a proof for input indy-sdk proof request, credentials (or iterable collection of credential briefs), and requested-credentials structures.
 
 Reset
 -----------------------------------------
@@ -242,11 +257,11 @@ Its  ``reset_wallet()`` method allows the service wrapper layer to delete the wa
 Verifier
 ****************************************************
 
-The ``Verifier`` class has its own initializer method to set its directory for cache archives and to set any configuration parameters. Actuators need not call its ``_build_rr_state_json()`` method; the implementation uses it internally as required to build revocation registry state structures (as a callback per section ``3.2.1.3zz``).
+The ``Verifier`` class has its own initializer method to set its directory for cache archives and to set any configuration parameters. Actuators need not call its ``_build_rr_state_json()`` method; the implementation uses it internally as required to build revocation registry state structures as per :ref:`revo-cache-entry` for the revocation cache.
 
-It implements properties for access to its configuration and cache directory.
+The class implements properties for access to its configuration and cache directory.
 
-Its configuration dict, specified on initialization, has a boolean setting for key parse-caches-on-open and a box-ids structure (i.e., a dict of lists on keys schema_id, cred_def_id, and rev_reg_id) for key ``archive-verifier-caches-on-close``. Note that ``HolderProver`` anchors provide these box-ids on request (as per section ``3.2.1.11.6.1zz``) via ``HolderProver.get_box_ids_json()``; actuators would need to poll holder-provers of interest if off-line operation is in scope.
+Its configuration dict, specified on initialization, has a boolean setting for key parse-caches-on-open and a box-ids structure (i.e., a dict of lists on keys schema_id, cred_def_id, and rev_reg_id) for key ``archive-verifier-caches-on-close``. Note that ``HolderProver`` anchors provide these box-ids on request (as per :ref:`holder-prover-ctx-mgr-caching-offline-op`) via ``HolderProver.get_box_ids_json()``; actuators would need to poll holder-provers of interest if off-line operation is in scope.
 
 The ``Verifier`` class exposes the ``verify_proof()`` method to verify an input proof against its proof request. It returns True or False.
 
@@ -254,12 +269,12 @@ Its static ``role()`` method returns null; pure verifier anchors need not write 
 
 The class's ``build_proof_req_json()`` helper takes a specification construct. It returns an indy-sdk proof_request structure (JSON encoded). The specification construct is a dict on credential definition identifiers. Each key is a credential definition identifier; its value is a dict mapping:
 
-- '``attrs``' to a list of attributes of interest
+- ``'attrs'`` to a list of attributes of interest
     - if the key is absent, request all attributes
     - if the key is present but the value is null or empty, request no attributes (i.e., only predicates)
-- '``minima``' to a dict of lower bound values to request (by predicate) per attribute
-    - if the key is absent or the value is null or empty, request no predicates
-- '``interval``' to a single timestamp of interest, in integer epoch seconds, or to a pair of integers marking the boundaries of a non-revocation interval; if absent,
+- ``'>'``, ``'>='``, ``'<='``, ``'<'`` to a dict of bound values to request (by predicate) per attribute
+    - if such a key is absent or its value is null or empty, request no such predicates
+- ``'interval'`` to a single timestamp of interest, in integer epoch seconds, or to a pair of integers marking the boundaries of a non-revocation interval; if absent,
     - request the present moment if the credential definition supports revocation,
     - omit if the credential definition does not support revocation.
 

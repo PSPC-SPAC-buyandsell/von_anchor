@@ -1,5 +1,5 @@
-Package: VON Anchor Demo
-=========================
+Package: VON Anchor Demonstration
+=================================
 
 .. automodule:: von_anchor.anchor.demo
     :members:

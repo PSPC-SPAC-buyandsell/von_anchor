@@ -1,0 +1,67 @@
+@startuml
+/'
+Copyright 2017-2018 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+'/
+
+skinparam ParticipantPadding 20
+skinparam BoxPadding 20
+
+title Credential Request Sequence
+
+box "Indy" #LightBlue
+    participant "Ledger" as ledger
+endbox
+
+actor "Holder-Prover\n(The Org Book)\nVON Anchor" as oban
+actor "Actuator" as ator
+
+=== CREDENTIAL REQUEST SEQUENCE ==
+note over ledger, ator
+    All VON anchor service wrapper APIs are up
+    Schema, cred defs are on ledger
+    Cred load sequence has stored creds at Holder-Prover VON anchor
+endnote
+
+alt by components of schema id or cred def id
+    ator --> oban: call get_cred_infos_by_filter(filt)
+    group get_cred_infos_by_filter() implements
+        oban -> oban: get and filter cred-infos
+        oban --> ator: list of individual cred-infos
+    end
+else by attribute values via query
+    ator --> oban: call get_cred_infos_by_q(query_json, limit)
+    group get_cred_infos_by_q() implements
+        oban -> oban: get and filter creds by query
+        oban --> ator: list of cred-infos
+    end
+else by cred id
+    oban -> oban: call get_cred_info_by_id(cred_id)
+    group get_cred_info_by_id() implements
+        oban -> oban: get and filter creds by identifier
+        oban --> ator: cred-info
+    end
+else by proof request and queries
+    oban -> oban: call get_cred_briefs_by_proof_req_q(proof_req_json, x_queries_json)
+    group get_cred_briefs_by_proof_req_q() implements
+        oban -> oban: get and filter creds by proof req and extra WQL queries
+        oban --> ator: dict mapping wallet referents to cred-briefs
+    end
+end
+
+alt more filtration post-hoc
+    ator -> ator: call creds_display(creds, filt)
+    ator -> ator: select creds of interest by cred id
+end
+@enduml

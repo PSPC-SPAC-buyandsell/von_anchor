@@ -1,0 +1,84 @@
+@startuml
+/'
+Copyright 2017-2018 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+'/
+
+skinparam ParticipantPadding 20
+skinparam BoxPadding 20
+
+title Credential Load Sequence
+
+box "Indy" #LightBlue
+    participant "Ledger" as ledger
+endbox
+
+actor "Holder-Prover\n(The Org Book)\nVON Anchor" as oban
+actor "Issuer\n(BC Registrar)\nVON Anchor" as bcran
+actor "Actuator" as ator
+
+=== CREDENTIAL LOAD SEQUENCE ==
+
+note over ledger, ator
+    All VON anchor service wrapper APIs are up
+    Schema, cred defs, rev reg defs are on ledger
+endnote
+
+ator -> bcran: call create_cred_offer(schema_seq_no)
+group create_cred_offer() implements
+    bcran -> ledger: get cred def
+    ledger --> bcran: cred def
+    bcran -> bcran: create and store cred offer
+    bcran --> ator: cred_offer
+end
+
+ator -> oban: call create_cred_req(cred_offer, cred_def)
+group create_cred_req() implements
+    oban -> oban: create cred req and metadata
+    bcran --> ator: cred_req, metadata
+end
+
+loop for each cred
+    ator -> bcran: call create_cred(cred_offer, cred_req, attrs)
+    group create_cred() implements
+        bcran -> bcran: create cred
+        alt cred def creation indicates rev reg full
+            bcran -> bcran: set next rev reg, tails file;\nstart asynchronous\npre-computation of next
+            bcran -> ledger: send rev reg def
+            ledger --> bcran: rev reg id
+            bcran -> ledger: send initial rev reg state
+            ledger --> bcran: OK
+            bcran -> bcran: call create_cred() recursively
+        end
+        bcran --> ator: cred, cred revocation identifier
+    end
+
+    ator -> oban: call store_cred(cred, metadata)
+    group store_cred() implements
+        alt tails file present or revocation not supported
+            oban -> oban: store cred
+            oban --> ator: cred id in wallet
+        else missing required tails file
+            oban -[#blue]-> ator: absent tails file
+        end
+        ator -[#blue]> ator: get rev reg id from cred
+        ator -[#blue]> bcran: get tails file by rev reg id
+        bcran -[#blue]-> ator: tails file
+    end
+    ator -[#blue]> oban: upload tails file
+    oban -[#blue]> oban: call Tails.dir() to find dir for tails file and write it
+    oban -[#blue]-> ator: return
+end
+
+@enduml

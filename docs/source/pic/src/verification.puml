@@ -1,0 +1,47 @@
+@startuml
+/'
+Copyright 2017-2018 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+'/
+
+skinparam ParticipantPadding 20
+skinparam BoxPadding 20
+
+title Verification Sequence
+
+box "Indy" #LightBlue
+    participant "Ledger" as ledger
+endbox
+
+actor "Verifier\n(e.g., SRI)\nVON Anchor" as san
+actor "Actuator" as ator
+
+=== VERIFICATION SEQUENCE ==
+ator -> san: call verify_proof(proof_req, proof)
+group verify_proof() implements
+    loop each identifier in proof
+        san -> ledger: get schema
+        ledger --> san: schema
+        san -> ledger: get cred def
+        ledger --> san: cred def
+        san -> ledger: get rev reg def
+        ledger --> san: rev reg def
+        san -> ledger: get rev reg state
+        ledger --> san: rev reg state 
+    end
+    san -> san: verify proof
+    san -> ator: True or False
+end
+
+@enduml

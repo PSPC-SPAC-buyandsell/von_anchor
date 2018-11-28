@@ -674,6 +674,8 @@ async def test_anchors_api(
                                                     
     bc_box_ids = box_ids(bc_briefs_all.values(), bc_briefs_all.keys())  # exercise box_ids
     assert bc_box_ids.items() == box_ids(bc_briefs_all).items()
+    bc_box_ids_by_info = box_ids([b['cred_info'] for b in bc_briefs_all.values()])
+    assert bc_box_ids_by_info.items() == box_ids(bc_briefs_all).items()
 
     # BC Org Book anchor (as HolderProver) exercises finding creds by query
     proof_req[S_ID['NON-REVO']] = json.loads(await san.build_proof_req_json({
@@ -780,7 +782,7 @@ async def test_anchors_api(
         ppjson(bc_briefs_q)))
     assert len(bc_briefs_q) == 1
 
-    bc_revoc_info_q = revoc_info(bc_briefs_q.values())
+    bc_revoc_info_q = revoc_info([brief['cred_info'] for brief in bc_briefs_q.values()])  # exercise for cred-info(s)
     assert len(bc_revoc_info_q) == 1
     tart_city_id = set(list(bc_briefs_q.keys())).pop()
 
@@ -1204,6 +1206,8 @@ async def test_anchors_api(
 
     bc_display_pred = creds_display(bg_briefs_q.values())
     print('\n\n== 47 == BC creds display, filtered by predicate id >= 5: {}'.format(ppjson(bc_display_pred)))
+    bc_display_pred_by_cred_infos = creds_display([b['cred_info'] for b in bg_briefs_q.values()])
+    assert bc_display_pred == bc_display_pred_by_cred_infos
 
     # SRI anchor (as Verifier) verifies proof (by predicate)
     rc_json = await san.verify_proof(bg_proof_req_pred, bg_proof_pred)

@@ -9,15 +9,17 @@
    :maxdepth: 2
    :caption: Overview and Code
 
-   anchors
-   anchor-interactions
-   revocation-and-tails-files
-   schema-cache-node-wallet
-   utility-functions
-   exceptions
-   class-hierarchy
-   packaging
-   configuration-validation
+   design/anchors
+   design/anchor-interactions
+   design/revocation-and-tails-files
+   design/cache-nodepool-wallet
+   design/utility-functions
+   design/exceptions
+   design/class-hierarchy
+   design/packaging
+   design/configuration-validation
+   installation/installation
+   installation/unit-tests
    modules.rst
 
 Indices and tables

@@ -200,10 +200,11 @@ def rev_reg_id2cred_def_id_tag(rr_id: str) -> (str, str):
 
 def iter_briefs(briefs: Union[Iterable, dict]) -> tuple:
     """
-    Given a cred-brief, iterable collection thereof, or mapping from wallet cred-ids to cred-briefs
-    (as HolderProver.get_cred_briefs_by_proof_req_q() returns), return tuple with all contained cred-briefs.
+    Given a cred-brief/cred-info, an iterable collection thereof, or cred-brief-dict
+    (as HolderProver.get_cred_briefs_by_proof_req_q() returns), return tuple with
+    all contained cred-briefs.
 
-    :param briefs: cred-brief, iterable collection thereof, or mapping from wallet cred-ids to cred-briefs
+    :param briefs: cred-brief/cred-info, iterable collection thereof, or cred-brief-dict
     :return: tuple of cred-briefs
     """
 
@@ -216,13 +217,13 @@ def iter_briefs(briefs: Union[Iterable, dict]) -> tuple:
 
 def box_ids(briefs: Union[Iterable, dict], cred_ids: Union[Iterable, str] = None) -> dict:
     """
-    Given one or more cred-briefs, and an optional iterable collection of credential identifiers
+    Given one or more cred-briefs/cred-infos, and an optional iterable collection of credential identifiers
     (aka wallet cred ids, referents; specify None to include all), return dict mapping each
     credential identifier to a box ids structure (i.e., a dict specifying its corresponding
     schema identifier, credential definition identifier, and revocation registry identifier,
     the latter being None if cred def does not support revocation).
 
-    :param briefs: cred-briefs, iterable thereof, or dict mapping wallet cred ids to cred-briefs
+    :param briefs: cred-brief/cred-info, iterable thereof, or cred-brief-dict
     :param cred_ids: credential identifier or iterable thereof for which to find corresponding
         schema identifiers, None for all
     :return: dict mapping each credential identifier to its corresponding box ids (empty dict if
@@ -231,7 +232,7 @@ def box_ids(briefs: Union[Iterable, dict], cred_ids: Union[Iterable, str] = None
 
     rv = {}
     for brief in iter_briefs(briefs):
-        cred_info = brief['cred_info']
+        cred_info = brief.get('cred_info', {}) or brief  # briefs could be cred-infos or cred-briefs
         cred_id = cred_info['referent']
         if ((cred_id not in rv) and (not cred_ids or cred_id in [cred_ids, [cred_ids]][isinstance(cred_ids, str)])):
             rv[cred_id] = {
@@ -297,7 +298,7 @@ def proof_req_infos2briefs(proof_req: dict, infos: Union[Iterable, dict]) -> lis
 
     rv = []
     refts = proof_req_attr_referents(proof_req)
-    for info in [infos] if isinstance(infos, dict) else infos:
+    for info in iter_briefs(infos):
         if info['cred_def_id'] not in refts:
             continue
         brief = {
@@ -332,7 +333,7 @@ def proof_req_briefs2req_creds(proof_req: dict, briefs: Union[Iterable, dict]) -
 
     :param proof_req: proof request
     :param briefs: credential brief, iterable collection thereof (as indy-sdk wallet credential search returns),
-        or dict mapping wallet cred ids to briefs (as HolderProver.get_cred_briefs_for_proof_req_q() returns); e.g.,
+        or cred-brief-dict (as HolderProver.get_cred_briefs_for_proof_req_q() returns); e.g.,
 
     ::
 
@@ -450,12 +451,11 @@ def proof_req_briefs2req_creds(proof_req: dict, briefs: Union[Iterable, dict]) -
 
 def creds_display(creds: Union[Iterable, dict], filt: dict = None, filt_dflt_incl: bool = False) -> dict:
     """
-    Find indy-sdk creds matching input filter from within input creds structure,
-    iterable collection of cred-briefs, or dict mapping wallet cred ids to briefs,
-    return human-legible summary.
+    Find indy-sdk creds matching input filter from within input creds structure, iterable
+    collection of cred-briefs/cred-infos, or cred-brief-dict.  Return human-legible summary.
 
-    :param creds: creds structure, iterable collection of cred-briefs,
-        or dict mapping wallet cred ids to cred-briefs; e.g., creds
+    :param creds: creds structure, cred-brief/cred-info or iterable collection thereof,
+        or cred-brief-dict; e.g., creds
 
     ::
 
@@ -553,7 +553,7 @@ def creds_display(creds: Union[Iterable, dict], filt: dict = None, filt_dflt_inc
     def _add(briefs):
         nonlocal rv, filt
         for brief in briefs:
-            cred_info = brief['cred_info']
+            cred_info = brief.get('cred_info', {}) or brief  # briefs could be cred-infos or cred-briefs
             if cred_info['referent'] in rv:
                 continue
             cred_cd_id = cred_info['cred_def_id']
@@ -774,13 +774,13 @@ def proof_req_pred_referents(proof_req: dict) -> dict:
         {
             'WgWxqztrNooG92RXvxSTWv:3:CL:194:tag': {
                 'highscore': {
-                    '194_level_GE_uuid': lambda x: Predicate.GE.value.yes(x, 100000)
+                    '194_level_GE_uuid': ['>=', 100000]
                 },
                 'level': {
-                    '194_level_GE_uuid': lambda x: Predicate.GE.value.yes(x, 10)
+                    '194_level_GE_uuid': ['>=', 10]
                 },
                 'attempts': {
-                    '194_attempts_LE_uuid': lambda x: Predicate.LE.value.yes(x, 3)
+                    '194_attempts_LE_uuid': ['<=', 3]
                 }
             },
             'WgWxqztrNooG92RXvxSTWv:3:CL:198:tag': {
@@ -813,13 +813,13 @@ def proof_req_pred_referents(proof_req: dict) -> dict:
 
 def revoc_info(briefs: Union[Iterable, dict], filt: dict = None) -> dict:
     """
-    Given a cred-brief or iterable collection thereof, return a dict mapping pairs
+    Given a cred-brief, cred-info or iterable collection of either, return a dict mapping pairs
     (revocation registry identifier, credential revocation identifier)
     to attribute name: (raw) value dicts.
 
     If the caller includes a filter of attribute:value pairs, retain only matching attributes.
 
-    :param briefs: cred-brief or iterable thereof
+    :param briefs: cred-brief/cred-info, or iterable thereof
     :param filt: dict mapping attributes to values of interest; e.g.,
 
     ::
@@ -857,7 +857,7 @@ def revoc_info(briefs: Union[Iterable, dict], filt: dict = None) -> dict:
 
     rv = {}
     for brief in iter_briefs(briefs):
-        cred_info = brief['cred_info']
+        cred_info = brief.get('cred_info', {}) or brief  # briefs could be cred-infos or cred-briefs
         (rr_id, cr_id) = (cred_info['rev_reg_id'], cred_info['cred_rev_id'])
         if (rr_id, cr_id) in rv or rr_id is None or cr_id is None:
             continue

@@ -1,11 +1,11 @@
 *****************************************************
-Schema, Caching, NodePools and Wallets
+Caching, NodePools and Wallets
 *****************************************************
 
-Schema Key
-###########################################
+Caching
+=======
 
-The content of a SchemaKey named tuple instance specifies a schema unambiguously through its origin_did, name, and version slots. Historically, the indy-sdk ledger used schema keys to identify schemas before migrating to schema identifiers. At present, the von_anchor design retains it principally to help disambiguate calls to get a schema via ``_BaseAnchor.get_schema()`` as per section ``3.2.1.11zz``.
+This section outlines the cache implementations for schemata, credential definitions, and revocation registries.
 
 Schema Cache
 ###########################################
@@ -16,7 +16,7 @@ The ``SchemaCache`` class allows for storage and retrieval by sequence number, b
 
 The ``schemata()`` method lists all schemata in the instance.
 
-The ````feed()```` method takes a list of schemata to add to the cache. If a schema on an incoming sequence number is already in the cache, the operation logs a warning and demurs: it is not possible for an archived schema to represent an update on one already in the live cache.
+The ``feed()`` method takes a list of schemata to add to the cache. If a schema on an incoming sequence number is already in the cache, the operation logs a warning and demurs: it is not possible for an archived schema to represent an update on one already in the live cache.
 
 The ``clear()`` method clears the cache.
 
@@ -34,7 +34,7 @@ The ``RevoCache`` derives from simple ``dict`` and offers a class-wide (re-entra
 
 The revocation cache additionally offers the ``dflt_interval()`` instance method, computing a default non-revocation interval by credential definition identifier on the current content of the revocation cache. This interval is the latest interval touching all revocation registries against the input credential definition identifier; the following figure illustrates.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/default-interval.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/default-interval.png
     :align: center
     :alt: Revocation Cache Default Interval Computation per Credential Definition Identifier
  
@@ -54,16 +54,18 @@ The ``parse()`` method takes a base directory and timestamp (defaulting to the m
 The ``purge_archives()`` method deletes old archived cache files, optionally preserving the most recent.
 
 Node Pool
-###########################################
+=======================
 
 The ``NodePool`` class encapsulates the indy-sdk node pool. It resides in ``von_anchor/nodepool.py``.
 
-Its initializer stores a pool name for use with indy-sdk and the path to a file with a (copy of the) genesis transactions; it also takes an optional configuration dict supporting the auto_remove key; set its value True to instruct the node pool implementation to delete serialized indy-sdk configuration data on exit.
+Its initializer stores a pool name for use with indy-sdk and the path to a file with a (copy of the) genesis transactions. It takes an optional configuration dict supporting the ``auto-remove`` and ``protocol`` keys. An ``auto-remove`` value of True to instructs the node pool implementation to delete serialized indy-sdk configuration data on exit. The ``protocol`` value overrides the default (latest) indy-node protocol version to use.
 
-The context manager methods set up and tear down the pool within the indy-sdk. On opening, the indy-sdk creates control files on the pool name in directory ``$HOME/.indy_client/pool/`` and returns a pool handle, which the ``NodePool`` object retains for future indy-sdk interaction. On closing, the  instance directs the indy-sdk to invalidate the handle and delete its control files (if so configured).
+The context manager methods set up and tear down the pool within the indy-sdk. On opening, the indy-sdk creates control files on the pool name in directory ``$HOME/.indy_client/pool/`` and returns a pool handle, which the ``NodePool`` object retains for future indy-sdk interaction. On closing, the instance directs the indy-sdk to invalidate the handle and delete its control files (if so configured).
+
+The ``Protocol`` enumeration encapsulates all differences in indy-node protocol messages.
 
 Wallet
-###########################################
+=======================
 
 The Wallet class encapsulates the indy-sdk wallet. It resides in ``von_anchor/wallet.py``.
 
@@ -81,9 +83,9 @@ A distinct asynchronous ``create()`` call prompts the wallet object to bootstrap
 
 The context manager methods set up and tear down the wallet within the indy-sdk. On opening, the indy-sdk opens its control files (per its wallet type) and returns a wallet handle, which the the ``Wallet`` object retains for future indy-sdk interaction. On closing, the  instance directs the indy-sdk to invalidate the handle and delete its control files (if so configured).
 
-An internal ``_seed2did()`` utility retrieves the DID from a matching seed (by hash value) in metadata. The ``open()/__aenter__()`` context manager methods, as well as the ``create()`` method when the wallet already exists, use this utility to get the DID without overwriting it in the wallet, then to populate the verification key from this DID. Abstaining from overwriting the DID on every open allows for support of key update.
+An internal ``_seed2did()`` utility retrieves the DID from a matching seed (by hash value) in metadata. The ``open()`` and ``__aenter__()`` context manager methods, as well as the ``create()`` method when the wallet already exists, use this utility to get the DID without overwriting it in the wallet, then to populate the verification key from this DID. Abstaining from overwriting the DID on every open allows for support of key update.
 
-The ``reseed_init()`` and ``reseed_apply()`` methods perform key rotation. The anchor that owns the wallet calls these methods to realize the operation as per section ``3.2.1.11.1zz``.
+The ``reseed_init()`` and ``reseed_apply()`` methods perform key rotation. The anchor that owns the wallet calls these methods to realize the operation as per :ref:`base-anchor`.
 
 Finally, the free function ``register_wallet_storage_library()`` in ``von_anchor/wallet.py`` registers a wallet storage plug-in with the indy-sdk.
 

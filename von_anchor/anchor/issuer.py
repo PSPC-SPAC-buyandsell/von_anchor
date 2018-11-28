@@ -181,7 +181,7 @@ class Issuer(RevRegBuilder):
         open and cache tails file reader.
 
         :param rr_id: revocation registry identifier
-        :param rr_size: if new revocation registry necessary, its size (default as per _create_rev_reg())
+        :param rr_size: if new revocation registry necessary, its size (default as per RevRegBuilder._create_rev_reg())
         """
 
         LOGGER.debug('Issuer._sync_revoc_for_issue >>> rr_id: %s, rr_size: %s', rr_id, rr_size)
@@ -252,7 +252,8 @@ class Issuer(RevRegBuilder):
 
         :param s_id: schema identifier
         :param revocation: whether to support revocation for cred def
-        :param rr_size: size of initial revocation registry (default as per _create_rev_reg()), if revocation supported
+        :param rr_size: size of initial revocation registry (default as per RevRegBuilder._create_rev_reg()),
+            if revocation supported
         :return: json credential definition as it appears on ledger
         """
 
@@ -416,7 +417,7 @@ class Issuer(RevRegBuilder):
                 'weaknesses': None
             }
 
-        :param rr_size: size of new revocation registry (default as per _create_rev_reg()) if necessary
+        :param rr_size: size of new revocation registry (default as per RevRegBuilder._create_rev_reg()) if necessary
         :return: tuple with newly issued credential json, credential revocation identifier (if cred def
             supports revocation, None otherwise).
         """
