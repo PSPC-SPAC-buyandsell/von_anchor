@@ -33,7 +33,7 @@ The ``get_txn()`` method returns a distributed ledger transaction's content by s
 
 The ``reseed()`` method updates the private signing and public verification key in anchor's the wallet and its corresponding nym on the ledger as per the following illustration.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/reseed.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/reseed.png
     :align: center
     :alt: Key Rotation Sequence
 
@@ -93,7 +93,7 @@ The free ``main()`` line picks up configuration parameters from its location in 
 
 The figure illustrates the process of starting and stopping an external revocation registry builder for an issuer anchor.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/rrbx-proc.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/rrbx-proc.png
     :align: center
     :alt: External Revocation Registry Builder Start and Stop
 
@@ -118,7 +118,7 @@ Credential Operations
 
 This section outlines credential operations. The figure illustrates operations as they interact with an external revocation registry builder for fulfillment; further discussion follows.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/rrbx-op.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/rrbx-op.png
     :align: center
     :alt: External Revocation Registry Builder Operation
  
@@ -163,7 +163,7 @@ Its ``close()`` method synchronizes its tails file associations (in case of a ne
 
 Because cache loading operations could monopolize the (shared) caches, it is best for an off-line holder-prover to be the only anchor in its process. The following figure illustrates the process of priming a holder-prover anchor for off-line operation.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/offline.holderprover.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/offline.holderprover.png
     :align: center
     :alt: Priming Holder-Prover Anchor for Off-Line Operation
  
@@ -286,7 +286,7 @@ Its ``close()`` method, if its configuration has content for ``archive-verifier-
 
 Because these operations could monopolize the (shared) caches, it is best for an off-line verifier to be the only anchor in its process. The following figure illustrates the process of priming a verifier anchor for off-line operation.
 
-.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_base/master/doc/pic/offline.verifier.png
+.. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/offline.verifier.png
     :align: center
     :alt: Priming Verifier Anchor for Off-Line Operation
  
