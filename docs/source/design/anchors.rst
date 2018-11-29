@@ -6,10 +6,10 @@ This section outlines the design of the classes implementing anchor functionalit
 
 .. _base-anchor:
 
-_BaseAnchor
+BaseAnchor
 ****************************************************
 
-The ``_BaseAnchor`` class implements essential functionality that defines an anchor: it holds references to a wallet and the node pool for use within indy-sdk; it implements calls common to all anchors of all kinds.
+The ``BaseAnchor`` class implements essential functionality that defines an anchor: it holds references to a wallet and the node pool for use within indy-sdk; it implements calls common to all anchors of all kinds.
 
 Its property methods make an instance's pool and wallet available; convenience methods delegate to the wallet to make its DID and verification keys available.
 
