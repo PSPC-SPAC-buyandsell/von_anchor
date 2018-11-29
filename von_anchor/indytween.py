@@ -15,9 +15,6 @@ limitations under the License.
 """
 
 
-import json
-import re
-
 from collections import namedtuple
 from enum import Enum
 from hashlib import sha256

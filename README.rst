@@ -106,15 +106,15 @@ The design of the von_anchor toolkit includes demonstration anchors as :ref:`dem
 Version Numbering
 =================
 
-Since version 1.6, the von_anchor major and minor version numbers (i.e., x.y in x.y.z) of any given release track the version that its corresponding indy-sdk (master development version) anticipates. Note that indy-sdk version numbering, has
+Since version 1.6, the von_anchor major and minor version numbers (i.e., *x.y* in *x.y.z*) of any given release track the version that its corresponding indy-sdk (master development version) anticipates. Note that indy-sdk version numbering, has
 
-`x.(y-1).z-dev-nnn < x.y.z.rc-n <= x.y.z`
+*x.(y-1).z-*\ dev-\ *nnn < x.y.z-*\ rc\ *\ -n <= x.y.z*
 
-for any release x.y.z. For example, releases 1.5.0-dev-nnn follow release 1.5 but precede release candidate 1.6.0-rc-n and release 1.6.0. Any corresponding von_anchor releases would take version number series 1.6.z. The micro (i.e., z in x.y.z), and any numbers beyond, count only VON anchor increments, and have no relation to any external information.
+for any release *x.y.z*. For example, development release 1.6.7-dev-834 follows release 1.6.7 but precedes release candidate 1.6.8-rc-43 and release 1.6.8. Any corresponding ``von_anchor`` releases would take version number series 1.6.\ *z*. The micro version number (i.e., *z* in *x.y.z*), and any numbers beyond, count only VON anchor increments, and have no relation to any external information.
 
 References
 ==========
 
-[VT] – "The von_tails External Tails File Server". Public Services and Procurement Canada, 2018. https://github.com/PSPC-SPAC-buyandsell/von_tails/blob/master/doc/von-tails.doc
+[VT] – "The von_tails External Tails File Server". Public Services and Procurement Canada, 2018. https://github.com/PSPC-SPAC-buyandsell/von_tails/blob/master/README.rst
 
 [WQL] – "Wallet Query Language". Sovrin Foundation, 2018. https://github.com/hyperledger/indy-sdk/tree/master/doc/design/011-wallet-query-language

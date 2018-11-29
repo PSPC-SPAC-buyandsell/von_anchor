@@ -25,7 +25,7 @@ from time import time
 from indy import anoncreds, ledger
 from indy.error import IndyError
 
-from von_anchor.anchor.base import _BaseAnchor
+from von_anchor.anchor.base import BaseAnchor
 from von_anchor.cache import Caches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.canon import canon
 from von_anchor.error import AbsentRevReg, AbsentSchema, BadIdentifier, BadRevStateTime, ClosedPool
@@ -39,7 +39,7 @@ from von_anchor.wallet import Wallet
 LOGGER = logging.getLogger(__name__)
 
 
-class Verifier(_BaseAnchor):
+class Verifier(BaseAnchor):
     """
     Mixin for anchor acting in the role of Verifier. Verifier anchors verify proofs.
     """
@@ -395,7 +395,7 @@ class Verifier(_BaseAnchor):
             await self.load_cache_for_verification(True)
             Caches.purge_archives(self.dir_cache, True)
 
-        await _BaseAnchor.close(self)
+        await BaseAnchor.close(self)
 
         LOGGER.debug('Verifier.close <<<')
 

@@ -33,7 +33,7 @@ DIR_VON_ANCHOR = realpath(dirname(dirname(dirname(realpath(__file__)))))
 if DIR_VON_ANCHOR not in sys_path:
     sys_path.append(DIR_VON_ANCHOR)
 
-from von_anchor.anchor.base import _BaseAnchor
+from von_anchor.anchor.base import BaseAnchor
 from von_anchor.error import AbsentProcess, BadIdentifier
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
@@ -47,7 +47,7 @@ LOGGER = logging.getLogger(__name__)
 _State = Enum('_State', 'ABSENT RUNNING STOPPING')
 
 
-class RevRegBuilder(_BaseAnchor):
+class RevRegBuilder(BaseAnchor):
     """
     Issuer alter ego to build revocation registries in parallel to regular Issuer processing.
 

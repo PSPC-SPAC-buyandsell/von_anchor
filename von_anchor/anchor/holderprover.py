@@ -27,7 +27,7 @@ from typing import Union
 from indy import anoncreds, ledger
 from indy.error import IndyError, ErrorCode
 
-from von_anchor.anchor.base import _BaseAnchor
+from von_anchor.anchor.base import BaseAnchor
 from von_anchor.cache import Caches, RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.canon import canon_wql
 from von_anchor.error import (
@@ -61,7 +61,7 @@ from von_anchor.wallet import Wallet
 LOGGER = logging.getLogger(__name__)
 
 
-class HolderProver(_BaseAnchor):
+class HolderProver(BaseAnchor):
     """
     Mixin for anchor acting in the role of w3c Holder and indy-sdk Prover.  A Holder holds
     credentials; a Prover produces proof of credentials. Revocation support requires
@@ -304,7 +304,7 @@ class HolderProver(_BaseAnchor):
             await self.load_cache_for_proof(True)
             Caches.purge_archives(self.dir_cache, True)
 
-        await _BaseAnchor.close(self)
+        await BaseAnchor.close(self)
         for path_rr_id in Tails.links(self._dir_tails):
             rr_id = basename(path_rr_id)
             try:

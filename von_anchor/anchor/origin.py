@@ -22,7 +22,7 @@ from asyncio import sleep
 
 from indy import anoncreds, ledger
 
-from von_anchor.anchor.base import _BaseAnchor
+from von_anchor.anchor.base import BaseAnchor
 from von_anchor.cache import SCHEMA_CACHE
 from von_anchor.error import AbsentSchema, BadLedgerTxn
 from von_anchor.util import schema_id, schema_key
@@ -31,7 +31,7 @@ from von_anchor.util import schema_id, schema_key
 LOGGER = logging.getLogger(__name__)
 
 
-class Origin(_BaseAnchor):
+class Origin(BaseAnchor):
     """
     Mixin for anchor to send schemata to the distributed ledger.
     """

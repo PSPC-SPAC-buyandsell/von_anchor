@@ -22,7 +22,6 @@ import sys
 sys.path.insert(0, os.path.abspath('../../'))
 sys.path.insert(0, os.path.abspath('.'))
 
-
 # -- General configuration ------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
@@ -172,7 +171,7 @@ man_pages = [
 #  dir menu entry, description, category)
 texinfo_documents = [
     (master_doc, 'VON_Anchor', 'VON Anchor Documentation',
-     author, 'VON_Anchor', 'One line description of project.',
+     author, 'VON_Anchor', 'VON Anchor.',
      'Miscellaneous'),
 ]
 

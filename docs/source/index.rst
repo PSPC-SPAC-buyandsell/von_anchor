@@ -7,7 +7,7 @@
 
 .. toctree::
    :maxdepth: 2
-   :caption: Overview and Code
+   :caption: VON Anchor Design, Installation, and Unit Tests
 
    design/anchors
    design/anchor-interactions

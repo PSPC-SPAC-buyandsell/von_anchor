@@ -157,7 +157,7 @@ def ok_rev_reg_id(token: str, issuer_did: str = None) -> bool:
     :return: whether input token looks like a valid revocation registry identifier
     """
 
-    rr_id_m = re.match('([{}]{{21,22}}):4:([{}]{{21,22}}):3:CL:[1-9][0-9]*(:.+)?:CL_ACCUM:.+$'.format(B58, B58), token)
+    rr_id_m = re.match('([{0}]{{21,22}}):4:([{0}]{{21,22}}):3:CL:[1-9][0-9]*(:.+)?:CL_ACCUM:.+$'.format(B58), token)
     return bool(rr_id_m) and ((not issuer_did) or (rr_id_m.group(1) == issuer_did and rr_id_m.group(2) == issuer_did))
 
 
