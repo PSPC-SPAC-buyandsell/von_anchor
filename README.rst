@@ -28,8 +28,6 @@ VON Anchor continues to evolve in lock step with the capabilities in indy-node a
 
 VON Anchor does not currently implement the Indy Community's Agent to Agent Protocol. As the definition of that protoocol clarifies, we expect underlying support of the protocol will be added to VON Anchor.
 
-.. _demo_anchors:
-
 VON Anchor Demonstration
 ========================
 
@@ -94,7 +92,7 @@ Anchor Level
 
 The indy-sdk mechanism presents a role engineering model for anchors specifying anchor smiths, (schema) origins, issuers, provers, and verifiers (plus anchor smiths and schema origins). The W3C model of https://www.w3.org/TR/verifiable-claims-data-model, roughly in alignment with the subset implementing credential operations, uses issuers, holders, and inspector-verifiers.
 
-The design of the von_anchor toolkit includes demonstration anchors as :ref:`demo_anchors` outlines. In the context of the Alice story of https://github.com/hyperledger/indy-sdk/blob/master/doc/getting-started/getting-started.md, the von_anchor toolkit would allow for the development of:
+The design of the von_anchor toolkit includes demonstration anchors as above. In the context of the Alice story of https://github.com/hyperledger/indy-sdk/blob/master/doc/getting-started/getting-started.md, the von_anchor toolkit would allow for the development of:
 
 - the Steward anchor as an anchor smith
 - a Government anchor as an origin of schemata for transcripts and job certificates
