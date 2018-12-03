@@ -84,9 +84,11 @@ group stop() implements
     end
 end
 issuer --> ator:
-rrbx -> fs: .stop in sentinel directory?
-fs --> rrbx: Yes
+group serve() loop
+    rrbx -> fs: .stop in sentinel directory?
+    fs --> rrbx: Yes
+end group
 rrbx --> proc: Done
-proc --> shell: Done
+proc --> bash: Done
 
 @enduml

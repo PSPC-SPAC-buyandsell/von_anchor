@@ -57,16 +57,17 @@ group set_rev_reg() implements
         ledger --> issuer
     end
     issuer --> ator:
-    rrbx -> fs: .stop in sentinel directory?
-    fs --> rrbx: no
-    rrbx -> fs: find rr_id/.size, touch .in-progress
-    fs --> rrbx:
-    rrbx -> rrbx: build rev reg, tails file
-    rrbx -> fs: write rev reg, tails files hopper directory
-    fs --> rrbx:
-    rrbx -> fs: remove rr_id directory from sentinel directory
-    fs --> rrbx:
-
+    group serve() loop
+        rrbx -> fs: .stop in sentinel directory?
+        fs --> rrbx: no
+        rrbx -> fs: find rr_id/.size, touch .in-progress
+        fs --> rrbx:
+        rrbx -> rrbx: build rev reg, tails file
+        rrbx -> fs: write rev reg, tails files hopper directory
+        fs --> rrbx:
+        rrbx -> fs: remove rr_id directory from sentinel directory
+        fs --> rrbx:
+    end
 end
 
 @enduml
