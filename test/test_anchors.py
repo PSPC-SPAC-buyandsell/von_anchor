@@ -156,7 +156,7 @@ async def test_anchors_api(
     except AbsentWallet:
         pass
 
-    tan = TrusteeAnchor(await Wallet(seed_trustee1, 'trust-anchor').create(), p)
+    tan = TrusteeAnchor(await Wallet(seed_trustee1, 'trustee-anchor').create(), p)
     san = SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p)
     pspcoban = OrgBookAnchor(
         await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
@@ -1756,7 +1756,7 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
     await p.close()
     assert not path.exists(), 'Pool path {} still present'.format(path)
 
-    # Open pool, SRI + PSPC Org Book anchors (the tests above should obviate its need for trust-anchor)
+    # Open pool, SRI + PSPC Org Book anchors (the tests above should obviate its need for trustee-anchor)
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
         SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p)) as san, (
         OrgBookAnchor(
@@ -2071,7 +2071,7 @@ async def test_anchor_reseed(
 
     # Open pool, init anchors
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-            TrusteeAnchor(await Wallet(seed_trustee1, 'trust-anchor').create(), p)) as tan, (
+            TrusteeAnchor(await Wallet(seed_trustee1, 'trustee-anchor').create(), p)) as tan, (
             OrgBookAnchor(await Wallet(seeds[0], 'reseed-org-book').create(), p)) as rsan:
         assert p.handle
 
@@ -2936,3 +2936,17 @@ async def test_crypto(
             assert False
         except BadKey:
             print('\n\n== 7 == PSPC Org Book anchor correctly failed to auth-decrypt from wrong DID')
+
+        # SRI anchor self-signs and verifies
+        signature = await san.sign(plain)
+        assert await san.verify(plain, signature)
+        print('\n\n== 8 == SRI anchor signed then verified {}-byte signature from: {}'.format(len(signature), plain))
+
+        # PSPC Org Book Anchor verifies
+        assert await pspcoban.verify(plain, signature, san.did)
+        print('\n\n== 9 == SRI anchor signed, PSPC Org Book anchor verified {}-byte signature from: {}'.format(
+            len(signature),
+            plain))
+
+        assert not await pspcoban.verify(plain, signature)
+        print('\n\n== 10 == PSPC Org Book anchor faild auto-verification of SRI anchor signature, as expected')

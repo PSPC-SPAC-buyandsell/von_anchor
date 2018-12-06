@@ -21,4 +21,4 @@ from .anchor.issuer import Issuer
 from .anchor.holderprover import HolderProver
 from .anchor.rrbuilder import RevRegBuilder
 from .anchor.verifier import Verifier
-from .anchor.demo import BCRegistrarAnchor, OrgBookAnchor, OrgHubAnchor, SRIAnchor, TrusteeAnchor
+from .anchor.demo import BCRegistrarAnchor, OrgBookAnchor, OrgHubAnchor, SRIAnchor, NominalAnchor, TrusteeAnchor

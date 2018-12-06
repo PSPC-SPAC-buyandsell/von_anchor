@@ -29,7 +29,7 @@ from sys import path as sys_path
 
 from indy import anoncreds, blob_storage
 
-DIR_VON_ANCHOR = realpath(dirname(dirname(dirname(realpath(__file__)))))
+DIR_VON_ANCHOR = dirname(dirname(dirname(realpath(__file__))))
 if DIR_VON_ANCHOR not in sys_path:
     sys_path.append(DIR_VON_ANCHOR)
 
@@ -137,7 +137,7 @@ class RevRegBuilder(BaseAnchor):
         Return current state of revocation registry builder process.
 
         :param wallet_name: name of wallet for corresponding Issuer
-        :return: current process state as _State enum.
+        :return: current process state as _State enum
         """
 
         dir_sentinel = RevRegBuilder.dir_tails_sentinel(wallet_name)
@@ -319,7 +319,7 @@ class RevRegBuilder(BaseAnchor):
                 'uri_pattern': ''
             }))
 
-        (rr_id, rr_def_json, rr_ent_json) = await anoncreds.issuer_create_and_store_revoc_reg(
+        (created_rr_id, rr_def_json, rr_ent_json) = await anoncreds.issuer_create_and_store_revoc_reg(
             self.wallet.handle,
             self.did,
             'CL_ACCUM',
@@ -336,7 +336,7 @@ class RevRegBuilder(BaseAnchor):
             print(rr_def_json, file=rr_def_fh)
         with open(join(dir_target, 'rr_ent.json'), 'w') as rr_ent_fh:
             print(rr_ent_json, file=rr_ent_fh)
-        Tails.associate(dir_tails, rr_id, tails_hash)  # associate last: it signals completion
+        Tails.associate(dir_tails, created_rr_id, tails_hash)  # associate last: symlink signals completion
 
         LOGGER.debug('RevRegBuilder._create_rev_reg <<<')
 

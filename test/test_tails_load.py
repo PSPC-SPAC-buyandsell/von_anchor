@@ -65,7 +65,7 @@ async def test_anchors_tails_load(
     p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
     await p.open()
 
-    tan = TrusteeAnchor(await Wallet(seed_trustee1, 'trust-anchor').create(), p)
+    tan = TrusteeAnchor(await Wallet(seed_trustee1, 'trustee-anchor').create(), p)
     no_prox = rrbx_prox()
     san = OrgHubAnchor(await Wallet('Superstar-Anchor-000000000000000', WALLET_NAME).create(), p, rrbx=rrbx)
     if rrbx:

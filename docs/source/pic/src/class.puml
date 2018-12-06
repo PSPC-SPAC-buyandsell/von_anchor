@@ -141,7 +141,7 @@ enum Predicate {
 }
 
 
-class _BaseAnchor {
+class BaseAnchor {
     +pool
     +wallet
     +did
@@ -158,6 +158,10 @@ class _BaseAnchor {
     +get_cred_def()
     +get_schema()
     +get_txn()
+    +sign()
+    +verify()
+    +encrypt()
+    +decrypt()
     +reseed()
 }
 
@@ -241,6 +245,10 @@ class Verifier {
 class TrusteeAnchor {
 }
 
+class NominalAnchor {
+    {static} +role()
+}
+
 class SRIAnchor {
     {static} +role()
 }
@@ -258,31 +266,32 @@ class OrgHubAnchor {
 
 VonAnchorError "1" *-up- "1" ErrorCode
 SchemaCache -left-> SchemaKey
-_BaseAnchor -left-> SchemaKey
+BaseAnchor -left-> SchemaKey
 
 NodePool "1" *-- "1" Protocol
 
 RevRegBuilder *-- State
 
 
-_BaseAnchor -up-> SchemaCache
-_BaseAnchor "1" *-left- "1" Wallet
-_BaseAnchor "1" *-up- "1" NodePool
+BaseAnchor -up-> SchemaCache
+BaseAnchor "1" *-left- "1" Wallet
+BaseAnchor "1" *-up- "1" NodePool
 
 RevoCacheEntry -up-> Tails
 RevoCacheEntry "2" *-down- "n" RevRegUpdateFrame
 RevocationCache -> RevoCacheEntry
 
-_BaseAnchor -up-> RevoCache
+BaseAnchor -up-> RevoCache
 
-_BaseAnchor -up-> ClaimDefCache
-_BaseAnchor <|-down- AnchorSmith
-_BaseAnchor <|-down- Origin
-_BaseAnchor <|-down- HolderProver
-_BaseAnchor <|-down- Verifier
+BaseAnchor -up-> ClaimDefCache
+BaseAnchor <|-down- AnchorSmith
+BaseAnchor <|-down- Origin
+BaseAnchor <|-down- HolderProver
+BaseAnchor <|-down- Verifier
+BaseAnchor <|-right- NominalAnchor
 
 AnchorSmith <|-down- TrusteeAnchor
-_BaseAnchor <|-down- RevRegBuilder
+BaseAnchor <|-down- RevRegBuilder
 RevRegBuilder <-- Issuer
 
 Origin <|-left- SRIAnchor

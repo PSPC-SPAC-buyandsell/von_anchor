@@ -27,7 +27,9 @@ Its (static) ``role()`` method returns the ``TRUST_ANCHOR`` indicator, sufficing
 
 Its ``get_schema()`` and ``get_cred_def()`` methods retrieve schema and credential definitions the ledger. Typically the result comes from its cache; if it goes to the ledger, the implementation populates the applicable cache before returning.
 
-Its ``encrypt()`` and ``decrypt()`` methods delegate to indy-sdk to encrypt, anonymously or with (proof-of-origin) authentication, for itself or another anchor owning an input DID. The actuator packs encrypted values into JWTs for agent-to-agent communications.
+Its ``sign()`` and ``verify()`` methods delegate to indy-sdk to sign and verify content.
+
+Its ``encrypt()`` and ``decrypt()`` methods delegate to indy-sdk to encrypt, anonymously or with (proof-of-origin) authentication, content for itself or another anchor owning an input DID. The actuator packs encrypted values into JWTs for agent-to-agent communications.
 
 The ``get_txn()`` method returns a distributed ledger transaction's content by sequence number.
 

@@ -160,6 +160,7 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor.__aexit__ >>> exc_type: %s, exc: %s, traceback: %s', exc_type, exc, traceback)
 
         await self.close()
+
         LOGGER.debug('BaseAnchor.__exit__ <<<')
 
     async def close(self) -> None:
@@ -177,15 +178,15 @@ class BaseAnchor:
 
     async def reseed(self, seed) -> None:
         """
-        Begin key rotation for VON anchor: generate new key for submission via AnchorSmith.
+        Rotate key for VON anchor: generate new key, submit to ledger, update wallet.
 
         :param seed: new seed for ed25519 key pair
         """
 
         LOGGER.debug('BaseAnchor.reseed_init >>> seed: [SEED]')
 
-        reseed = await self.wallet.reseed_init(seed)
-        req_json = await ledger.build_nym_request(self.did, self.did, reseed, self.wallet.name, self.role())
+        verkey = await self.wallet.reseed_init(seed)
+        req_json = await ledger.build_nym_request(self.did, self.did, verkey, self.wallet.name, self.role())
         await self._sign_submit(req_json)
         await self.wallet.reseed_apply()
 
@@ -229,6 +230,7 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor.role >>>')
 
         rv = 'TRUST_ANCHOR'
+
         LOGGER.debug('BaseAnchor.role <<< %s', rv)
         return rv
 
@@ -567,6 +569,39 @@ class BaseAnchor:
             rv = await crypto.anon_decrypt(self.wallet.handle, self.wallet.verkey, ciphertext)
 
         LOGGER.debug('BaseAnchor.auth_decrypt <<< %s', rv)
+        return rv
+
+    async def sign(self, message: bytes) -> bytes:
+        """
+        Sign message; return signature.
+
+        :param message: Content to sign, as bytes
+        :return: signature, as bytes
+        """
+
+        LOGGER.debug('BaseAnchor.sign >>> message: %s', message)
+
+        rv = await crypto.crypto_sign(self.wallet.handle, self.wallet.verkey, message)
+
+        LOGGER.debug('BaseAnchor.sign <<< %s', rv)
+        return rv
+
+    async def verify(self, message: bytes, signature: bytes, signer_did: str = None) -> bool:
+        """
+        Verify signature with input DID's corresponding verification key.
+
+        :param message: Content to sign, as bytes
+        :param signature: signature, as bytes
+        :param signer_did: signer DID; omit for anchor's own
+        :return: whether signature is valid
+        """
+
+        LOGGER.debug('BaseAnchor.verify >>> signer_did: %s, message: %s, signature: %s', signer_did, message, signature)
+
+        verkey = await did.key_for_did(self.pool.handle, self.wallet.handle, signer_did or self.did)
+        rv = await crypto.crypto_verify(verkey, message, signature)
+
+        LOGGER.debug('BaseAnchor.verify <<< %s', rv)
         return rv
 
     async def get_txn(self, seq_no: int) -> str:
