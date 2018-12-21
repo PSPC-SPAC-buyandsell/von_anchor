@@ -19,6 +19,7 @@ import json
 import logging
 
 from hashlib import sha256
+from ctypes import *
 
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
