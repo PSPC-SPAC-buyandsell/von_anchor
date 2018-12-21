@@ -53,8 +53,8 @@ async def register_wallet_storage_library(storage_type: str, c_library: str, ent
         entry_point)
 
     try:
-        stg_lib = CDLL(args.library)
-        result = stg_lib[args.entrypoint]()
+        stg_lib = CDLL(c_library)
+        result = stg_lib[entry_point]()
         if result != 0:
             raise IndyError(result)
 
