@@ -40,6 +40,7 @@ class ErrorCode(IntEnum):
     AbsentRevReg = 1015
     BadIdentifier = 1016
     AbsentProcess = 1017
+    BadKey = 1018
 
     # Errors to do with wallet operation
     AbsentWallet = 3000
@@ -294,6 +295,21 @@ class AbsentProcess(VonAnchorError):
         """
 
         super().__init__(ErrorCode.AbsentProcess, message)
+
+
+class BadKey(VonAnchorError):
+    """
+    Cryptographic operation revealed bad key.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.BadKey, message)
 
 
 class AbsentWallet(VonAnchorError):

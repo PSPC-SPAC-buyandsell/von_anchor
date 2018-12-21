@@ -1,10 +1,7 @@
-von\_anchor\_utils package
-==========================
+Package: VON Anchor Utilities
+====================================
 
-Submodules
-----------
-
-von\_anchor.cache module
+von\_anchor.cache
 ------------------------
 
 .. automodule:: von_anchor.cache
@@ -12,15 +9,15 @@ von\_anchor.cache module
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.codec module
+von\_anchor.canon
 ------------------------
 
-.. automodule:: von_anchor.codec
+.. automodule:: von_anchor.canon
     :members:
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.error module
+von\_anchor.error
 ------------------------
 
 .. automodule:: von_anchor.error
@@ -28,7 +25,7 @@ von\_anchor.error module
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.frill module
+von\_anchor.frill
 ------------------------
 
 .. automodule:: von_anchor.frill
@@ -36,7 +33,15 @@ von\_anchor.frill module
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.nodepool module
+von\_anchor.indytween
+----------------------------
+
+.. automodule:: von_anchor.indytween
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+von\_anchor.nodepool
 ---------------------------
 
 .. automodule:: von_anchor.nodepool
@@ -44,7 +49,7 @@ von\_anchor.nodepool module
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.tails module
+von\_anchor.tails
 ------------------------
 
 .. automodule:: von_anchor.tails
@@ -52,7 +57,7 @@ von\_anchor.tails module
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.util module
+von\_anchor.util
 -----------------------
 
 .. automodule:: von_anchor.util
@@ -60,15 +65,15 @@ von\_anchor.util module
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.validcfg module
------------------------------------
+von\_anchor.validcfg
+---------------------------
 
 .. automodule:: von_anchor.validcfg
     :members:
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.wallet module
+von\_anchor.wallet
 -------------------------
 
 .. automodule:: von_anchor.wallet

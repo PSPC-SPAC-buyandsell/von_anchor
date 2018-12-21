@@ -25,9 +25,9 @@ from shutil import rmtree
 
 from indy import anoncreds, ledger
 from indy.error import IndyError, ErrorCode
+
 from von_anchor.anchor.rrbuilder import RevRegBuilder
 from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE
-from von_anchor.codec import cred_attr_value
 from von_anchor.error import (
     AbsentCredDef,
     AbsentSchema,
@@ -37,6 +37,7 @@ from von_anchor.error import (
     BadLedgerTxn,
     BadRevocation,
     CorruptWallet)
+from von_anchor.indytween import cred_attr_value
 from von_anchor.tails import Tails
 from von_anchor.util import (
     cred_def_id,
@@ -104,19 +105,19 @@ class Issuer(RevRegBuilder):
                 dir_target)
             raise AbsentRevReg('Tails file for rev reg {} not ready in dir {}'.format(rr_id, dir_target))
 
-        file_rrd = join(dir_target, 'rrd.json')
-        if not isfile(file_rrd):
-            LOGGER.debug('Issuer._send_rev_reg_def <!< Rev reg def file %s not present', file_rrd)
-            raise AbsentRevReg('Rev reg def file {} not present'.format(file_rrd))
-        with open(file_rrd, 'r') as fh_rrd:
-            rrd_json = fh_rrd.read()
+        file_rr_def = join(dir_target, 'rr_def.json')
+        if not isfile(file_rr_def):
+            LOGGER.debug('Issuer._send_rev_reg_def <!< Rev reg def file %s not present', file_rr_def)
+            raise AbsentRevReg('Rev reg def file {} not present'.format(file_rr_def))
+        with open(file_rr_def, 'r') as fh_rr_def:
+            rr_def_json = fh_rr_def.read()
 
-        file_rre = join(dir_target, 'rre.json')
-        if not isfile(file_rre):
-            LOGGER.debug('Issuer._send_rev_reg_def <!< Rev reg entry file %s not present', file_rre)
-            raise AbsentRevReg('Rev reg entry file {} not present'.format(file_rre))
-        with open(file_rre, 'r') as fh_rre:
-            rre_json = fh_rre.read()
+        file_rr_ent = join(dir_target, 'rr_ent.json')
+        if not isfile(file_rr_ent):
+            LOGGER.debug('Issuer._send_rev_reg_def <!< Rev reg entry file %s not present', file_rr_ent)
+            raise AbsentRevReg('Rev reg entry file {} not present'.format(file_rr_ent))
+        with open(file_rr_ent, 'r') as fh_rr_ent:
+            rr_ent_json = fh_rr_ent.read()
 
         file_tails = Tails.linked(dir_tails, rr_id)
         if not file_tails:
@@ -129,19 +130,19 @@ class Issuer(RevRegBuilder):
             rename(file_tails, join(dir_cd_id, basename(file_tails)))
 
         with REVO_CACHE.lock:
-            rrd_req_json = await ledger.build_revoc_reg_def_request(self.did, rrd_json)
-            await self._sign_submit(rrd_req_json)
+            rr_def_req_json = await ledger.build_revoc_reg_def_request(self.did, rr_def_json)
+            await self._sign_submit(rr_def_req_json)
             await self._get_rev_reg_def(rr_id)  # add to cache en passant
 
-        rre_req_json = await ledger.build_revoc_reg_entry_request(self.did, rr_id, 'CL_ACCUM', rre_json)
-        await self._sign_submit(rre_req_json)
+        rr_ent_req_json = await ledger.build_revoc_reg_entry_request(self.did, rr_id, 'CL_ACCUM', rr_ent_json)
+        await self._sign_submit(rr_ent_req_json)
 
         if self._rrbx:
             Tails.associate(self._dir_tails, rr_id, basename(file_tails))
             rmtree(dir_tails)
         else:
-            remove(file_rrd)
-            remove(file_rre)
+            remove(file_rr_def)
+            remove(file_rr_ent)
 
         LOGGER.debug('Issuer._send_rev_reg_def <<<')
 
@@ -180,7 +181,7 @@ class Issuer(RevRegBuilder):
         open and cache tails file reader.
 
         :param rr_id: revocation registry identifier
-        :param rr_size: if new revocation registry necessary, its size (default as per _create_rev_reg())
+        :param rr_size: if new revocation registry necessary, its size (default as per RevRegBuilder._create_rev_reg())
         """
 
         LOGGER.debug('Issuer._sync_revoc_for_issue >>> rr_id: %s, rr_size: %s', rr_id, rr_size)
@@ -251,7 +252,8 @@ class Issuer(RevRegBuilder):
 
         :param s_id: schema identifier
         :param revocation: whether to support revocation for cred def
-        :param rr_size: size of initial revocation registry (default as per _create_rev_reg()), if revocation supported
+        :param rr_size: size of initial revocation registry (default as per RevRegBuilder._create_rev_reg()),
+            if revocation supported
         :return: json credential definition as it appears on ledger
         """
 
@@ -388,18 +390,19 @@ class Issuer(RevRegBuilder):
             cred_offer_json,
             cred_req_json: str,
             cred_attrs: dict,
-            rr_size: int = None) -> (str, str, int):
+            rr_size: int = None) -> (str, str):
         """
         Create credential as Issuer out of credential request and dict of key:value (raw, unencoded)
         entries for attributes.
 
-        Return credential json, and if cred def supports revocation, credential revocation identifier
-        and revocation registry delta ledger timestamp (epoch seconds).
+        Return credential json, and if cred def supports revocation, credential revocation identifier.
 
         If the credential definition supports revocation, and the current revocation registry is full,
         the processing creates a new revocation registry en passant. Depending on the revocation
-        registry size (by default starting at 256 and doubling iteratively through 16384), this
-        operation may delay credential creation by several seconds.
+        registry size (by default starting at 64 and doubling iteratively through a maximum of 100000)
+        and the revocation registry builder posture (see RevRegBuilder.__init__()), this operation may
+        delay credential creation by several seconds. The use of an external revocation registry builder
+        runs a parallel process, skirting this delay, but is more costly at initialization.
 
         :param cred_offer_json: credential offer json as created by Issuer
         :param cred_req_json: credential request json as created by HolderProver
@@ -414,9 +417,9 @@ class Issuer(RevRegBuilder):
                 'weaknesses': None
             }
 
-        :param rr_size: size of new revocation registry (default as per _create_rev_reg()) if necessary
-        :return: newly issued credential json; credential revocation identifier (if cred def supports
-            revocation, None otherwise), and ledger timestamp (if cred def supports revocation, None otherwise)
+        :param rr_size: size of new revocation registry (default as per RevRegBuilder._create_rev_reg()) if necessary
+        :return: tuple with newly issued credential json, credential revocation identifier (if cred def
+            supports revocation, None otherwise).
         """
 
         LOGGER.debug(
@@ -431,7 +434,6 @@ class Issuer(RevRegBuilder):
             LOGGER.debug('Issuer.create_cred <!< Bad cred def id %s', cd_id)
             raise BadIdentifier('Bad cred def id {}'.format(cd_id))
 
-
         cred_def = json.loads(await self.get_cred_def(cd_id))  # ensure cred def is in cache
 
         if 'revocation' in cred_def['value']:
@@ -441,30 +443,21 @@ class Issuer(RevRegBuilder):
                 assert tails  # at (re)start, at cred def, Issuer sync_revoc_for_issue() sets this index in revo cache
 
                 try:
-                    (cred_json, cred_revoc_id, rr_delta_json) = await anoncreds.issuer_create_credential(
+                    (cred_json, cred_revoc_id, _) = await anoncreds.issuer_create_credential(  # issue by default to rr
                         self.wallet.handle,
                         cred_offer_json,
                         cred_req_json,
                         json.dumps({k: cred_attr_value(cred_attrs[k]) for k in cred_attrs}),
                         rr_id,
                         tails.reader_handle)
-                    # do not create rr delta frame and append to cached delta frames list: timestamp could lag or skew
-                    rre_req_json = await ledger.build_revoc_reg_entry_request(
-                        self.did,
-                        rr_id,
-                        'CL_ACCUM',
-                        rr_delta_json)
-                    assert rr_id == tails.rr_id
-                    resp_json = await self._sign_submit(rre_req_json)
-                    resp = json.loads(resp_json)
-                    rv = (cred_json, cred_revoc_id, self.pool.protocol.txn2epoch(resp))
+                    rv = (cred_json, cred_revoc_id)
 
                 except IndyError as x_indy:
                     if x_indy.error_code == ErrorCode.AnoncredsRevocationRegistryFullError:
                         (tag, rr_size_suggested) = Tails.next_tag(self._dir_tails, cd_id)
                         rr_id = rev_reg_id(cd_id, tag)
                         if self._rrbx:
-                            await self._set_rev_reg(rr_id, rr_size or rr_size_suggested)
+                            await self._set_rev_reg(rr_id, rr_size)
                         else:
                             await self._create_rev_reg(rr_id, rr_size or rr_size_suggested)
                             await self._send_rev_reg_def(rr_id)
@@ -483,7 +476,7 @@ class Issuer(RevRegBuilder):
                     json.dumps({k: cred_attr_value(cred_attrs[k]) for k in cred_attrs}),
                     None,
                     None)
-                rv = (cred_json, _, _)
+                rv = (cred_json, None)
             except IndyError as x_indy:
                 LOGGER.debug('Issuer.create_cred <!< cannot create cred, indy error code %s', x_indy.error_code)
                 raise
@@ -518,7 +511,7 @@ class Issuer(RevRegBuilder):
             self._dir_tails,
             *rev_reg_id2cred_def_id_tag(rr_id)).open()).reader_handle
         try:
-            rrd_json = await anoncreds.issuer_revoke_credential(
+            rrdelta_json = await anoncreds.issuer_revoke_credential(
                 self.wallet.handle,
                 tails_reader_handle,
                 rr_id,
@@ -535,8 +528,8 @@ class Issuer(RevRegBuilder):
                     cr_id,
                     x_indy.error_code))
 
-        rre_req_json = await ledger.build_revoc_reg_entry_request(self.did, rr_id, 'CL_ACCUM', rrd_json)
-        resp_json = await self._sign_submit(rre_req_json)
+        rr_ent_req_json = await ledger.build_revoc_reg_entry_request(self.did, rr_id, 'CL_ACCUM', rrdelta_json)
+        resp_json = await self._sign_submit(rr_ent_req_json)
         resp = json.loads(resp_json)
 
         rv = self.pool.protocol.txn2epoch(resp)

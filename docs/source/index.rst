@@ -7,8 +7,19 @@
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents
+   :caption: VON Anchor Design, Installation, and Unit Tests
 
+   design/anchors
+   design/anchor-interactions
+   design/revocation-and-tails-files
+   design/cache-nodepool-wallet
+   design/utility-functions
+   design/exceptions
+   design/class-hierarchy
+   design/packaging
+   design/configuration-validation
+   installation/installation
+   installation/unit-tests
    modules.rst
 
 Indices and tables

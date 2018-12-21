@@ -18,61 +18,8 @@ limitations under the License.
 import json
 import re
 
-from hashlib import sha256
-from typing import Any, Union
-
 from von_anchor.error import BadWalletQuery
-
-
-I32_BOUND = 2**31
-
-
-def encode(orig: Any) -> str:
-    """
-    Encode credential attribute value, purely stringifying any int32 and leaving numeric int32 strings alone,
-    but mapping any other input to a stringified 256-bit (but not 32-bit) integer. Predicates in indy-sdk operate
-    on int32 values properly only when their encoded values match their raw values.
-
-    :param orig: original value to encode
-    :return: encoded value
-    """
-
-    if isinstance(orig, int) and -I32_BOUND <= orig < I32_BOUND:
-        return str(int(orig))  # python bools are ints
-
-    try:
-        i32orig = int(str(orig))  # don't encode doubles as ints
-        if -I32_BOUND <= i32orig < I32_BOUND:
-            return str(i32orig)
-    except (ValueError, TypeError):
-        pass
-
-    rv = int.from_bytes(sha256(raw(orig).encode()).digest(), 'big')
-    while -I32_BOUND <= rv < I32_BOUND:
-        rv = int.from_bytes(sha256(rv.encode()).digest(), 'big')  # sha256 maps no 32-bit int to another: terminates
-
-    return str(rv)
-
-
-def raw(orig: Any) -> dict:
-    """
-    Stringify input value, empty string for None.
-
-    :param orig: original attribute value of any stringifiable type
-    :return: stringified raw value
-    """
-
-    return '' if orig is None else str(orig)
-
-
-def cred_attr_value(orig: Any) -> dict:
-    """
-    Given a value, return corresponding credential attribute value dict for indy-sdk processing.
-
-    :param orig: original attribute value of any stringifiable type
-    :return: dict on 'raw' and 'encoded' keys for indy-sdk processing
-    """
-    return {'raw': raw(orig), 'encoded': encode(orig)}
+from von_anchor.indytween import raw
 
 
 def canon(raw_attr_name: str) -> str:
@@ -97,7 +44,7 @@ def canon_wql(query: dict) -> dict:
     Raise BadWalletQuery for WQL mapping '$or' to non-list.
 
     :param query: WQL query
-    :return canonicalized WQL query dict
+    :return: canonicalized WQL query dict
     """
 
     for k in query:

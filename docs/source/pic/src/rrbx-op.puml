@@ -1,0 +1,73 @@
+@startuml
+/'
+Copyright 2017-2018 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+'/
+
+skinparam ParticipantPadding 20
+skinparam BoxPadding 20
+
+title External Revocation Registry Builder Operation
+
+box "Indy" #LightBlue
+    participant "Ledger" as ledger
+endbox
+
+participant "External Rev Reg Builder" as rrbx
+box "Operating System" #Linen
+    participant "Process" as proc
+    participant "Shell" as bash
+    participant "File System" as fs
+endbox
+participant "Issuer" as issuer
+
+actor "Actuator" as ator
+
+=== REVOCATION REGISTRY SET & SEND FROM EXTERNAL BUILD ==
+ator -> issuer: send cred def or issue cred
+issuer -> issuer: need new rev reg? Yes: rr_id
+issuer -> issuer: set_rev_reg(rr_id)
+group set_rev_reg() implements
+    issuer -> fs: check hopper for rev reg, tails files
+    fs --> issuer: present
+    issuer -> fs: move tails file from hopper to tails dir and link
+    fs --> issuer:
+    issuer -> ledger: send rev reg def, initial entry
+    ledger --> issuer:
+    issuer -> issuer: generate next rr_id, size
+
+=== EXTERNAL REVOCATION REGISTRY BUILD ==
+
+    issuer -> fs: touch rr_id/.size in sentinel directory
+    fs --> issuer:
+    issuer -> issuer: complete cred operation
+    group cred operation implements
+        issuer -> ledger: write artifacts
+        ledger --> issuer
+    end
+    issuer --> ator:
+    group serve() loop
+        rrbx -> fs: .stop in sentinel directory?
+        fs --> rrbx: no
+        rrbx -> fs: find rr_id/.size, touch .in-progress
+        fs --> rrbx:
+        rrbx -> rrbx: build rev reg, tails file
+        rrbx -> fs: write rev reg, tails files hopper directory
+        fs --> rrbx:
+        rrbx -> fs: remove rr_id directory from sentinel directory
+        fs --> rrbx:
+    end
+end
+
+@enduml

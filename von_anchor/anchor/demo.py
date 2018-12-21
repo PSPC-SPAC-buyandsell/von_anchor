@@ -19,6 +19,7 @@ import logging
 
 from os.path import basename
 
+from von_anchor.anchor.base import BaseAnchor
 from von_anchor.anchor.holderprover import HolderProver
 from von_anchor.anchor.issuer import Issuer
 from von_anchor.anchor.origin import Origin
@@ -31,7 +32,28 @@ from von_anchor.tails import Tails
 from von_anchor.validcfg import validate_config
 from von_anchor.wallet import Wallet
 
+
 LOGGER = logging.getLogger(__name__)
+
+
+class NominalAnchor(BaseAnchor):
+    """
+    NominalAnchor demonstrator class needs access to ledger for authenticated encryption and decryption.
+    """
+
+    @staticmethod
+    def role() -> str:
+        """
+        Return the indy-sdk null role for a tails sync anchor, which does not need write access.
+
+        :return: role string
+        """
+
+        LOGGER.debug('NominalAnchor.role >>>')
+
+        rv = None
+        LOGGER.debug('NominalAnchor.role <<< %s', rv)
+        return rv
 
 
 class TrusteeAnchor(AnchorSmith):
@@ -39,23 +61,17 @@ class TrusteeAnchor(AnchorSmith):
     TrusteeAnchor demonstrator class acts as an anchor smith to forge new anchors.
     """
 
-    pass
-
 
 class BCRegistrarAnchor(Origin, Issuer):
     """
     BCRegistrarAnchor demonstrator class acts as an issuer.
     """
 
-    pass
-
 
 class OrgBookAnchor(HolderProver):
     """
     Basic OrgBookAnchor demonstrator class acts as a holder-prover for any of its registrars' credentials.
     """
-
-    pass
 
 
 class OrgHubAnchor(Verifier, Origin, Issuer, OrgBookAnchor):

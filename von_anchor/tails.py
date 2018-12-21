@@ -23,6 +23,7 @@ from os import chdir, getcwd, makedirs, readlink, symlink, walk
 from os.path import basename, dirname, isfile, islink, join
 
 from indy import blob_storage
+
 from von_anchor.error import AbsentTails, BadIdentifier
 from von_anchor.util import (
     B58,
@@ -271,7 +272,7 @@ class Tails:
 
         tag = 1 + max([int(rev_reg_id2tag(basename(f)))
             for f in Tails.links(base_dir) if cd_id in basename(f)] + [-1])  # -1: next tag is '0' if no tags so far
-        size = min(2**(tag + 8), Tails.MAX_SIZE)
+        size = min(2**(tag + 6), Tails.MAX_SIZE)
 
         rv = (tag, size)
         LOGGER.debug('Tails.next_tag <<< %s', rv)

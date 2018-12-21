@@ -21,19 +21,21 @@ import logging
 
 from typing import Union
 
-from indy import ledger
+from indy import crypto, did, ledger
 from indy.error import IndyError, ErrorCode
+
 from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.error import (
     AbsentCredDef,
     AbsentRevReg,
     AbsentSchema,
     BadIdentifier,
+    BadKey,
     BadLedgerTxn,
     ClosedPool,
     CorruptWallet)
+from von_anchor.indytween import SchemaKey
 from von_anchor.nodepool import NodePool
-from von_anchor.schema_key import SchemaKey
 from von_anchor.util import ok_cred_def_id, ok_did, ok_rev_reg_id, ok_schema_id, schema_id, schema_key
 from von_anchor.wallet import Wallet
 
@@ -41,7 +43,7 @@ from von_anchor.wallet import Wallet
 LOGGER = logging.getLogger(__name__)
 
 
-class _BaseAnchor:
+class BaseAnchor:
     """
     Base class for common anchor functionality. A VON anchor has a wallet and a
     node pool.  It has a role and a cryptonym, and can interact via indy-sdk
@@ -57,12 +59,12 @@ class _BaseAnchor:
         :param kwargs: place holders for super(); implementation ignores
         """
 
-        LOGGER.debug('_BaseAnchor.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)
+        LOGGER.debug('BaseAnchor.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)
 
         self._wallet = wallet
         self._pool = pool
 
-        LOGGER.debug('_BaseAnchor.__init__ <<<')
+        LOGGER.debug('BaseAnchor.__init__ <<<')
 
     @property
     def pool(self) -> NodePool:
@@ -114,7 +116,7 @@ class _BaseAnchor:
 
         return self.wallet.verkey
 
-    async def __aenter__(self) -> '_BaseAnchor':
+    async def __aenter__(self) -> 'BaseAnchor':
         """
         Context manager entry; open wallet.
         For use in monolithic call opening, using, and closing the anchor.
@@ -122,14 +124,14 @@ class _BaseAnchor:
         :return: current object
         """
 
-        LOGGER.debug('_BaseAnchor.__aenter__ >>>')
+        LOGGER.debug('BaseAnchor.__aenter__ >>>')
 
         rv = await self.open()
 
-        LOGGER.debug('_BaseAnchor.__aenter__ <<<')
+        LOGGER.debug('BaseAnchor.__aenter__ <<<')
         return rv
 
-    async def open(self) -> '_BaseAnchor':
+    async def open(self) -> 'BaseAnchor':
         """
         Context manager entry; open wallet.
         For use when keeping anchor open across multiple calls.
@@ -137,12 +139,12 @@ class _BaseAnchor:
         :return: current object
         """
 
-        LOGGER.debug('_BaseAnchor.open >>>')
+        LOGGER.debug('BaseAnchor.open >>>')
 
         # Do not open pool independently: let relying party decide when to go on-line and off-line
         await self.wallet.open()
 
-        LOGGER.debug('_BaseAnchor.open <<<')
+        LOGGER.debug('BaseAnchor.open <<<')
         return self
 
     async def __aexit__(self, exc_type, exc, traceback) -> None:
@@ -155,10 +157,11 @@ class _BaseAnchor:
         :param traceback:
         """
 
-        LOGGER.debug('_BaseAnchor.__aexit__ >>> exc_type: %s, exc: %s, traceback: %s', exc_type, exc, traceback)
+        LOGGER.debug('BaseAnchor.__aexit__ >>> exc_type: %s, exc: %s, traceback: %s', exc_type, exc, traceback)
 
         await self.close()
-        LOGGER.debug('_BaseAnchor.__exit__ <<<')
+
+        LOGGER.debug('BaseAnchor.__exit__ <<<')
 
     async def close(self) -> None:
         """
@@ -166,54 +169,54 @@ class _BaseAnchor:
         For use when keeping anchor open across multiple calls.
         """
 
-        LOGGER.debug('_BaseAnchor.close >>>')
+        LOGGER.debug('BaseAnchor.close >>>')
 
         await self.wallet.close()
         # Do not close pool independently: let relying party decide when to go on-line and off-line
 
-        LOGGER.debug('_BaseAnchor.close <<<')
+        LOGGER.debug('BaseAnchor.close <<<')
 
     async def reseed(self, seed) -> None:
         """
-        Begin key rotation for VON anchor: generate new key for submission via AnchorSmith.
+        Rotate key for VON anchor: generate new key, submit to ledger, update wallet.
 
         :param seed: new seed for ed25519 key pair
         """
 
-        LOGGER.debug('_BaseAnchor.reseed_init >>> seed: [SEED]')
+        LOGGER.debug('BaseAnchor.reseed_init >>> seed: [SEED]')
 
-        reseed = await self.wallet.reseed_init(seed)
-        req_json = await ledger.build_nym_request(self.did, self.did, reseed, self.wallet.name, self.role())
+        verkey = await self.wallet.reseed_init(seed)
+        req_json = await ledger.build_nym_request(self.did, self.did, verkey, self.wallet.name, self.role())
         await self._sign_submit(req_json)
         await self.wallet.reseed_apply()
 
-        LOGGER.debug('_BaseAnchor.reseed_init <<<')
+        LOGGER.debug('BaseAnchor.reseed_init <<<')
 
-    async def get_nym(self, did: str) -> str:
+    async def get_nym(self, target_did: str) -> str:
         """
         Get json cryptonym (including current verification key) for input (anchor) DID from ledger.
 
         Raise BadLedgerTxn on failure.
 
-        :param did: DID of cryptonym to fetch
+        :param target_did: DID of cryptonym to fetch
         :return: cryptonym json
         """
 
-        LOGGER.debug('_BaseAnchor.get_nym >>> did: %s', did)
+        LOGGER.debug('BaseAnchor.get_nym >>> target_did: %s', target_did)
 
-        if not ok_did(did):
-            LOGGER.debug('_BaseAnchor._get_nym <!< Bad DID %s', did)
-            raise BadIdentifier('Bad DID {}'.format(did))
+        if not ok_did(target_did):
+            LOGGER.debug('BaseAnchor._get_nym <!< Bad DID %s', target_did)
+            raise BadIdentifier('Bad DID {}'.format(target_did))
 
         rv = json.dumps({})
-        get_nym_req = await ledger.build_get_nym_request(self.did, did)
+        get_nym_req = await ledger.build_get_nym_request(self.did, target_did)
         resp_json = await self._submit(get_nym_req)
 
         data_json = (json.loads(resp_json))['result']['data']  # it's double-encoded on the ledger
         if data_json:
             rv = data_json
 
-        LOGGER.debug('_BaseAnchor.get_nym <<< %s', rv)
+        LOGGER.debug('BaseAnchor.get_nym <<< %s', rv)
         return rv
 
     @staticmethod
@@ -224,26 +227,27 @@ class _BaseAnchor:
         :return: role string
         """
 
-        LOGGER.debug('_BaseAnchor.role >>>')
+        LOGGER.debug('BaseAnchor.role >>>')
 
         rv = 'TRUST_ANCHOR'
-        LOGGER.debug('_BaseAnchor.role <<< %s', rv)
+
+        LOGGER.debug('BaseAnchor.role <<< %s', rv)
         return rv
 
-    async def get_endpoint(self, did: str = None) -> str:
+    async def get_endpoint(self, target_did: str = None) -> str:
         """
         Get endpoint attribute for anchor having input DID (default own DID).
 
-        :param did: DID of anchor for which to find endpoint attribute on ledger
+        :param target_did: DID of anchor for which to find endpoint attribute on ledger
         :return: endpoint attribute value, or None for no such value
         """
 
-        LOGGER.debug('_BaseAnchor._get_endpoint >>> : %s', did)
+        LOGGER.debug('BaseAnchor._get_endpoint >>> : %s', target_did)
 
         rv = None
         req_json = await ledger.build_get_attrib_request(
             self.did,
-            did or self.did,
+            target_did or self.did,
             'endpoint',
             None,
             None)
@@ -255,7 +259,7 @@ class _BaseAnchor:
         else:
             LOGGER.info('_AgentCore.get_endpoint: ledger query returned response with no data')
 
-        LOGGER.debug('_BaseAnchor.get_endpoint <<< %s', rv)
+        LOGGER.debug('BaseAnchor.get_endpoint <<< %s', rv)
         return rv
 
     async def send_endpoint(self, endpoint: str) -> None:
@@ -267,12 +271,12 @@ class _BaseAnchor:
         :param endpoint: value to set as endpoint attribute on ledger.
         """
 
-        LOGGER.debug('_BaseAnchor._send_endpoint >>> : %s', endpoint)
+        LOGGER.debug('BaseAnchor._send_endpoint >>> : %s', endpoint)
 
         ledger_endpoint = await self.get_endpoint()
         if ledger_endpoint == endpoint:
             LOGGER.info('%s endpoint already set as %s', self.wallet.name, endpoint)
-            LOGGER.debug('_BaseAnchor.send_endpoint <<< (%s already set for %s )')
+            LOGGER.debug('BaseAnchor.send_endpoint <<< (%s already set for %s )')
             return
 
         attr_json = json.dumps({
@@ -289,10 +293,10 @@ class _BaseAnchor:
             await asyncio.sleep(1)
             LOGGER.info('Sent endpoint %s to ledger, waiting 1s for its confirmation', endpoint)
         else:
-            LOGGER.debug('_BaseAnchor.send_endpoint <!< timed out waiting on sent endpoint %s', endpoint)
+            LOGGER.debug('BaseAnchor.send_endpoint <!< timed out waiting on sent endpoint %s', endpoint)
             raise BadLedgerTxn('Timed out waiting on sent endpoint {}'.format(endpoint))
 
-        LOGGER.debug('_BaseAnchor.send_endpoint <<<')
+        LOGGER.debug('BaseAnchor.send_endpoint <<<')
 
     async def _submit(self, req_json: str) -> str:
         """
@@ -304,10 +308,10 @@ class _BaseAnchor:
         :return: json response
         """
 
-        LOGGER.debug('_BaseAnchor._submit >>> req_json: %s', req_json)
+        LOGGER.debug('BaseAnchor._submit >>> req_json: %s', req_json)
 
         if not self.pool.handle:
-            LOGGER.debug('_BaseAnchor._submit <!< closed pool %s', self.pool.name)
+            LOGGER.debug('BaseAnchor._submit <!< closed pool %s', self.pool.name)
             raise ClosedPool('Cannot submit request to closed pool {}'.format(self.pool.name))
 
         rv_json = await ledger.submit_request(self.pool.handle, req_json)
@@ -315,10 +319,10 @@ class _BaseAnchor:
 
         resp = json.loads(rv_json)
         if resp.get('op', '') in ('REQNACK', 'REJECT'):
-            LOGGER.debug('_BaseAnchor._submit <!< ledger rejected request: %s', resp['reason'])
+            LOGGER.debug('BaseAnchor._submit <!< ledger rejected request: %s', resp['reason'])
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
 
-        LOGGER.debug('_BaseAnchor._submit <<< %s', rv_json)
+        LOGGER.debug('BaseAnchor._submit <<< %s', rv_json)
         return rv_json
 
     async def _sign_submit(self, req_json: str) -> str:
@@ -332,10 +336,10 @@ class _BaseAnchor:
         :return: json response
         """
 
-        LOGGER.debug('_BaseAnchor._sign_submit >>> req_json: %s', req_json)
+        LOGGER.debug('BaseAnchor._sign_submit >>> req_json: %s', req_json)
 
         if not self.pool.handle:
-            LOGGER.debug('_BaseAnchor._submit <!< closed pool %s', self.pool.name)
+            LOGGER.debug('BaseAnchor._submit <!< closed pool %s', self.pool.name)
             raise ClosedPool('Cannot submit request to closed pool {}'.format(self.pool.name))
 
         try:
@@ -344,7 +348,7 @@ class _BaseAnchor:
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.WalletIncompatiblePoolError:
                 LOGGER.debug(
-                    '_BaseAnchor._sign_submit <!< Corrupt wallet %s is not compatible with pool %s',
+                    'BaseAnchor._sign_submit <!< Corrupt wallet %s is not compatible with pool %s',
                     self.wallet.name,
                     self.pool.name)
                 raise CorruptWallet('Corrupt wallet {} is not compatible with pool {}'.format(
@@ -352,17 +356,17 @@ class _BaseAnchor:
                     self.pool.name))
             else:
                 LOGGER.debug(
-                    '_BaseAnchor._sign_submit <!< cannot sign/submit request for ledger: indy error code %s',
+                    'BaseAnchor._sign_submit <!< cannot sign/submit request for ledger: indy error code %s',
                     x_indy.error_code)
                 raise BadLedgerTxn('Cannot sign/submit request for ledger: indy error code {}'.format(
                     x_indy.error_code))
 
         resp = json.loads(rv_json)
         if resp.get('op', '') in ('REQNACK', 'REJECT'):
-            LOGGER.debug('_BaseAnchor._sign_submit: ledger rejected request: %s', resp['reason'])
+            LOGGER.debug('BaseAnchor._sign_submit: ledger rejected request: %s', resp['reason'])
             raise BadLedgerTxn('Ledger rejected transaction request: {}'.format(resp['reason']))
 
-        LOGGER.debug('_BaseAnchor._sign_submit <<< %s', rv_json)
+        LOGGER.debug('BaseAnchor._sign_submit <<< %s', rv_json)
         return rv_json
 
     async def _get_rev_reg_def(self, rr_id: str) -> str:
@@ -379,10 +383,10 @@ class _BaseAnchor:
         :return: revocation registry definition json as retrieved from ledger
         """
 
-        LOGGER.debug('_BaseAnchor._get_rev_reg_def >>> rr_id: %s', rr_id)
+        LOGGER.debug('BaseAnchor._get_rev_reg_def >>> rr_id: %s', rr_id)
 
         if not ok_rev_reg_id(rr_id):
-            LOGGER.debug('_BaseAnchor._get_rev_reg_def <!< Bad rev reg id %s', rr_id)
+            LOGGER.debug('BaseAnchor._get_rev_reg_def <!< Bad rev reg id %s', rr_id)
             raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
         rv_json = json.dumps({})
@@ -391,16 +395,16 @@ class _BaseAnchor:
             revo_cache_entry = REVO_CACHE.get(rr_id, None)
             rr_def = revo_cache_entry.rev_reg_def if revo_cache_entry else None
             if rr_def:
-                LOGGER.info('_BaseAnchor._get_rev_reg_def: rev reg def for %s from cache', rr_id)
+                LOGGER.info('BaseAnchor._get_rev_reg_def: rev reg def for %s from cache', rr_id)
                 rv_json = json.dumps(rr_def)
             else:
-                get_rrd_req_json = await ledger.build_get_revoc_reg_def_request(self.did, rr_id)
-                resp_json = await self._submit(get_rrd_req_json)
+                get_rr_def_req_json = await ledger.build_get_revoc_reg_def_request(self.did, rr_id)
+                resp_json = await self._submit(get_rr_def_req_json)
                 try:
                     (_, rv_json) = await ledger.parse_get_revoc_reg_def_response(resp_json)
                     rr_def = json.loads(rv_json)
                 except IndyError:  # ledger replied, but there is no such rev reg
-                    LOGGER.debug('_BaseAnchor._get_rev_reg_def <!< no rev reg exists on %s', rr_id)
+                    LOGGER.debug('BaseAnchor._get_rev_reg_def <!< no rev reg exists on %s', rr_id)
                     raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
 
                 if revo_cache_entry is None:
@@ -408,7 +412,7 @@ class _BaseAnchor:
                 else:
                     REVO_CACHE[rr_id].rev_reg_def = rr_def
 
-        LOGGER.debug('_BaseAnchor._get_rev_reg_def <<< %s', rv_json)
+        LOGGER.debug('BaseAnchor._get_rev_reg_def <<< %s', rv_json)
         return rv_json
 
     async def get_cred_def(self, cd_id: str) -> str:
@@ -425,36 +429,36 @@ class _BaseAnchor:
         :return: credential definition json as retrieved from ledger, empty production for no such cred def
         """
 
-        LOGGER.debug('_BaseAnchor.get_cred_def >>> cd_id: %s', cd_id)
+        LOGGER.debug('BaseAnchor.get_cred_def >>> cd_id: %s', cd_id)
 
         if not ok_cred_def_id(cd_id):
-            LOGGER.debug('_BaseAnchor._get_cred_def <!< Bad cred def id %s', cd_id)
+            LOGGER.debug('BaseAnchor._get_cred_def <!< Bad cred def id %s', cd_id)
             raise BadIdentifier('Bad cred def id {}'.format(cd_id))
 
         rv_json = json.dumps({})
 
         with CRED_DEF_CACHE.lock:
             if cd_id in CRED_DEF_CACHE:
-                LOGGER.info('_BaseAnchor.get_cred_def: got cred def for %s from cache', cd_id)
+                LOGGER.info('BaseAnchor.get_cred_def: got cred def for %s from cache', cd_id)
                 rv_json = json.dumps(CRED_DEF_CACHE[cd_id])
-                LOGGER.debug('_BaseAnchor.get_cred_def <<< %s', rv_json)
+                LOGGER.debug('BaseAnchor.get_cred_def <<< %s', rv_json)
                 return rv_json
 
             req_json = await ledger.build_get_cred_def_request(self.did, cd_id)
             resp_json = await self._submit(req_json)
             resp = json.loads(resp_json)
             if not ('result' in resp and resp['result'].get('data', None)):
-                LOGGER.debug('_BaseAnchor.get_cred_def <!< no cred def exists on %s', cd_id)
+                LOGGER.debug('BaseAnchor.get_cred_def <!< no cred def exists on %s', cd_id)
                 raise AbsentCredDef('No cred def exists on {}'.format(cd_id))
             try:
                 (_, rv_json) = await ledger.parse_get_cred_def_response(resp_json)
             except IndyError:  # ledger replied, but there is no such cred def
-                LOGGER.debug('_BaseAnchor.get_cred_def <!< no cred def exists on %s', cd_id)
+                LOGGER.debug('BaseAnchor.get_cred_def <!< no cred def exists on %s', cd_id)
                 raise AbsentCredDef('No cred def exists on {}'.format(cd_id))
             CRED_DEF_CACHE[cd_id] = json.loads(rv_json)
-            LOGGER.info('_BaseAnchor.get_cred_def: got cred def %s from ledger', cd_id)
+            LOGGER.info('BaseAnchor.get_cred_def: got cred def %s from ledger', cd_id)
 
-        LOGGER.debug('_BaseAnchor.get_cred_def <<< %s', rv_json)
+        LOGGER.debug('BaseAnchor.get_cred_def <<< %s', rv_json)
         return rv_json
 
     async def get_schema(self, index: Union[SchemaKey, int, str]) -> str:
@@ -472,14 +476,14 @@ class _BaseAnchor:
         :return: schema json, parsed from ledger
         """
 
-        LOGGER.debug('_BaseAnchor.get_schema >>> index: %s', index)
+        LOGGER.debug('BaseAnchor.get_schema >>> index: %s', index)
 
         rv_json = json.dumps({})
         with SCHEMA_CACHE.lock:
             if SCHEMA_CACHE.contains(index):
-                LOGGER.info('_BaseAnchor.get_schema: got schema %s from schema cache', index)
+                LOGGER.info('BaseAnchor.get_schema: got schema %s from schema cache', index)
                 rv_json = SCHEMA_CACHE[index]
-                LOGGER.debug('_BaseAnchor.get_schema <<< %s', rv_json)
+                LOGGER.debug('BaseAnchor.get_schema <<< %s', rv_json)
                 return json.dumps(rv_json)
 
             if isinstance(index, SchemaKey) or (isinstance(index, str) and ok_schema_id(index)):
@@ -490,15 +494,15 @@ class _BaseAnchor:
                 resp = json.loads(resp_json)
 
                 if not ('result' in resp and resp['result'].get('data', {}).get('attr_names', None)):
-                    LOGGER.debug('_BaseAnchor.get_schema <!< no schema exists on %s', index)
+                    LOGGER.debug('BaseAnchor.get_schema <!< no schema exists on %s', index)
                     raise AbsentSchema('No schema exists on {}'.format(index))
                 try:
                     (_, rv_json) = await ledger.parse_get_schema_response(resp_json)
                 except IndyError:  # ledger replied, but there is no such schema
-                    LOGGER.debug('_BaseAnchor.get_schema <!< no schema exists on %s', index)
+                    LOGGER.debug('BaseAnchor.get_schema <!< no schema exists on %s', index)
                     raise AbsentSchema('No schema exists on {}'.format(index))
                 SCHEMA_CACHE[s_key] = json.loads(rv_json)  # cache indexes by both txn# and schema key en passant
-                LOGGER.info('_BaseAnchor.get_schema: got schema %s from ledger', index)
+                LOGGER.info('BaseAnchor.get_schema: got schema %s from ledger', index)
 
             elif isinstance(index, (int, str)):  # index is not a schema id: it's a stringified int txn# if it's a str
                 txn_json = await self.get_txn(int(index))
@@ -506,16 +510,99 @@ class _BaseAnchor:
                 if txn.get('type', None) == '101':  # {} for no such txn; 101 marks indy-sdk schema txn type
                     rv_json = await self.get_schema(self.pool.protocol.txn_data2schema_key(txn))
                 else:
-                    LOGGER.info('_BaseAnchor.get_schema: no schema at seq #%s on ledger', index)
+                    LOGGER.info('BaseAnchor.get_schema: no schema at seq #%s on ledger', index)
 
             else:
-                LOGGER.debug('_BaseAnchor.get_schema <!< bad schema index type')
+                LOGGER.debug('BaseAnchor.get_schema <!< bad schema index type')
                 raise AbsentSchema('Attempt to get schema on ({}) {} , must use schema key or an int'.format(
                     type(index),
                     index))
 
-        LOGGER.debug('_BaseAnchor.get_schema <<< %s', rv_json)
+        LOGGER.debug('BaseAnchor.get_schema <<< %s', rv_json)
         return rv_json
+
+    async def encrypt(self, message: bytes, authn: bool = False, recip_did: str = None) -> bytes:
+        """
+        Encrypt plaintext for owner of DID, anonymously or via authenticated encryption scheme.
+
+        :param message: plaintext, as bytes
+        :param authn: whether to use authenticated encryption scheme
+        :param recip_did: DID of recipient, None for own DID
+        :return: ciphertext, as bytes
+        """
+
+        LOGGER.debug('BaseAnchor.encrypt >>> message: %s, authn: %s, recip_did: %s', message, authn, recip_did)
+
+        if recip_did:
+            key = await did.key_for_did(self.pool.handle, self.wallet.handle, recip_did)
+        else:
+            key = self.wallet.verkey
+        if authn:
+            rv = await crypto.auth_crypt(self.wallet.handle, self.wallet.verkey, key, message)
+        else:
+            rv = await crypto.anon_crypt(key, message)
+
+        LOGGER.debug('BaseAnchor.auth_encrypt <<< %s', rv)
+        return rv
+
+    async def decrypt(self, ciphertext: bytes, sender_did: str = None) -> bytes:
+        """
+        Decrypt ciphertext and optionally authenticate sender.
+
+        Raise BadKey if authentication operation reveals sender key distinct from
+        current verification key of owner of input DID.
+
+        :param ciphertext: ciphertext, as bytes
+        :param sender_did: DID of sender, None for anonymously encrypted ciphertext
+        :return: decrypted bytes
+        """
+
+        LOGGER.debug('BaseAnchor.auth_decrypt >>> ciphertext: %s, sender_did: %s', ciphertext, sender_did)
+
+        if sender_did:
+            expect_key = await did.key_for_did(self.pool.handle, self.wallet.handle, sender_did)
+            (sender_verkey, rv) = await crypto.auth_decrypt(self.wallet.handle, self.wallet.verkey, ciphertext)
+            if sender_verkey != expect_key:
+                LOGGER.debug('BaseAnchor.auth_decrypt <!< Authentication revealed unexpected sender key on decryption')
+                raise BadKey('Authentication revealed unexpected sender key on decryption')
+        else:
+            rv = await crypto.anon_decrypt(self.wallet.handle, self.wallet.verkey, ciphertext)
+
+        LOGGER.debug('BaseAnchor.auth_decrypt <<< %s', rv)
+        return rv
+
+    async def sign(self, message: bytes) -> bytes:
+        """
+        Sign message; return signature.
+
+        :param message: Content to sign, as bytes
+        :return: signature, as bytes
+        """
+
+        LOGGER.debug('BaseAnchor.sign >>> message: %s', message)
+
+        rv = await crypto.crypto_sign(self.wallet.handle, self.wallet.verkey, message)
+
+        LOGGER.debug('BaseAnchor.sign <<< %s', rv)
+        return rv
+
+    async def verify(self, message: bytes, signature: bytes, signer_did: str = None) -> bool:
+        """
+        Verify signature with input DID's corresponding verification key.
+
+        :param message: Content to sign, as bytes
+        :param signature: signature, as bytes
+        :param signer_did: signer DID; omit for anchor's own
+        :return: whether signature is valid
+        """
+
+        LOGGER.debug('BaseAnchor.verify >>> signer_did: %s, message: %s, signature: %s', signer_did, message, signature)
+
+        verkey = await did.key_for_did(self.pool.handle, self.wallet.handle, signer_did or self.did)
+        rv = await crypto.crypto_verify(verkey, message, signature)
+
+        LOGGER.debug('BaseAnchor.verify <<< %s', rv)
+        return rv
 
     async def get_txn(self, seq_no: int) -> str:
         """
@@ -525,7 +612,7 @@ class _BaseAnchor:
         :return: json sequence number of transaction, null for no match
         """
 
-        LOGGER.debug('_BaseAnchor.get_txn >>> seq_no: %s', seq_no)
+        LOGGER.debug('BaseAnchor.get_txn >>> seq_no: %s', seq_no)
 
         rv_json = json.dumps({})
         req_json = await ledger.build_get_txn_request(self.did, None, seq_no)
@@ -533,7 +620,7 @@ class _BaseAnchor:
 
         rv_json = self.pool.protocol.txn2data(resp)
 
-        LOGGER.debug('_BaseAnchor.get_txn <<< %s', rv_json)
+        LOGGER.debug('BaseAnchor.get_txn <<< %s', rv_json)
         return rv_json
 
     def __repr__(self) -> str:

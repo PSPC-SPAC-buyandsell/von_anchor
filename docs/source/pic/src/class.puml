@@ -1,0 +1,318 @@
+@startuml
+/'
+Copyright 2017-2018 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+or
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+'/
+
+title Class Diagram
+
+class ErrorCode {
+}
+
+class VonAnchorError {
+    +error_code
+    +message
+}
+
+class SchemaKey << namedtuple >> {
+    +origin_did
+    +name
+    +version
+}
+
+class SchemaCache {
+    -_schema_key2schema
+    -_seq_no2schema_key
+    +lock
+    +__getitem__()
+    +__setitem__()
+    +contains()
+    +index()
+    +schema_key_for()
+    +schemata()
+    +feed()
+    +clear()
+}
+
+class ClaimDefCache{
+    +lock
+}
+
+class Tails {
+    +reader_handle
+    +rr_id
+    +path
+    +open()
+    {static} +ok_hash()
+    {static} +associate()
+    {static} +dir()
+    {static} +linked()
+    {static} +links()
+    {static} +unlinked()
+    {static} +next_tag()
+    {static} +current_rev_reg_id()
+}
+
+class RevoCacheEntry {
+    +rev_reg_def
+    +tails
+    +cull()
+    -_get_update()
+    +rr_delta_frames
+    +rr_state_frames
+    +get_delta_json()
+    +get_state_json()
+}
+
+class RevRegUpdateFrame {
+    +qtime
+    +timestamp
+    +to
+    +rr_update
+}
+
+class RevocationCache {
+    +lock
+}
+
+class Caches {
+    {static} +clear()
+    {static} +archive()
+    {static} +parse()
+    {static} +purge_archives()
+}
+
+class Wallet {
+    -_seed2did()
+    -_seed
+    -_next_seed
+    +name
+    +xtype
+    +handle
+    +did
+    +verkey
+    +cfg
+    +auto_remove
+    +access_creds
+    +created
+    +create()
+    +open()
+    +close()
+    +reseed()
+    +reseed_apply()
+    +remove()
+}
+
+enum Protocol {
+    {static} +V_13
+    {static} +V_14
+    {static} +V_15
+    {static} +V_16
+    {static} +DEFAULT
+}
+
+class NodePool {
+    +name
+    +genesis_txn_path
+    +handle
+    +cfg
+    +auto_remove
+    +remove()
+    +open()
+    +close()
+}
+
+enum Predicate {
+    {static} +LE
+    {static} +LT
+    {static} +GE
+    {static} +GT
+}
+
+
+class BaseAnchor {
+    +pool
+    +wallet
+    +did
+    +verkey
+    -_submit()
+    -_sign_submit()
+    -_get_rev_reg_def()
+    {static} +role()
+    +open()
+    +close()
+    +get_endpoint()
+    +send_endpoint()
+    +get_nym()
+    +get_cred_def()
+    +get_schema()
+    +get_txn()
+    +sign()
+    +verify()
+    +encrypt()
+    +decrypt()
+    +reseed()
+}
+
+class AnchorSmith {
+    {static} +role()
+    +send_nym()
+}
+
+class Origin {
+    +send_schema()
+}
+
+class RevRegBuilder {
+    {static} +get_state()
+    {static} +dir_tails()
+    {static} +dir_tails_sentinel()
+    +dir_tails_top()
+    +dir_tails_target()
+    +serve()
+    +stop()
+    -_create_rev_reg()
+}
+
+enum State {
+    {static} +RUNNING
+    {static} +STOPPING
+    {static} +ABSENT
+}
+
+class Issuer {
+    -_send_rev_reg_def()
+    -_set_rev_reg()
+    -_sync_revoc_for_issue()
+    +open()
+    +path_tails()
+    +send_cred_def()
+    +create_cred_offer()
+    +create_cred()
+    +revoke_cred()
+    +get_box_ids_json()
+}
+
+class HolderProver {
+    +cfg
+    +dir_cache
+    -_link_secret
+    -_sync_revoc_for_proof()
+    -_build_rr_delta_json()
+    +build_req_creds_json()
+    +dir_tails()
+    +open()
+    +close()
+    +rev_regs()
+    +offline_intervals()
+    +create_link_secret()
+    +create_cred_req()
+    +store_cred()
+    +load_cache_for_proof()
+    +get_box_ids_json()
+    +get_cred_infos_by_q()
+    +get_cred_infos_by_filter()
+    +get_cred_info_by_id()
+    +get_creds()
+    +get_creds_by_id()
+    +get_cred_briefs_by_proof_req_q()
+    +create_proof()
+    +reset_wallet()
+}
+
+class Verifier {
+    +cfg
+    +dir_cache
+    -_build_rr_state_json()
+    {static} +role()
+    +build_proof_req_json()
+    +load_cache_for_verification()
+    +open()
+    +verify_proof()
+}
+
+class TrusteeAnchor {
+}
+
+class NominalAnchor {
+    {static} +role()
+}
+
+class SRIAnchor {
+    {static} +role()
+}
+
+class BCRegistrarAnchor {
+}
+
+class OrgBookAnchor {
+}
+
+class OrgHubAnchor {
+    {static} +role()
+    +close()
+}
+
+VonAnchorError "1" *-up- "1" ErrorCode
+SchemaCache -left-> SchemaKey
+BaseAnchor -left-> SchemaKey
+
+NodePool "1" *-- "1" Protocol
+
+RevRegBuilder *-- State
+
+
+BaseAnchor -up-> SchemaCache
+BaseAnchor "1" *-left- "1" Wallet
+BaseAnchor "1" *-up- "1" NodePool
+
+RevoCacheEntry -up-> Tails
+RevoCacheEntry "2" *-down- "n" RevRegUpdateFrame
+RevocationCache -> RevoCacheEntry
+
+BaseAnchor -up-> RevoCache
+
+BaseAnchor -up-> ClaimDefCache
+BaseAnchor <|-down- AnchorSmith
+BaseAnchor <|-down- Origin
+BaseAnchor <|-down- HolderProver
+BaseAnchor <|-down- Verifier
+BaseAnchor <|-right- NominalAnchor
+
+AnchorSmith <|-down- TrusteeAnchor
+BaseAnchor <|-down- RevRegBuilder
+RevRegBuilder <-- Issuer
+
+Origin <|-left- SRIAnchor
+Issuer <|-left- SRIAnchor
+Verifier <|-right- SRIAnchor
+
+Issuer <|-up- BCRegistrarAnchor
+Origin <|-up- BCRegistrarAnchor
+
+HolderProver <|-down- OrgBookAnchor
+
+OrgBookAnchor <|-- OrgHubAnchor
+Issuer <|-- OrgHubAnchor
+Origin <|-- OrgHubAnchor
+Verifier <|-- OrgHubAnchor
+
+HolderProver --> Caches
+Verifier --> Caches
+OrgHubAnchor --> Caches
+
+HolderProver *-- Predicate
+Verifier *-- Predicate
+
+@enduml

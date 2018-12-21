@@ -1,10 +1,7 @@
-von\_anchor\_roles package
+Package: VON Anchor Roles
 ==========================
 
-Submodules
-----------
-
-von\_anchor.anchor.base module
+von\_anchor.anchor.base
 ------------------------------
 
 .. automodule:: von_anchor.anchor.base
@@ -12,7 +9,7 @@ von\_anchor.anchor.base module
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.anchor.smith module
+von\_anchor.anchor.smith
 -------------------------------
 
 .. automodule:: von_anchor.anchor.smith
@@ -20,7 +17,7 @@ von\_anchor.anchor.smith module
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.anchor.origin module
+von\_anchor.anchor.origin
 --------------------------------
 
 .. automodule:: von_anchor.anchor.origin
@@ -28,15 +25,15 @@ von\_anchor.anchor.origin module
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.anchor.rrbuilder module
---------------------------------
+von\_anchor.anchor.rrbuilder
+-----------------------------------
 
 .. automodule:: von_anchor.anchor.rrbuilder
     :members:
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.anchor.issuer module
+von\_anchor.anchor.issuer
 --------------------------------
 
 .. automodule:: von_anchor.anchor.issuer
@@ -44,15 +41,15 @@ von\_anchor.anchor.issuer module
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.anchor.holderprover module
-----------------------------------------
+von\_anchor.anchor.holderprover
+--------------------------------------
 
 .. automodule:: von_anchor.anchor.holderprover
     :members:
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.anchor.verifier module
+von\_anchor.anchor.verifier
 ----------------------------------
 
 .. automodule:: von_anchor.anchor.verifier

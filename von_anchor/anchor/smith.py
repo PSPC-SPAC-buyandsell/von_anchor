@@ -18,7 +18,8 @@ limitations under the License.
 import logging
 
 from indy import ledger
-from von_anchor.anchor.base import _BaseAnchor
+
+from von_anchor.anchor.base import BaseAnchor
 from von_anchor.error import BadIdentifier
 from von_anchor.util import ok_did
 
@@ -26,7 +27,7 @@ from von_anchor.util import ok_did
 LOGGER = logging.getLogger(__name__)
 
 
-class AnchorSmith(_BaseAnchor):
+class AnchorSmith(BaseAnchor):
     """
     Mixin for (trustee) anchor to write anchors onto the distributed ledger.
     """

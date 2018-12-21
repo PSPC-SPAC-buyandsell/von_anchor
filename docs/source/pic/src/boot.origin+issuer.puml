@@ -1,0 +1,82 @@
+@startuml
+/'
+Copyright 2017-2018 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+'/
+
+skinparam ParticipantPadding 20
+skinparam BaloxPadding 20
+
+title Issuer VON Anchor Boot Sequence
+
+box "Indy" #LightBlue
+    participant "Ledger" as ledger
+endbox
+actor "Trustee VON Anchor" as tan
+actor "Holder-Prover (e.g., The Org Book)\nVON Anchor" as oban
+actor "Origin+Issuer (e.g., BC Registrar)\nVON Anchor" as bcran
+
+=== BOOTSTRAP ==
+note over ledger, bcran
+    Issuer VON anchor is also Origin anchor
+    Trustee VON anchor service wrapper API is up
+endnote
+
+bcran -> bcran: call get_nym(did)
+group get_nym() implements
+    bcran -> ledger: Look up own nym
+    ledger --> bcran: nym if present
+end
+alt Nym not present
+    bcran -[#blue]> tan: call send_nym(did, verkey, alias, role)
+    group send_nym() implements
+        tan -[#blue]> ledger: send Issuer nym
+        ledger --[#blue]> tan: Issuer nym
+        tan --[#blue]> bcran: Issuer nym
+    end
+end
+
+loop each schema that issuer originates
+    bcran -> bcran: call send_schema()
+    group send_schema() implements
+        bcran -> ledger: look up schema
+        ledger --> bcran: schema if present
+
+        alt Schema not present
+            bcran -[#blue]> ledger: send schema
+            ledger --[#blue]> bcran: return schema
+        end
+    end
+
+    bcran -> bcran: call send_cred_def()
+    group send_cred_def() implements
+        bcran -> ledger: look up cred def
+        ledger --> bcran: cred def if present
+        alt Cred def not present
+            bcran -[#blue]> bcran: create cred def
+            bcran -[#blue]> ledger: send cred def
+            ledger -[#blue]-> bcran: cred def
+            alt Cred def supports revocation
+                bcran -[#blue]> bcran: define rev reg, create tails file
+                bcran -[#blue]> ledger: send rev reg def
+                ledger -[#blue]-> bcran: rev reg id
+                bcran -[#blue]> ledger: send initial rev reg state
+                ledger -[#blue]-> bcran: OK
+                bcran -[#blue]> bcran: start asynchronous pre-computation of\nnext rev reg, tails file
+            end
+        end
+    end
+end
+
+@enduml
