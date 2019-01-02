@@ -1,5 +1,5 @@
 """
-Copyright 2017-2018 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+Copyright 2017-2019 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -369,7 +369,7 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor._sign_submit <<< %s', rv_json)
         return rv_json
 
-    async def _get_rev_reg_def(self, rr_id: str) -> str:
+    async def get_rev_reg_def(self, rr_id: str) -> str:
         """
         Get revocation registry definition from ledger by its identifier. Raise AbsentRevReg
         for no such revocation registry, logging any error condition and raising BadLedgerTxn
@@ -383,10 +383,10 @@ class BaseAnchor:
         :return: revocation registry definition json as retrieved from ledger
         """
 
-        LOGGER.debug('BaseAnchor._get_rev_reg_def >>> rr_id: %s', rr_id)
+        LOGGER.debug('BaseAnchor.get_rev_reg_def >>> rr_id: %s', rr_id)
 
         if not ok_rev_reg_id(rr_id):
-            LOGGER.debug('BaseAnchor._get_rev_reg_def <!< Bad rev reg id %s', rr_id)
+            LOGGER.debug('BaseAnchor.get_rev_reg_def <!< Bad rev reg id %s', rr_id)
             raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
         rv_json = json.dumps({})
@@ -395,7 +395,7 @@ class BaseAnchor:
             revo_cache_entry = REVO_CACHE.get(rr_id, None)
             rr_def = revo_cache_entry.rev_reg_def if revo_cache_entry else None
             if rr_def:
-                LOGGER.info('BaseAnchor._get_rev_reg_def: rev reg def for %s from cache', rr_id)
+                LOGGER.info('BaseAnchor.get_rev_reg_def: rev reg def for %s from cache', rr_id)
                 rv_json = json.dumps(rr_def)
             else:
                 get_rr_def_req_json = await ledger.build_get_revoc_reg_def_request(self.did, rr_id)
@@ -404,7 +404,7 @@ class BaseAnchor:
                     (_, rv_json) = await ledger.parse_get_revoc_reg_def_response(resp_json)
                     rr_def = json.loads(rv_json)
                 except IndyError:  # ledger replied, but there is no such rev reg
-                    LOGGER.debug('BaseAnchor._get_rev_reg_def <!< no rev reg exists on %s', rr_id)
+                    LOGGER.debug('BaseAnchor.get_rev_reg_def <!< no rev reg exists on %s', rr_id)
                     raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
 
                 if revo_cache_entry is None:
@@ -412,7 +412,7 @@ class BaseAnchor:
                 else:
                     REVO_CACHE[rr_id].rev_reg_def = rr_def
 
-        LOGGER.debug('BaseAnchor._get_rev_reg_def <<< %s', rv_json)
+        LOGGER.debug('BaseAnchor.get_rev_reg_def <<< %s', rv_json)
         return rv_json
 
     async def get_cred_def(self, cd_id: str) -> str:

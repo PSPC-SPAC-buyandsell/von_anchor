@@ -148,7 +148,6 @@ class BaseAnchor {
     +verkey
     -_submit()
     -_sign_submit()
-    -_get_rev_reg_def()
     {static} +role()
     +open()
     +close()
@@ -156,6 +155,7 @@ class BaseAnchor {
     +send_endpoint()
     +get_nym()
     +get_cred_def()
+    +get_rev_reg_def()
     +get_schema()
     +get_txn()
     +sign()

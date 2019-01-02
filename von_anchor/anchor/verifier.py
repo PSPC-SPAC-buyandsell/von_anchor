@@ -1,5 +1,5 @@
 """
-Copyright 2017-2018 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+Copyright 2017-2019 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -341,7 +341,7 @@ class Verifier(BaseAnchor):
                 LOGGER.info('Not archiving cred def for specified bad id %s', cd_id)
         for rr_id in self.cfg.get('archive-verifier-caches-on-close', {}).get('rev_reg_id', {}):
             if ok_rev_reg_id(rr_id):
-                await self._get_rev_reg_def(rr_id)
+                await self.get_rev_reg_def(rr_id)
                 with REVO_CACHE.lock:
                     revo_cache_entry = REVO_CACHE.get(rr_id, None)
                     if revo_cache_entry:
@@ -451,7 +451,7 @@ class Verifier(BaseAnchor):
                 LOGGER.debug('Verifier.verify_proof <!< Bad rev reg id %s', rr_id)
                 raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
-            rr_def_json = await self._get_rev_reg_def(rr_id)
+            rr_def_json = await self.get_rev_reg_def(rr_id)
             rr_id2rr_def[rr_id] = json.loads(rr_def_json)
 
             # timestamp

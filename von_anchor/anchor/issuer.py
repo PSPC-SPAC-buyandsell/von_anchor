@@ -1,5 +1,5 @@
 """
-Copyright 2017-2018 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+Copyright 2017-2019 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -132,7 +132,7 @@ class Issuer(RevRegBuilder):
         with REVO_CACHE.lock:
             rr_def_req_json = await ledger.build_revoc_reg_def_request(self.did, rr_def_json)
             await self._sign_submit(rr_def_req_json)
-            await self._get_rev_reg_def(rr_id)  # add to cache en passant
+            await self.get_rev_reg_def(rr_id)  # add to cache en passant
 
         rr_ent_req_json = await ledger.build_revoc_reg_entry_request(self.did, rr_id, 'CL_ACCUM', rr_ent_json)
         await self._sign_submit(rr_ent_req_json)

@@ -21,7 +21,7 @@ Its ``get_nym()`` method fetches and return the anchor's cryptonym from the dist
 
 Its ``get_endpoint()`` method gets the endpoint attribute that the ledger associates with the identity on the input DID, or the current anchor's endpoint if the caller specifies no DID. The ``send_endpoint()`` method sends the input endpoint attribute value to the ledger to associate with the current anchor, if such is not already the case – the caller can specify a null to clear the anchor's endpoint attribute on the ledger.
 
-Its ``_get_rev_reg_def()`` method gets a revocation registry definition from the ledger. Typically the result comes from the revocation cache; if it goes to the ledger, the implementation populates the cache before returning. Under ordinary use, actuators do not need to call this method; issuer, holder-prover, and verifier anchors call it internally.
+Its ``get_rev_reg_def()`` method gets a revocation registry definition from the ledger. Typically the result comes from the revocation cache; if it goes to the ledger, the implementation populates the cache before returning.
 
 Its (static) ``role()`` method returns the ``TRUST_ANCHOR`` indicator, sufficing for all subclasses except ``AnchorSmith``.
 

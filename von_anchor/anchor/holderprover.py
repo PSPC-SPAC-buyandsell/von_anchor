@@ -1,5 +1,5 @@
 """
-Copyright 2017-2018 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+Copyright 2017-2019 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -179,7 +179,7 @@ class HolderProver(BaseAnchor):
                 try:
                     tails = await Tails(self._dir_tails, cd_id, tag).open()
                 except AbsentTails:  # get hash from ledger and check for tails file
-                    rr_def = json.loads(await self._get_rev_reg_def(rr_id))
+                    rr_def = json.loads(await self.get_rev_reg_def(rr_id))
                     tails_hash = rr_def['value']['tailsHash']
                     path_tails = join(Tails.dir(self._dir_tails, rr_id), tails_hash)
                     if not isfile(path_tails):
@@ -480,7 +480,7 @@ class HolderProver(BaseAnchor):
         rr_def_json = None
         if rr_id:
             await self._sync_revoc_for_proof(rr_id)
-            rr_def_json = await self._get_rev_reg_def(rr_id)
+            rr_def_json = await self.get_rev_reg_def(rr_id)
 
         rv = await anoncreds.prover_store_credential(
             self.wallet.handle,
@@ -516,7 +516,7 @@ class HolderProver(BaseAnchor):
             with CRED_DEF_CACHE.lock:
                 await self.get_cred_def(cd_id)
         for rr_id in box_ids['rev_reg_id']:
-            await self._get_rev_reg_def(rr_id)
+            await self.get_rev_reg_def(rr_id)
             with REVO_CACHE.lock:
                 revo_cache_entry = REVO_CACHE.get(rr_id, None)
                 if revo_cache_entry:
@@ -1062,7 +1062,7 @@ class HolderProver(BaseAnchor):
                 if tails is None:  # missing tails file
                     LOGGER.debug('HolderProver.create_proof <!< missing tails file for rev reg id %s', rr_id)
                     raise AbsentTails('Missing tails file for rev reg id {}'.format(rr_id))
-                rr_def_json = await self._get_rev_reg_def(rr_id)
+                rr_def_json = await self.get_rev_reg_def(rr_id)
                 (rr_delta_json, ledger_timestamp) = await revo_cache_entry.get_delta_json(
                     self._build_rr_delta_json,
                     rr_id2timestamp[rr_id],

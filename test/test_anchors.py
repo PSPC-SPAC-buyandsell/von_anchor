@@ -1,5 +1,5 @@
 """
-Copyright 2017-2018 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+Copyright 2017-2019 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1978,7 +1978,7 @@ def _get_cacheable(anchor, s_key, seq_no, issuer_did):
         print('.. Thread {} got cred def {}'.format(current_thread().name, cd_id))
     else:
         rr_id = rev_reg_id(cred_def_id(issuer_did, seq_no), '0')
-        do(anchor._get_rev_reg_def(rr_id))
+        do(anchor.get_rev_reg_def(rr_id))
         print('.. Thread {} got rev reg def {}'.format(current_thread().name, rr_id))
 
 
