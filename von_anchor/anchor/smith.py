@@ -20,8 +20,8 @@ import logging
 from indy import ledger
 
 from von_anchor.anchor.base import BaseAnchor
-from von_anchor.error import BadIdentifier
-from von_anchor.util import ok_did
+from von_anchor.error import BadIdentifier, BadRole
+from von_anchor.util import ok_did, ok_role
 
 
 LOGGER = logging.getLogger(__name__)
@@ -51,12 +51,12 @@ class AnchorSmith(BaseAnchor):
         Send input anchor's cryptonym (including DID, verification key, plus optional alias and role)
         to the distributed ledger.
 
-        Raise BadLedgerTxn on failure.
+        Raise BadLedgerTxn on failure, BadIdentifier for bad DID, or BadRole for bad role.
 
         :param did: anchor DID to send to ledger
         :param verkey: anchor verification key
         :param alias: optional alias
-        :param role: anchor role on the ledger; specify one of 'TRUSTEE', 'STEWARD', 'TRUST_ANCHOR',
+        :param role: anchor role on the ledger; specify None or one of 'TRUSTEE', 'STEWARD', 'TRUST_ANCHOR',
             or else '' to reset role
         """
 
@@ -64,10 +64,14 @@ class AnchorSmith(BaseAnchor):
             'AnchorSmith.send_nym >>> did: %s, verkey: %s, alias: %s, role: %s', did, verkey, alias, role or '')
 
         if not ok_did(did):
-            LOGGER.debug('AnchorSmith <!< Bad DID %s', did)
+            LOGGER.debug('AnchorSmith.send_nym <!< Bad DID %s', did)
             raise BadIdentifier('Bad DID {}'.format(did))
 
-        req_json = await ledger.build_nym_request(self.did, did, verkey, alias, role or '')
+        if not ok_role(role):
+            LOGGER.debug('AnchorSmith.send_nym <!< Bad role %s', role)
+            raise BadRole('Bad role {}'.format(role))
+
+        req_json = await ledger.build_nym_request(self.did, did, verkey, alias, role)
         await self._sign_submit(req_json)
 
         LOGGER.debug('AnchorSmith.send_nym <<<')

@@ -24,7 +24,7 @@ from typing import Union
 from indy import crypto, did, ledger
 from indy.error import IndyError, ErrorCode
 
-from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
+from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, ENDPOINT_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.error import (
     AbsentCredDef,
     AbsentRevReg,
@@ -38,7 +38,6 @@ from von_anchor.indytween import SchemaKey
 from von_anchor.nodepool import NodePool
 from von_anchor.util import ok_cred_def_id, ok_did, ok_rev_reg_id, ok_schema_id, schema_id, schema_key
 from von_anchor.wallet import Wallet
-
 
 LOGGER = logging.getLogger(__name__)
 
@@ -234,20 +233,34 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor.role <<< %s', rv)
         return rv
 
-    async def get_endpoint(self, target_did: str = None) -> str:
+    async def get_endpoint(self, target_did: str = None, from_cache: bool = True) -> str:
         """
         Get endpoint attribute for anchor having input DID (default own DID).
 
         :param target_did: DID of anchor for which to find endpoint attribute on ledger
+        :param from_cache: check endpoint cache first before visiting ledger; always update cache with ledger value
         :return: endpoint attribute value, or None for no such value
         """
 
-        LOGGER.debug('BaseAnchor._get_endpoint >>> : %s', target_did)
+        LOGGER.debug('BaseAnchor.get_endpoint >>> target_did: %s, from_cache: %s', target_did, from_cache)
 
         rv = None
+        did = target_did or self.did
+        if not ok_did(did):
+            LOGGER.debug('BaseAnchor.get_endpoint <!< Bad DID %s', did)
+            raise BadIdentifier('Bad DID {}'.format(did))
+
+        if from_cache:
+            with ENDPOINT_CACHE.lock:
+                if did in ENDPOINT_CACHE:
+                    LOGGER.info('BaseAnchor.get_endpoint: got endpoint for %s from cache', did)
+                    rv = ENDPOINT_CACHE[did]
+                    LOGGER.debug('BaseAnchor.get_endpoint <<< %s', rv)
+                    return rv
+
         req_json = await ledger.build_get_attrib_request(
             self.did,
-            target_did or self.did,
+            did,
             'endpoint',
             None,
             None)
@@ -259,19 +272,27 @@ class BaseAnchor:
         else:
             LOGGER.info('_AgentCore.get_endpoint: ledger query returned response with no data')
 
+        with ENDPOINT_CACHE.lock:
+            if rv:
+                ENDPOINT_CACHE[did] = rv
+            else:
+                ENDPOINT_CACHE.pop(did, None)
+                assert did not in ENDPOINT_CACHE
+
         LOGGER.debug('BaseAnchor.get_endpoint <<< %s', rv)
         return rv
 
     async def send_endpoint(self, endpoint: str) -> None:
         """
-        Send endpoint attribute for anchor, if ledger does not yet have input value.
+        Send anchor's own endpoint attribute to ledger (and endpoint cache),
+        if ledger does not yet have input value. Specify None to clear.
 
         Raise BadLedgerTxn on failure.
 
-        :param endpoint: value to set as endpoint attribute on ledger.
+        :param endpoint: value to set as endpoint attribute on ledger and cache; specify None to clear.
         """
 
-        LOGGER.debug('BaseAnchor._send_endpoint >>> : %s', endpoint)
+        LOGGER.debug('BaseAnchor._send_endpoint >>> endpoint: %s', endpoint)
 
         ledger_endpoint = await self.get_endpoint()
         if ledger_endpoint == endpoint:
@@ -288,12 +309,12 @@ class BaseAnchor:
         await self._sign_submit(req_json)
 
         for _ in range(16):  # reasonable timeout
-            if await self.get_endpoint() == endpoint:
+            if await self.get_endpoint(None, False) == endpoint:
                 break
             await asyncio.sleep(1)
             LOGGER.info('Sent endpoint %s to ledger, waiting 1s for its confirmation', endpoint)
         else:
-            LOGGER.debug('BaseAnchor.send_endpoint <!< timed out waiting on sent endpoint %s', endpoint)
+            LOGGER.debug('BaseAnchor.send_endpoint <!< timed out waiting on send endpoint %s', endpoint)
             raise BadLedgerTxn('Timed out waiting on sent endpoint {}'.format(endpoint))
 
         LOGGER.debug('BaseAnchor.send_endpoint <<<')
@@ -481,7 +502,7 @@ class BaseAnchor:
         rv_json = json.dumps({})
         with SCHEMA_CACHE.lock:
             if SCHEMA_CACHE.contains(index):
-                LOGGER.info('BaseAnchor.get_schema: got schema %s from schema cache', index)
+                LOGGER.info('BaseAnchor.get_schema: got schema %s from cache', index)
                 rv_json = SCHEMA_CACHE[index]
                 LOGGER.debug('BaseAnchor.get_schema <<< %s', rv_json)
                 return json.dumps(rv_json)

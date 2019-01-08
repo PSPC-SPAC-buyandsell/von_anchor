@@ -31,7 +31,7 @@ logging.basicConfig(level=logging.WARNING, format='%(levelname)-8s | %(name)-12s
 logging.getLogger('test.conftest').setLevel(logging.INFO)
 logging.getLogger('asyncio').setLevel(logging.WARNING)
 logging.getLogger('von_anchor').setLevel(logging.WARNING)
-logging.getLogger('indy').setLevel(logging.ERROR)
+logging.getLogger('indy').setLevel(logging.CRITICAL)
 
 
 @pytest.fixture(scope="session")
@@ -51,6 +51,7 @@ def seed_trustee1():
 
     logger.debug("seed_trustee1: <<< res: %r", res)
     return res
+
 
 @pytest.fixture
 def path_temp():
@@ -103,6 +104,7 @@ def wallet_handle_cleanup():
 
     logger.debug("wallet_handle_cleanup: <<< res: %r", res)
     return res
+
 
 @pytest.fixture
 def pool_name():

@@ -19,7 +19,7 @@ import pytest
 
 from von_anchor.frill import Ink
 from von_anchor.tails import Tails
-from von_anchor.util import ok_cred_def_id, ok_did, ok_rev_reg_id, ok_schema_id, ok_wallet_reft
+from von_anchor.util import ok_cred_def_id, ok_did, ok_rev_reg_id, ok_role, ok_schema_id, ok_wallet_reft
 
 
 @pytest.mark.asyncio
@@ -33,6 +33,11 @@ async def test_box_ids():
     assert ok_did('Q4zqM7aXqm7gDQkUVLng9h')  # quibble: not technically a box id
     assert not ok_did('Q4zqM7aXqm7gDQkUVLng9I')
     assert not ok_did('Q4zqM7aXqm7gDQkUVLng')
+
+    for value in (None, 'TRUSTEE', 'STEWARD', 'TRUST_ANCHOR', ''):
+        assert ok_role(value)
+    for value in (123, 'TRUSTY', 'STEW', 'ANCHOR', ' '):
+        assert not ok_role(value)
 
     assert Tails.ok_hash('Q4zqM7aXqm7gDQkUVLng9hQ4zqM7aXqm7gDQkUVLng9h')
     assert Tails.ok_hash('Q4zqM7aXqm7gDQkUVLng9hQ4zqM7aXqm7gDQkUVLng')

@@ -54,6 +54,17 @@ def ok_wallet_reft(token: str) -> bool:
     return bool(re.match(r'[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$', token))
 
 
+def ok_role(token: str) -> bool:
+    """
+    Whether input role is valid to mark indy anchor role on ledger.
+
+    :param token: candidate string
+    :return: whether input token looks like a valid indy anchor role
+    """
+
+    return token in (None, 'TRUSTEE', 'STEWARD', 'TRUST_ANCHOR', '')
+
+
 def ok_did(token: str) -> bool:
     """
     Whether input token looks like a valid distributed identifier.

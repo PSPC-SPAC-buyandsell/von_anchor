@@ -19,6 +19,7 @@ import json
 import logging
 
 from hashlib import sha256
+from ctypes import CDLL
 
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
@@ -30,32 +31,33 @@ from von_anchor.validcfg import validate_config
 LOGGER = logging.getLogger(__name__)
 
 
-async def register_wallet_storage_library(storage_type: str, c_library: str, fn_pfx: str = None) -> None:
+async def register_wallet_storage_library(storage_type: str, c_library: str, entry_point: str) -> None:
     """
     Load a wallet storage plug-in.
 
     An indy-sdk wallet storage plug-in is a shared library; relying parties must explicitly
     load it before creating or opening a wallet with the plug-in.
 
-    The implementation corresponds to the indy-sdk wallet api function:
-    async def register_wallet_storage_library(storage_type: str, c_library: str, fn_pfx: str):
+    The implementation loads a dynamic library and calls an entry point; internally,
+    the plug-in calls the indy-sdk wallet
+    async def register_wallet_storage_library(storage_type: str, c_library: str, fn_pfx: str).
 
     :param storage_type: wallet storage type
     :param c_library: plug-in library
-    :param fn_pfx: function prefix to adopt
+    :param entry_point: function to initialize the library
     """
 
     LOGGER.debug(
-        'register_wallet_storage_library >>> storage_type %s, c_library %s, fn_pfx %s',
+        'register_wallet_storage_library >>> storage_type %s, c_library %s, entry_point %s',
         storage_type,
         c_library,
-        fn_pfx)
+        entry_point)
 
     try:
-        await wallet.register_wallet_storage_library(
-            storage_type=storage_type,
-            c_library=c_library,
-            fn_pfx=fn_pfx or "")
+        stg_lib = CDLL(c_library)
+        result = stg_lib[entry_point]()
+        if result:
+            raise IndyError(result)
 
         LOGGER.info('Loaded wallet library type %s (%s)', storage_type, c_library)
     except IndyError as x_indy:
@@ -416,6 +418,7 @@ class Wallet:
         """
         Begin reseed operation: generate new key.
 
+        :param seed: incoming replacement seed
         :return: new verification key
         """
 

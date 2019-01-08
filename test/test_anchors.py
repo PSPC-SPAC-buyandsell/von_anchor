@@ -37,7 +37,7 @@ import pytest
 from indy import did
 
 from von_anchor import BCRegistrarAnchor, OrgBookAnchor, OrgHubAnchor, RevRegBuilder, SRIAnchor, TrusteeAnchor
-from von_anchor.cache import Caches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE, RevoCacheEntry
+from von_anchor.cache import ArchivableCaches, CRED_DEF_CACHE, ENDPOINT_CACHE, REVO_CACHE, SCHEMA_CACHE, RevoCacheEntry
 from von_anchor.canon import canon
 from von_anchor.error import (
     AbsentCred,
@@ -225,11 +225,19 @@ async def test_anchors_api(
     # Exercise set/get endpoint
     url_endpoint = "https://192.168.56.102"
     await san.send_endpoint(url_endpoint)
+    assert ENDPOINT_CACHE[san.did] == url_endpoint
     assert await san.get_endpoint() == url_endpoint
     assert await bcran.get_endpoint(san.did) == url_endpoint
+
     await san.send_endpoint(None)
+    assert san.did not in ENDPOINT_CACHE
     assert await bcohan.get_endpoint(san.did) is None
-    print('\n\n== 2 == endpoint set/get/clear OK')
+
+    assert await san.get_endpoint(None, False) is None
+    await san.send_endpoint(url_endpoint)
+    assert await san.get_endpoint() == url_endpoint  # check cache correctness
+    assert await san.get_endpoint(None, False) == url_endpoint
+    print('\n\n== 2 == endpoint set/get/clear/cache OK')
 
     # Publish schema to ledger if not yet present; get from ledger
     S_ID = {
@@ -1619,29 +1627,29 @@ async def test_anchors_api(
     assert len(bc_box_ids['rev_reg_id']) > 1  # bc-reg on initial short rev reg and second longer one
 
     # Exercise cache serialization, clearing, parsing, purging
-    Caches.archive(pspcoban.dir_cache)
+    ArchivableCaches.archive(pspcoban.dir_cache)
     timestamps = listdir(pspcoban.dir_cache)
     assert timestamps
 
-    Caches.clear()
+    ArchivableCaches.clear()
     assert not SCHEMA_CACHE.schemata()
     assert not CRED_DEF_CACHE
     assert not REVO_CACHE
 
-    Caches.parse(pspcoban.dir_cache)
+    ArchivableCaches.parse(pspcoban.dir_cache)
     assert SCHEMA_CACHE.schemata()
     assert CRED_DEF_CACHE
     assert REVO_CACHE
 
-    Caches.purge_archives(pspcoban.dir_cache, True)
+    ArchivableCaches.purge_archives(pspcoban.dir_cache, True)
     remaining = listdir(pspcoban.dir_cache)
     assert len(remaining) == 1 and remaining[0] == max(timestamps, key=int)
 
-    Caches.purge_archives(pspcoban.dir_cache, False)
+    ArchivableCaches.purge_archives(pspcoban.dir_cache, False)
     remaining = listdir(pspcoban.dir_cache)
     assert not remaining
 
-    print('\n\n== 74 == Caches archive, parse, load, purge OK')
+    print('\n\n== 74 == Archivable caches archive, parse, load, purge OK')
 
     await bcran.close()
     await bcohan.close()
@@ -1736,8 +1744,8 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     await pspcoban.close()
     await san.close()
 
-    Caches.purge_archives(pspcoban.dir_cache, False)
-    Caches.purge_archives(san.dir_cache, False)
+    ArchivableCaches.purge_archives(pspcoban.dir_cache, False)
+    ArchivableCaches.purge_archives(san.dir_cache, False)
     remaining = listdir(pspcoban.dir_cache)
     assert len(remaining) == 0
 
@@ -2524,7 +2532,7 @@ async def test_anchors_cache_only(
     await pspcoban.close()
 
     _set_cache_state(True)
-    Caches.purge_archives(pspcoban.dir_cache, False)
+    ArchivableCaches.purge_archives(pspcoban.dir_cache, False)
 
 
 @pytest.mark.skipif(False, reason='short-circuiting')

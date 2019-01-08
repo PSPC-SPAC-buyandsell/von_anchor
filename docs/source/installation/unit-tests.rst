@@ -48,6 +48,7 @@ The table below specifies which ``von_anchor`` unit tests require the node pool 
     "test_pool.py", "Yes"
     "test_tails_load.py", "Yes"
     "test_wallet.py", "No"
+    "op/test_sendnym.py", "Yes"
 
 Table: Unit Tests by Node Pool Operation Requirement
 
@@ -225,8 +226,24 @@ To operate the test harness, issue at the prompt:
     $ cd von_anchor/test
     $ pipenv run pytest -s test_tails_load.py
 
+Sendnym Operation
+++++++++++++++++++++++++++++++++
+
+This unit test exercises the operation of the operation script sending a cryptonym to the ledger.
+
+It requires that the node pool be operational: check it as per :ref:`check_node_pool`; start if necessary as per :ref:`start_node_pool`.
+
+To operate the test harness, issue at the prompt:
+
+.. code-block:: bash
+
+    $ cd
+    $ cd von_anchor/test/op
+    $ pipenv run pytest -s test_sendnym.py
+
+
 Cleanup on Abend
-******************************
+********************************
 
 The indy-sdk maintains state with files in the ``.indy_client/`` tree under the temporary and home directories. If an abnormal exit corrupts files in this tree, then on the next startup of objects that indy-sdk resolves to the same file names, indy-sdk will raise an exception. The indy-sdk can survive a corrupt file in the temporary directory, but sometimes not in the home directory.
 

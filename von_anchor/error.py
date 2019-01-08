@@ -41,6 +41,7 @@ class ErrorCode(IntEnum):
     BadIdentifier = 1016
     AbsentProcess = 1017
     BadKey = 1018
+    BadRole = 1019
 
     # Errors to do with wallet operation
     AbsentWallet = 3000
@@ -75,6 +76,12 @@ class VonAnchorError(Exception):
         self.error_code = error_code
         self.message = message
 
+    def __str__(self):
+        """
+        String representation of error.
+        """
+
+        return '({}) {}'.format(self.error_code, self.message)
 
 class CredentialFocus(VonAnchorError):
     """
@@ -310,6 +317,21 @@ class BadKey(VonAnchorError):
         """
 
         super().__init__(ErrorCode.BadKey, message)
+
+
+class BadRole(VonAnchorError):
+    """
+    Invalid specifier for indy-sdk anchor.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.BadRole, message)
 
 
 class AbsentWallet(VonAnchorError):

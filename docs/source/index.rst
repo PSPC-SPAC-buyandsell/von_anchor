@@ -12,8 +12,11 @@
    design/anchors
    design/anchor-interactions
    design/revocation-and-tails-files
-   design/cache-nodepool-wallet
+   design/cache
+   design/nodepool
+   design/wallet
    design/utility-functions
+   design/operations
    design/exceptions
    design/class-hierarchy
    design/packaging

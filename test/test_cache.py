@@ -98,7 +98,7 @@ def do(coro):
 DELAY = 3
 async def simulate_get(ser_no, did):
     rv = None
-    with CRED_DEF_CACHE.lock:  # REVO_CACHE builds on same lock mechanism - this unit test suffices for both caches
+    with CRED_DEF_CACHE.lock:  # REVO_CACHE builds on same lock mechanism - this unit test suffices for all caches
         cd_id = cred_def_id(did, ser_no)
         if cd_id in CRED_DEF_CACHE:
             rv = CRED_DEF_CACHE[cd_id]

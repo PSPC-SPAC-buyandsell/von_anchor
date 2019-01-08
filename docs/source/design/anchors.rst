@@ -292,7 +292,9 @@ Because these operations could monopolize the (shared) caches, it is best for an
     :align: center
     :alt: Priming Verifier Anchor for Off-Line Operation
  
+.. _demo-anchors:
+
 Demonstration Anchor Classes
 ****************************************************
 
-The TrusteeAnchor, SRIAnchor, OrgBookAnchor, OrgHubAnchor, and BCRegistrarAnchor of file ``von_anchor/anchor/demo.py`` use the derived mixins above to create their respective demonstration VON anchor classes.
+The ``TrusteeAnchor``, ``SRIAnchor``, ``OrgBookAnchor``, ``OrgHubAnchor``, ``BCRegistrarAnchor``, and ``NominalAnchor`` demonstration anchors of file ``von_anchor/anchor/demo.py`` use the derived mixins above to create their respective demonstration VON anchor classes.

@@ -15,12 +15,15 @@ limitations under the License.
 """
 
 
+import asyncio
 import json
 
+from configparser import ConfigParser
 from enum import IntEnum
+from os.path import expandvars
 from pprint import pformat
 from time import time
-from typing import Any
+from typing import Any, Callable, Iterable, Union
 
 
 def ppjson(dumpit: Any, elide_to: int = None) -> str:
@@ -39,6 +42,40 @@ def ppjson(dumpit: Any, elide_to: int = None) -> str:
     except TypeError:
         rv = '{}'.format(pformat(dumpit, indent=4, width=120))
     return rv if elide_to is None or len(rv) <= elide_to else '{}...'.format(rv[0 : elide_to - 3])
+
+
+def do_wait(coro: Callable) -> Any:
+    """
+    Perform aynchronous operation; await then return the result.
+
+    :param coro: coroutine to await
+    :return: coroutine result
+    """
+
+    event_loop = None
+    try:
+        event_loop = asyncio.get_event_loop()
+    except RuntimeError:
+        event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(event_loop)
+    return event_loop.run_until_complete(coro)
+
+
+def inis2dict(ini_paths: Union[str, Iterable]) -> dict:
+    """
+    Take one or more ini files and return a dict with configuration from all.
+
+    :param ini_paths: path or paths to .ini files
+    """
+
+    parser = ConfigParser()
+
+    for ini in [ini_paths] if isinstance(ini_paths, str) else ini_paths:
+        with open(ini, 'r') as ini_fh:
+            ini_text = expandvars(ini_fh.read())
+            parser.read_string(ini_text)
+
+    return {s: dict(parser[s].items()) for s in parser.sections()}
 
 
 class Stopwatch:

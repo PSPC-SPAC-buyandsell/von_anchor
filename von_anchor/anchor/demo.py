@@ -25,7 +25,7 @@ from von_anchor.anchor.issuer import Issuer
 from von_anchor.anchor.origin import Origin
 from von_anchor.anchor.smith import AnchorSmith
 from von_anchor.anchor.verifier import Verifier
-from von_anchor.cache import Caches
+from von_anchor.cache import ArchivableCaches
 from von_anchor.error import ClosedPool
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
@@ -159,8 +159,8 @@ class OrgHubAnchor(Verifier, Origin, Issuer, OrgBookAnchor):
             archive_caches = True
             await self.load_cache_for_verification(False)
         if archive_caches:
-            Caches.archive(self.dir_cache)
-            Caches.purge_archives(self.dir_cache, True)
+            ArchivableCaches.archive(self.dir_cache)
+            ArchivableCaches.purge_archives(self.dir_cache, True)
 
         await self.wallet.close()
         # Do not close pool independently: let relying party decide when to go on-line and off-line

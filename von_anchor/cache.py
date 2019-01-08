@@ -719,12 +719,35 @@ class RevocationCache(dict):
         return rv
 
 
+class EndpointCache(dict):
+    """
+    Retain endpoint attribute values by anchor DID.
+
+    A lock shares access to critical sections as relying code specifies them (e.g., check and get/set).
+    Note that this one lock applies across all instances - the design of this class intends it to be a singleton.
+    """
+
+    lock = RLock()
+
+    def __init__(self):
+        """
+        Initialize endpoint cache; set re-entrant lock.
+        """
+
+        LOGGER.debug('EndpointCache.__init__ >>>')
+
+        super().__init__()
+
+        LOGGER.debug('EndpointCache.__init__ <<<')
+
+
 SCHEMA_CACHE = SchemaCache()
 CRED_DEF_CACHE = CredDefCache()
 REVO_CACHE = RevocationCache()
+ENDPOINT_CACHE = EndpointCache()
 
 
-class Caches:
+class ArchivableCaches:
     """
     Management utilities for schema, cred def, and revocation caches taken as a whole: archival, parsing, purging.
     """
@@ -732,7 +755,7 @@ class Caches:
     @staticmethod
     def clear() -> None:
         """
-        Clear all caches in memory.
+        Clear all archivable caches in memory.
         """
 
         LOGGER.debug('clear >>>')
@@ -749,7 +772,7 @@ class Caches:
     @staticmethod
     def archive(base_dir: str) -> int:
         """
-        Archive caches to disk as json.
+        Archive schema, cred def, revocation caches to disk as json.
 
         :param base_dir: archive base directory
         :return: timestamp (epoch seconds) used as subdirectory

@@ -28,7 +28,7 @@ from indy import anoncreds, ledger
 from indy.error import IndyError, ErrorCode
 
 from von_anchor.anchor.base import BaseAnchor
-from von_anchor.cache import Caches, RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
+from von_anchor.cache import ArchivableCaches, RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.canon import canon_wql
 from von_anchor.error import (
     AbsentCred,
@@ -282,7 +282,7 @@ class HolderProver(BaseAnchor):
 
         await super().open()
         if self.cfg.get('parse-caches-on-open', False):
-            Caches.parse(self.dir_cache)
+            ArchivableCaches.parse(self.dir_cache)
 
         for path_rr_id in Tails.links(self._dir_tails):
             await self._sync_revoc_for_proof(basename(path_rr_id))
@@ -302,7 +302,7 @@ class HolderProver(BaseAnchor):
 
         if self.cfg.get('archive-holder-prover-caches-on-close', False):
             await self.load_cache_for_proof(True)
-            Caches.purge_archives(self.dir_cache, True)
+            ArchivableCaches.purge_archives(self.dir_cache, True)
 
         await BaseAnchor.close(self)
         for path_rr_id in Tails.links(self._dir_tails):
@@ -495,13 +495,14 @@ class HolderProver(BaseAnchor):
 
     async def load_cache_for_proof(self, archive: bool = False) -> int:
         """
-        Load caches and optionally archive enough to go offline and be able to generate proof
-        on all credentials in wallet.
+        Load schema, cred def, revocation caches; optionally archive enough to go
+        offline and be able to generate proof on all credentials in wallet.
 
         Return timestamp (epoch seconds) of cache load event, also used as subdirectory
         for cache archives.
 
-        :param archive: True to archive now or False to demur (subclasses may still need to augment caches further)
+        :param archive: True to archive now or False to demur (subclasses may still
+            need to augment archivable caches further)
         :return: cache load event timestamp (epoch seconds)
         """
 
@@ -531,7 +532,7 @@ class HolderProver(BaseAnchor):
                             rv)
 
         if archive:
-            Caches.archive(self.dir_cache)
+            ArchivableCaches.archive(self.dir_cache)
         LOGGER.debug('HolderProver.load_cache_for_proof <<< %s', rv)
         return rv
 

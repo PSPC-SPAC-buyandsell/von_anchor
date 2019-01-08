@@ -24,6 +24,7 @@ This section outlines the Exception descendants that the von_anchor package defi
     "BadIdentifier", "1016", "Encountered bad tails hash, DID, schema id, cred def id, rev reg id", "Holder-prover anchor attempts to create proof on credentials citing bad cred def id"
     "AbsentProcess", "1017", "Required external process not running", "Issuer could not spawn external revocation registry builder"
     "BadKey", "1018", "Cryptographic operation revealed bad key", "Authenticated decryption operation revealed unexpected proof of origin"
+    "BadRole", "1019", "Invalid specifier for indy-sdk role", "Configured value is not a valid indy-sdk anchor role"
     "AbsentWallet", "3000", "Wallet cannot open as its control files do not exist", "Anchor attempts to open a wallet that is not yet created"
     "BadWalletQuery", "3001", "Bad WQL", "Caller attempts to search wallet with bad WQL"
     "AbsentCred", "3002", "No such credential in wallet", "Caller calls to get cred info on missing cred identifier"

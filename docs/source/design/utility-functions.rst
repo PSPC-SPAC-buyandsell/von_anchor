@@ -2,7 +2,7 @@
 Utility Functions
 ``````````````````````````````
 
-This section outlines utilities available within the package. Utility functions reside in files ``von_anchor/util.py``, ``von_anchor/indytween.py``, and ``von_anchor/canon.py``. File ``von_anchor/frill.py`` holds debugging and troubleshooting niceties.
+This section outlines utilities available within the package. Utility functions reside in files ``von_anchor/util.py``, ``von_anchor/indytween.py``, and ``von_anchor/canon.py``. File ``von_anchor/frill.py`` holds niceties for common use cases, debugging and troubleshooting.
 
 Utilities in util.py
 ###################################
@@ -42,7 +42,7 @@ The ``rev_reg_id2tag()`` function returns the tag of an input revocation registr
 
 The ``rev_reg_id2cred_def_id__tag()`` convenience function returns the a tuple with the credential definition identifier, and the tag, embedded in the input revocation registry identifier.
 
-The ``ok_wallet_reft()``, ``ok_did()``, ``ok_schema_id()``, ``ok_cred_def_id()``, and ``ok_rev_reg_id()`` functions return whether, on composition alone, their respective input strings represent acceptable wallet referents (a.k.a. wallet credential uuids or wallet credential identifiers), DIDs, schema identifiers, credential definition identifiers, and revocation registry identifiers.
+The ``ok_wallet_reft()``, ``ok_did()``, ``ok_role()``, ``ok_schema_id()``, ``ok_cred_def_id()``, and ``ok_rev_reg_id()`` functions return whether, on composition alone, their respective input strings represent acceptable wallet referents (a.k.a. wallet credential uuids or wallet credential identifiers), DIDs, indy anchor roles, schema identifiers, credential definition identifiers, and revocation registry identifiers.
 
 .. _wranglers:
 
@@ -220,6 +220,18 @@ Function ppjson()
 ***********************************
 
 The ``ppjson()`` utility takes a JSON serialized or serializable structure and returns a pretty-print. If the structure is not compatible with JSON, it returns a python pretty-print instead. An optional parameter allows a maximum length, at which the operation truncates the output (excluding three characters for a terminating ellipsis).
+
+Function do_wait()
+***********************************
+
+The ``do_wait`` utility takes a coroutine. Its operation creates an event loop if necessary, then runs the coroutine on the event loop and returns the response. Users of ``von_agent`` may use this nicety to run an asynchronous method in synchronous space.
+
+Function inis2dict()
+***********************************
+
+The ``inis2dict()`` utility takes a path to a Windows ``.ini``-style configuration file or an iterable collection thereof. Its operation parses such files and returns a ``dict`` with their configuration (string) data, nesting a further ``dict`` for each section. The processing interpolates bash-style environment variables with braces (e.g., ``${HOME}``).
+
+Input configuration files must not repeat section headers.
 
 Class Stopwatch
 ***********************************
