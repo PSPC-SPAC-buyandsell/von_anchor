@@ -56,7 +56,7 @@ LOGGER = logging.getLogger(__name__)
 
 class Issuer(RevRegBuilder):
     """
-    Mixin for anchor acting in role of Issuer. An Issuer creates credential definitions and
+    Mixin for anchor acting in Issuer capacity. An Issuer creates credential definitions and
     sends them to the ledger, issues credentials, and revokes credentials. Revocation support
     involves the management of tails files and revocation registries.
     """
@@ -292,7 +292,7 @@ class Issuer(RevRegBuilder):
                     private_key_ok = False
                     LOGGER.warning(
                         'New cred def on %s in wallet shadows existing one on ledger: private key not usable', cd_id)
-                        # carry on though, this anchor may have other roles so public key may be good enough
+                        # carry on though, this anchor may have other capacities so public key may be good enough
             except IndyError as x_indy:
                 if x_indy.error_code == ErrorCode.AnoncredsCredDefAlreadyExistsError:
                     if json.loads(rv_json):

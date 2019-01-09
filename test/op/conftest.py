@@ -37,38 +37,38 @@ logging.getLogger('indy').setLevel(logging.ERROR)
 
 
 @pytest.fixture
-def seed_new_anchor():
+def seed_von_anchor():
     logger = logging.getLogger(__name__)
-    logger.debug("seed_new_anchor: >>>")
+    logger.debug("seed_von_anchor: >>>")
 
-    res = "{}000000000000NewAnchor1".format(int(time()))
+    res = "{}000000000000VonAnchor1".format(int(time()))
 
-    logger.debug("seed_new_anchor: <<< res: %r", res)
+    logger.debug("seed_von_anchor: <<< res: %r", res)
     return res
 
 
 @pytest.fixture
-def path_sendnym_ini(path_temp):
+def path_setnym_ini(path_temp):
     logger = logging.getLogger(__name__)
-    logger.debug("path_sendnym_ini: >>>")
+    logger.debug("path_setnym_ini: >>>")
 
-    res = Path(path_temp).joinpath("sendnym.ini")
+    res = Path(path_temp).joinpath("setnym.ini")
 
-    logger.debug("path_sendnym_ini: <<< res: %r", res)
+    logger.debug("path_setnym_ini: <<< res: %r", res)
     return res
 
 
 @pytest.fixture
-def sendnym_ini_file(path_sendnym_ini, pool_name, seed_trustee1, seed_new_anchor):
+def setnym_ini_file(path_setnym_ini, pool_name, seed_trustee1, seed_von_anchor):
     logger = logging.getLogger(__name__)
     logger.debug(
-        "sendnym_ini_file: >>> path_sendnym_ini: %r, pool_name: %r, seed_trustee1: %r, seed_new_anchor: %r",
-        path_sendnym_ini,
+        "setnym_ini_file: >>> path_setnym_ini: %r, pool_name: %r, seed_trustee1: %r, seed_von_anchor: %r",
+        path_setnym_ini,
         pool_name,
         seed_trustee1,
-        seed_new_anchor)
+        seed_von_anchor)
 
-    path_sendnym_ini.parent.mkdir(parents=True, exist_ok=True)
+    path_setnym_ini.parent.mkdir(parents=True, exist_ok=True)
 
     data = '\n'.join([
         '[Node Pool]',
@@ -81,14 +81,14 @@ def sendnym_ini_file(path_sendnym_ini, pool_name, seed_trustee1, seed_new_anchor
         'wallet.type=',
         'wallet.key='
         '',
-        '[New Anchor]',
+        '[VON Anchor]',
         'role=TRUST_ANCHOR',
-        'seed={}'.format(seed_new_anchor),
-        'wallet.name=anchor-{}'.format(seed_new_anchor[0:10]),
+        'seed={}'.format(seed_von_anchor),
+        'wallet.name=anchor-{}'.format(seed_von_anchor[0:10]),
         'wallet.type=',
         'wallet.key='])
 
-    with open(str(path_sendnym_ini), "w+") as f:
+    with open(str(path_setnym_ini), "w+") as f:
         f.writelines(data)
 
-    logger.debug("sendnym_ini_file: <<<")
+    logger.debug("setnym_ini_file: <<<")

@@ -140,6 +140,12 @@ enum Predicate {
     {static} +GT
 }
 
+enum Role {
+    {static} +STEWARD
+    {static} +TRUSTEE
+    {static} +TRUST_ANCHOR
+    {static} +USER
+}
 
 class BaseAnchor {
     +pool
@@ -308,11 +314,18 @@ Issuer <|-- OrgHubAnchor
 Origin <|-- OrgHubAnchor
 Verifier <|-- OrgHubAnchor
 
-HolderProver --> ArchivableCaches
-Verifier --> ArchivableCaches
-OrgHubAnchor --> ArchivableCaches
+HolderProver ..> ArchivableCaches
+Verifier ..> ArchivableCaches
+OrgHubAnchor ..> ArchivableCaches
 
-HolderProver *-- Predicate
-Verifier *-- Predicate
+HolderProver ..> Predicate
+Verifier ..> Predicate
+
+BaseAnchor ..> Role
+AnchorSmith ..> Role
+Verifier ..> Role
+NominalAnchor ..> Role
+OrgHubAnchor ..> Role
+SRIAnchor ..> Role
 
 @enduml

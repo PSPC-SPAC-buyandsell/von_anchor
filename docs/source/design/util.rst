@@ -188,7 +188,7 @@ The ``Predicate`` enumeration specifies predicate relations as they appear in in
 Encoding
 ***********************************
 
-The encoding implementation resides here, encoding indy-sdk attributes. Recall that indy-sdk operates elliptic curve cryptography on (immense) numeric input, and hence its callers must map all attribute values to non-negative integers for processing. Each attribute in indy-sdk structures carries a dict mapping raw and encoded keys to their respective values. Note however that indy-sdk has a 256-bit limit on encoded (integer) values.
+The encoding implementation operates on indy-sdk attributes. Recall that indy-sdk operates elliptic curve cryptography on (immense) numeric input, and hence its callers must map all attribute values to non-negative integers for processing. Each attribute in indy-sdk structures carries a dict mapping raw and encoded keys to their respective values. Note however that indy-sdk has a 256-bit limit on encoded (integer) values.
 
 The ``cred_attr_value()`` convenience method takes a raw value and returns its indy-sdk mapping to its raw and encoded values.
 
@@ -210,6 +210,16 @@ Solution: 32-bit Integer Check and SHA-256
 The ``encode()`` function leaves (signed) 32-bit integers alone, encoding them to their string representations. For all other content, the implementation uses SHA-256 iteratively until the encoding does not correspond to a 32-bit integer: a prior exhaustive exercise has demonstrated that no 32-bit integer hashes to any 32-bit integer, proving that this operation terminates in O(n) time.
 
 The operation treats booleans and stringified 32-bit integers, but not floating point numbers, as 32-bit integers.
+
+Role
+***********************************
+
+The ``Role`` enumeration specifies indy-sdk roles for use in cryptonyms:
+
+* ``STEWARD`` for a steward role, which operates the node pool
+* ``TRUSTEE`` for a trustee role, which sends cryptonyms to the ledger for other anchors
+* ``TRUST_ANCHOR`` for a trust anchor role, which writes artifacts to the ledger
+* ``USER`` for a self-sovereign user role, which reads artifacts and writes its own entries on the ledger.
 
 Frills
 ###################################

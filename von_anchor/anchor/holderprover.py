@@ -63,7 +63,7 @@ LOGGER = logging.getLogger(__name__)
 
 class HolderProver(BaseAnchor):
     """
-    Mixin for anchor acting in the role of w3c Holder and indy-sdk Prover.  A Holder holds
+    Mixin for anchor acting in the capacity of w3c Holder and indy-sdk Prover.  A Holder holds
     credentials; a Prover produces proof of credentials. Revocation support requires
     the holder-prover anchor to manage tails files.
     """

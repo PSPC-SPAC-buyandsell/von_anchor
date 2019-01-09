@@ -23,7 +23,7 @@ from copy import deepcopy
 from typing import Union
 
 from von_anchor.nodepool import Protocol
-from von_anchor.indytween import Predicate, SchemaKey
+from von_anchor.indytween import Role, Predicate, SchemaKey
 
 
 B58 = '1-9A-HJ-NP-Za-km-z'
@@ -62,7 +62,7 @@ def ok_role(token: str) -> bool:
     :return: whether input token looks like a valid indy anchor role
     """
 
-    return token in (None, 'TRUSTEE', 'STEWARD', 'TRUST_ANCHOR', '')
+    return Role.get(token) is not None
 
 
 def ok_did(token: str) -> bool:

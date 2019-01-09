@@ -29,7 +29,7 @@ from von_anchor.anchor.base import BaseAnchor
 from von_anchor.cache import ArchivableCaches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.canon import canon
 from von_anchor.error import AbsentRevReg, AbsentSchema, BadIdentifier, BadRevStateTime, ClosedPool
-from von_anchor.indytween import Predicate
+from von_anchor.indytween import Predicate, Role
 from von_anchor.nodepool import NodePool
 from von_anchor.util import cred_def_id2seq_no, ok_cred_def_id, ok_rev_reg_id, ok_schema_id
 from von_anchor.validcfg import validate_config
@@ -41,7 +41,7 @@ LOGGER = logging.getLogger(__name__)
 
 class Verifier(BaseAnchor):
     """
-    Mixin for anchor acting in the role of Verifier. Verifier anchors verify proofs.
+    Mixin for anchor acting in the capacity of Verifier. Verifier anchors verify proofs.
     """
 
     def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
@@ -104,7 +104,8 @@ class Verifier(BaseAnchor):
 
         LOGGER.debug('AnchorSmith.role >>>')
 
-        rv = None
+        rv = Role.USER.token()
+
         LOGGER.debug('AnchorSmith.role <<< %s', rv)
         return rv
 

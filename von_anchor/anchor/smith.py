@@ -21,6 +21,7 @@ from indy import ledger
 
 from von_anchor.anchor.base import BaseAnchor
 from von_anchor.error import BadIdentifier, BadRole
+from von_anchor.indytween import Role
 from von_anchor.util import ok_did, ok_role
 
 
@@ -42,7 +43,8 @@ class AnchorSmith(BaseAnchor):
 
         LOGGER.debug('AnchorSmith.role >>>')
 
-        rv = 'TRUSTEE'
+        rv = Role.TRUSTEE.token()
+
         LOGGER.debug('AnchorSmith.role <<< %s', rv)
         return rv
 

@@ -27,6 +27,7 @@ from von_anchor.anchor.smith import AnchorSmith
 from von_anchor.anchor.verifier import Verifier
 from von_anchor.cache import ArchivableCaches
 from von_anchor.error import ClosedPool
+from von_anchor.indytween import Role
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.validcfg import validate_config
@@ -51,7 +52,8 @@ class NominalAnchor(BaseAnchor):
 
         LOGGER.debug('NominalAnchor.role >>>')
 
-        rv = None
+        rv = Role.USER.token()
+
         LOGGER.debug('NominalAnchor.role <<< %s', rv)
         return rv
 

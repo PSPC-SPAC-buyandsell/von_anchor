@@ -15,7 +15,7 @@
    design/cache
    design/nodepool
    design/wallet
-   design/utility-functions
+   design/util
    design/operations
    design/exceptions
    design/class-hierarchy

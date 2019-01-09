@@ -321,7 +321,7 @@ class BadKey(VonAnchorError):
 
 class BadRole(VonAnchorError):
     """
-    Invalid specifier for indy-sdk anchor.
+    Invalid specifier for indy-sdk role.
     """
 
     def __init__(self, message: str):

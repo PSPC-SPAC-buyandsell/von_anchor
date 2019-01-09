@@ -20,13 +20,18 @@ from setuptools import setup, find_packages
 
 
 pkg_name = 'von_anchor'
-version = '1.7.1'
+version = '1.7.3'
 
 setup(
     name=pkg_name,
     version=version,
-    packages=find_packages(),
+    packages=find_packages(exclude=['test']),
     description='VON anchors',
+    entry_points={
+        'console_scripts': [
+            'von_anchor_setnym = von_anchor.op.setnym:main'
+        ]
+    },
     license='Apache Software License',
     author='PSPS-SPAC',
     author_email='stephen.klump@becker-carroll.com',

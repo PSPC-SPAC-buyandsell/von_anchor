@@ -34,7 +34,7 @@ from von_anchor.error import (
     BadLedgerTxn,
     ClosedPool,
     CorruptWallet)
-from von_anchor.indytween import SchemaKey
+from von_anchor.indytween import Role, SchemaKey
 from von_anchor.nodepool import NodePool
 from von_anchor.util import ok_cred_def_id, ok_did, ok_rev_reg_id, ok_schema_id, schema_id, schema_key
 from von_anchor.wallet import Wallet
@@ -45,7 +45,7 @@ LOGGER = logging.getLogger(__name__)
 class BaseAnchor:
     """
     Base class for common anchor functionality. A VON anchor has a wallet and a
-    node pool.  It has a role and a cryptonym, and can interact via indy-sdk
+    node pool.  It has a cryptonym and can interact via indy-sdk
     with the distributed ledger that its node pool operates.
     """
 
@@ -228,7 +228,7 @@ class BaseAnchor:
 
         LOGGER.debug('BaseAnchor.role >>>')
 
-        rv = 'TRUST_ANCHOR'
+        rv = Role.TRUST_ANCHOR.token()
 
         LOGGER.debug('BaseAnchor.role <<< %s', rv)
         return rv
@@ -245,22 +245,22 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor.get_endpoint >>> target_did: %s, from_cache: %s', target_did, from_cache)
 
         rv = None
-        did = target_did or self.did
-        if not ok_did(did):
-            LOGGER.debug('BaseAnchor.get_endpoint <!< Bad DID %s', did)
-            raise BadIdentifier('Bad DID {}'.format(did))
+        target_did = target_did or self.did
+        if not ok_did(target_did):
+            LOGGER.debug('BaseAnchor.get_endpoint <!< Bad DID %s', target_did)
+            raise BadIdentifier('Bad DID {}'.format(target_did))
 
         if from_cache:
             with ENDPOINT_CACHE.lock:
-                if did in ENDPOINT_CACHE:
-                    LOGGER.info('BaseAnchor.get_endpoint: got endpoint for %s from cache', did)
-                    rv = ENDPOINT_CACHE[did]
+                if target_did in ENDPOINT_CACHE:
+                    LOGGER.info('BaseAnchor.get_endpoint: got endpoint for %s from cache', target_did)
+                    rv = ENDPOINT_CACHE[target_did]
                     LOGGER.debug('BaseAnchor.get_endpoint <<< %s', rv)
                     return rv
 
         req_json = await ledger.build_get_attrib_request(
             self.did,
-            did,
+            target_did,
             'endpoint',
             None,
             None)
@@ -274,10 +274,10 @@ class BaseAnchor:
 
         with ENDPOINT_CACHE.lock:
             if rv:
-                ENDPOINT_CACHE[did] = rv
+                ENDPOINT_CACHE[target_did] = rv
             else:
-                ENDPOINT_CACHE.pop(did, None)
-                assert did not in ENDPOINT_CACHE
+                ENDPOINT_CACHE.pop(target_did, None)
+                assert target_did not in ENDPOINT_CACHE
 
         LOGGER.debug('BaseAnchor.get_endpoint <<< %s', rv)
         return rv

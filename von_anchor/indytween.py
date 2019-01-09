@@ -18,7 +18,7 @@ limitations under the License.
 from collections import namedtuple
 from enum import Enum
 from hashlib import sha256
-from typing import Any
+from typing import Any, Union
 
 
 SchemaKey = namedtuple('SchemaKey', 'origin_did name version')
@@ -129,3 +129,62 @@ class Predicate(Enum):
         if isinstance(value, (bool, int)):
             return int(value)
         return int(str(value))  # kick out floats
+
+
+class Role(Enum):
+    """
+    Enum for indy roles.
+    """
+
+    STEWARD = (2,)
+    TRUSTEE = (0,)
+    TRUST_ANCHOR = (101,)
+    USER = (None, '')
+
+    @staticmethod
+    def get(token: Union[str, int] = None) -> 'Role':
+        """
+        Return enum instance corresponding to input token.
+
+        :param token: token identifying role to indy-sdk: 'STEWARD', 'TRUSTEE', 'TRUST_ANCHOR', '' or None
+        :return: enum instance corresponding to input token
+        """
+
+        if token is None:
+            return Role.USER
+
+        for role in Role:
+            if isinstance(token, int) and token in role.value:
+                return role
+            if str(token).upper() == role.name or token in (str(v) for v in role.value):  # could be numeric string
+                return role
+
+        return None
+
+    @staticmethod
+    def token_reset() -> str:
+        """
+        Return sentinel token (empty string) marking role as in transition in its cryptonym on the ledger.
+
+        :return: empty string
+        """
+
+        return ''
+
+    def to_int(self) -> int:
+        """
+        Return integer value that indy-sdk associates with role.
+
+        :return: associated integer value (None for self-sovereign user having no additional write privileges to ledger)
+        """
+
+        return self.value[0]
+
+    def token(self) -> str:
+        """
+        Return token identifying role to indy-sdk.
+
+        :return: token: 'STEWARD', 'TRUSTEE', 'TRUST_ANCHOR', or None
+        """
+
+        return None if self == Role.USER else self.name
