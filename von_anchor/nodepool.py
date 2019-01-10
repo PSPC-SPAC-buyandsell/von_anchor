@@ -271,7 +271,8 @@ class NodePool:
         try:
             await pool.set_protocol_version(self.protocol.indy())
             LOGGER.info('Pool ledger %s set protocol %s', self.name, self.protocol)
-            await pool.create_pool_ledger_config(self.name, json.dumps({'genesis_txn': str(self.genesis_txn_path)}))
+            if self.name not in (p['pool'] for p in await pool.list_pools()):
+                await pool.create_pool_ledger_config(self.name, json.dumps({'genesis_txn': str(self.genesis_txn_path)}))
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.PoolLedgerConfigAlreadyExistsError:
                 LOGGER.info('Pool ledger config for %s already exists', self.name)

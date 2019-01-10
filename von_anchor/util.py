@@ -18,12 +18,17 @@ limitations under the License.
 import json
 import re
 
+from collections import namedtuple
 from collections.abc import Iterable
 from copy import deepcopy
 from typing import Union
 
 from von_anchor.nodepool import Protocol
 from von_anchor.indytween import Role, Predicate, SchemaKey
+
+
+NodePoolData = namedtuple('NodePoolData', 'name genesis_txn_path')  # for op configuration
+AnchorData = namedtuple('AnchorData', 'role seed wallet_name wallet_type wallet_key')
 
 
 B58 = '1-9A-HJ-NP-Za-km-z'

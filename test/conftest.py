@@ -31,7 +31,7 @@ logging.basicConfig(level=logging.WARNING, format='%(levelname)-8s | %(name)-12s
 logging.getLogger('test.conftest').setLevel(logging.INFO)
 logging.getLogger('asyncio').setLevel(logging.WARNING)
 logging.getLogger('von_anchor').setLevel(logging.WARNING)
-logging.getLogger('indy').setLevel(logging.CRITICAL)
+logging.getLogger('indy').setLevel(logging.ERROR)
 
 
 @pytest.fixture(scope="session")

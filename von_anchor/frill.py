@@ -20,7 +20,7 @@ import json
 
 from configparser import ConfigParser
 from enum import IntEnum
-from os.path import expandvars
+from os.path import expandvars, isfile
 from pprint import pformat
 from time import time
 from typing import Any, Callable, Iterable, Union
@@ -71,6 +71,8 @@ def inis2dict(ini_paths: Union[str, Iterable]) -> dict:
     parser = ConfigParser()
 
     for ini in [ini_paths] if isinstance(ini_paths, str) else ini_paths:
+        if not isfile(ini):
+            raise FileNotFoundError('No such file: {}'.format(ini))
         with open(ini, 'r') as ini_fh:
             ini_text = expandvars(ini_fh.read())
             parser.read_string(ini_text)

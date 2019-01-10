@@ -18,7 +18,6 @@ limitations under the License.
 import json
 import logging
 
-from collections import namedtuple
 from os import sys
 from os.path import dirname, realpath
 from sys import exit as sys_exit, path as sys_path
@@ -33,11 +32,8 @@ from von_anchor.error import BadRole, VonAnchorError
 from von_anchor.frill import do_wait, inis2dict
 from von_anchor.indytween import Role
 from von_anchor.nodepool import NodePool
-from von_anchor.util import ok_role
+from von_anchor.util import AnchorData, NodePoolData, ok_role
 from von_anchor.wallet import Wallet
-
-
-AnchorData = namedtuple('AnchorData', 'role seed wallet_name wallet_type wallet_key')
 
 
 def usage() -> None:
@@ -54,19 +50,16 @@ def usage() -> None:
     print('if the ledger does not have it already as configured.')
     print()
     print('The configuration file has sections and entries as follows:')
-    print()
     print('  * section [Node Pool]:')
     print('    - name: the name of the node pool to which the operation applies')
     print('    - genesis.txn.path: the path to the genesis transaction file')
     print('        for the node pool')
-    print()
     print('  * section [Trustee Anchor]:')
     print("    - seed: the trustee anchor's seed")
     print("    - wallet.name: the trustee anchor's wallet name")
     print("    - wallet.type: (default blank) the trustee anchor's wallet type")
     print("    - wallet.key: (default blank) the trustee anchor's")
     print('        wallet access credential (password) value')
-    print()
     print('  * section [VON Anchor]:')
     print('    - role: the role to request in the send-nym transaction; specify:')
     print('        - (default) empty value for user with no additional write privileges')
@@ -95,9 +88,7 @@ async def setnym(ini_path: str) -> int:
     if not ok_role(cfg_van_role):
         raise BadRole('Configured role {} is not valid'.format(cfg_van_role))
 
-    pool_name = config['Node Pool']['name']
-    genesis_txn_path = config['Node Pool']['genesis.txn.path']
-
+    pool_data = NodePoolData(config['Node Pool']['name'], config['Node Pool']['genesis.txn.path'])
     tan_data = AnchorData(
         Role.TRUSTEE,
         config['Trustee Anchor']['seed'],
@@ -105,13 +96,13 @@ async def setnym(ini_path: str) -> int:
         config['Trustee Anchor'].get('wallet.type', None) or None,
         config['Trustee Anchor'].get('wallet.key', None) or None)
     van_data = AnchorData(
-        Role.get(config['VON Anchor'].get('role', None) or None),
+        Role.get(cfg_van_role),
         config['VON Anchor']['seed'],
         config['VON Anchor']['wallet.name'],
         config['VON Anchor'].get('wallet.type', None) or None,
         config['VON Anchor'].get('wallet.key', None) or None)
 
-    async with NodePool(pool_name, genesis_txn_path) as pool, (
+    async with NodePool(pool_data.name, pool_data.genesis_txn_path) as pool, (
         TrusteeAnchor(
             await Wallet(
                 tan_data.seed,
