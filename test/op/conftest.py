@@ -79,12 +79,12 @@ def setnym_ini_file(path_setnym_ini, pool_name, seed_trustee1, seed_von_anchor):
         'seed={}'.format(seed_trustee1),
         'wallet.name=trustee-anchor',
         'wallet.type=',
-        'wallet.key='
+        'wallet.key=',
         '',
         '[VON Anchor]',
         'role=TRUST_ANCHOR',
         'seed={}'.format(seed_von_anchor),
-        'wallet.name=anchor-{}'.format(seed_von_anchor[0:10]),
+        'wallet.name=anchor-{}'.format(seed_von_anchor[0:10]),  # OK while epoch is 10 digits, some time in 2286-11
         'wallet.type=',
         'wallet.key='])
 

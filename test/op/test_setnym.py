@@ -49,11 +49,14 @@ async def test_setnym(
     tan = TrusteeAnchor(await Wallet(seed_trustee1, 'trustee-anchor').create(), p)
     await tan.open()
 
+    with open(path_setnym_ini, 'r') as cfg_fh:
+        print('\n\n== 0 == Initial configuration:\n{}'.format(cfg_fh.read()))
     cfg = inis2dict(str(path_setnym_ini))
+
     van = NominalAnchor(await Wallet(cfg['VON Anchor']['seed'], cfg['VON Anchor']['wallet.name']).create(), p)
 
     nym = json.loads(await van.get_nym(van.did))
-    print('\n\n== 0 == Nym {} on ledger for anchor {} on DID {}'.format(
+    print('\n\n== 1 == Nym {} on ledger for anchor {} on DID {}'.format(
         '{} already'.format(ppjson(nym)) if nym else 'not yet',
         van.wallet.name,
         van.did))
@@ -70,13 +73,13 @@ async def test_setnym(
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     assert not sub_proc.returncode
-    print('\n\n== 1 == Set nym with TRUST_ANCHOR role on {} for {}'.format(van.did, van.wallet.name))
+    print('\n\n== 2 == Set nym with TRUST_ANCHOR role on {} for {}'.format(van.did, van.wallet.name))
 
     await p.open()
     await tan.open()
     nym = json.loads(await tan.get_nym(van.did))
     assert nym and Role.get(nym['role']) == Role.TRUST_ANCHOR
-    print('\n\n== 2 == Got nym transaction from ledger for DID {} ({}): {}'.format(
+    print('\n\n== 3 == Got nym transaction from ledger for DID {} ({}): {}'.format(
         van.did,
         van.wallet.name,
         ppjson(nym)))
@@ -99,14 +102,14 @@ async def test_setnym(
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     assert not sub_proc.returncode
-    print('\n\n== 3 == Set nym with USER role on {} for {}'.format(van.did, van.wallet.name))
+    print('\n\n== 4 == Set nym with USER role on {} for {}'.format(van.did, van.wallet.name))
 
     await p.open()
     await tan.open()
     nym = json.loads(await tan.get_nym(van.did))
     assert nym and Role.get(nym['role']) == Role.USER
     last_nym_seqno = nym['seqNo']
-    print('\n\n== 4 == Got nym transaction from ledger for DID {} ({}): {}'.format( 
+    print('\n\n== 5 == Got nym transaction from ledger for DID {} ({}): {}'.format(
         van.did,
         van.wallet.name,
         ppjson(nym)))
@@ -122,13 +125,13 @@ async def test_setnym(
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     assert not sub_proc.returncode
-    print('\n\n== 5 == Set nym again with USER role on {} for {}'.format(van.did, van.wallet.name))
+    print('\n\n== 6 == Set nym again with USER role on {} for {}'.format(van.did, van.wallet.name))
 
     await p.open()
     await tan.open()
     nym = json.loads(await tan.get_nym(van.did))
     last_nym_seqno = nym['seqNo']
-    print('\n\n== 6 == Got (same) nym transaction from ledger for DID {} ({}): {}'.format(  
+    print('\n\n== 7 == Got (same) nym transaction from ledger for DID {} ({}): {}'.format(
         van.did,
         van.wallet.name,
         ppjson(nym)))
@@ -151,7 +154,7 @@ async def test_setnym(
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     assert sub_proc.returncode
-    print('\n\n== 7 == Called to set bad role for {}, got error text {}'.format(
+    print('\n\n== 8 == Called to set bad role for {}, got error text {}'.format(
         van.wallet.name,
         sub_proc.stdout.decode()))
 
@@ -162,7 +165,7 @@ async def test_setnym(
     await tan.close()
     await p.close()
 
-    print('\n\n== 8 == Got nym transaction from ledger for DID {} ({}): {}'.format(
+    print('\n\n== 9 == Got nym transaction from ledger for DID {} ({}): {}'.format(
         van.did,
         van.wallet.name,
         ppjson(nym)))
