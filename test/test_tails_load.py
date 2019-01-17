@@ -24,7 +24,7 @@ from os.path import isfile, join
 import pytest
 
 from von_anchor import OrgHubAnchor, RevRegBuilder, TrusteeAnchor
-from von_anchor.error import AbsentSchema
+from von_anchor.error import AbsentSchema, ExtantWallet
 from von_anchor.frill import Ink, Stopwatch, ppjson
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
@@ -65,14 +65,41 @@ async def test_anchors_tails_load(
     p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
     await p.open()
 
-    tan = TrusteeAnchor(await Wallet(seed_trustee1, 'trustee-anchor').create(), p)
+    wallet_data = {
+        'trustee-anchor': {
+            'seed': seed_trustee1,
+            'storage_type': None,
+            'config': None,
+            'access_creds': None
+        },
+        WALLET_NAME: {
+            'seed': 'Superstar-Anchor-000000000000000',
+            'storage_type': None,
+            'config': { 
+                'extra-property': True
+            },
+            'access_creds': {
+                'key': 'rrbx-test'
+            }
+        }
+    }
+    for (name, wdata) in wallet_data.items():
+        try:
+            await Wallet(name, None, wdata['config'], wdata['access_creds']).create(wdata['seed'])
+        except ExtantWallet:
+            pass
+
+    tan = TrusteeAnchor(Wallet('trustee-anchor'), p)
     no_prox = rrbx_prox()
-    san = OrgHubAnchor(await Wallet('Superstar-Anchor-000000000000000', WALLET_NAME).create(), p, rrbx=rrbx)
+    san = OrgHubAnchor(
+        Wallet(WALLET_NAME, None, wallet_data[WALLET_NAME]['config'], wallet_data[WALLET_NAME]['access_creds']),
+        p,
+        rrbx=rrbx)
     if rrbx:
         await beep('external rev reg builder process on {}'.format(WALLET_NAME), 5)
         assert rrbx_prox() == no_prox + 1
         async with OrgHubAnchor(
-                await Wallet('Superstar-Anchor-000000000000000', WALLET_NAME).create(),
+                Wallet(WALLET_NAME, None, wallet_data[WALLET_NAME]['config'], wallet_data[WALLET_NAME]['access_creds']),
                 p,
                 rrbx=rrbx):  # check for exactly 1 external rev reg builder process
             await beep('external rev reg builder process uniqueness test on {}'.format(WALLET_NAME), 5)

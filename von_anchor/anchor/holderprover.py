@@ -74,7 +74,7 @@ class HolderProver(BaseAnchor):
 
         :param wallet: wallet for anchor use
         :param pool: pool for anchor use
-        :param cfg: configuration dict for cache archive behaviour; e.g.,
+        :param config: configuration dict for cache archive behaviour; e.g.,
 
         ::
 
@@ -93,8 +93,8 @@ class HolderProver(BaseAnchor):
         self._dir_tails = join(expanduser('~'), '.indy_client', 'tails')
         makedirs(self._dir_tails, exist_ok=True)
 
-        self._cfg = kwargs.get('cfg', {})
-        validate_config('holder-prover', self._cfg)
+        self._config = kwargs.get('config', {})
+        validate_config('holder-prover', self._config)
 
         self._dir_cache = join(expanduser('~'), '.indy_client', 'cache', self.wallet.name)
         makedirs(self._dir_cache, exist_ok=True)
@@ -113,25 +113,25 @@ class HolderProver(BaseAnchor):
             raise AbsentLinkSecret('Action {} requires link secret but it is not set'.format(action))
 
     @property
-    def cfg(self) -> dict:
+    def config(self) -> dict:
         """
         Accessor for configuration dict
 
         :return: holder-prover config dict
         """
 
-        return self._cfg
+        return self._config
 
-    @cfg.setter
-    def cfg(self, value: dict) -> None:
+    @config.setter
+    def config(self, value: dict) -> None:
         """
         Set configuration dict
 
         :param value: configuration dict
         """
 
-        self._cfg = value or {}
-        validate_config('holder-prover', self._cfg)
+        self._config = value or {}
+        validate_config('holder-prover', self._config)
 
     @property
     def dir_cache(self) -> str:
@@ -281,7 +281,7 @@ class HolderProver(BaseAnchor):
         LOGGER.debug('HolderProver.open >>>')
 
         await super().open()
-        if self.cfg.get('parse-caches-on-open', False):
+        if self.config.get('parse-caches-on-open', False):
             ArchivableCaches.parse(self.dir_cache)
 
         for path_rr_id in Tails.links(self._dir_tails):
@@ -300,7 +300,7 @@ class HolderProver(BaseAnchor):
 
         LOGGER.debug('HolderProver.close >>>')
 
-        if self.cfg.get('archive-holder-prover-caches-on-close', False):
+        if self.config.get('archive-holder-prover-caches-on-close', False):
             await self.load_cache_for_proof(True)
             ArchivableCaches.purge_archives(self.dir_cache, True)
 
@@ -1089,7 +1089,7 @@ class HolderProver(BaseAnchor):
         LOGGER.debug('HolderProver.create_proof <<< %s', rv)
         return rv
 
-    async def reset_wallet(self) -> str:
+    async def reset_wallet(self, seed) -> str:
         """
         Close and delete HolderProver wallet, then create and open a replacement on prior link secret.
         Note that this operation effectively destroys private keys for credential definitions. Its
@@ -1097,6 +1097,7 @@ class HolderProver(BaseAnchor):
 
         Raise AbsentLinkSecret if link secret not set.
 
+        :param seed: seed to use for new wallet
         :return: wallet name
         """
 
@@ -1104,23 +1105,21 @@ class HolderProver(BaseAnchor):
 
         self._assert_link_secret('reset_wallet')
 
-        seed = self.wallet._seed
         wallet_name = self.wallet.name
         wallet_auto_remove = self.wallet.auto_remove
-        wallet_cfg = self.wallet.cfg
-        wallet_cfg['auto-remove'] = wallet_auto_remove
-        wallet_xtype = self.wallet.xtype
+        wallet_config = self.wallet.config
+        wallet_config['auto-remove'] = wallet_auto_remove
+        wallet_storage_type = self.wallet.storage_type
         wallet_access_creds = self.wallet.access_creds
 
         await self.wallet.close()
         if not self.wallet.auto_remove:
             await self.wallet.remove()
         self.wallet = await Wallet(
-            seed,
             wallet_name,
-            wallet_xtype,
-            wallet_cfg,
-            wallet_access_creds).create()
+            wallet_storage_type,
+            wallet_config,
+            wallet_access_creds).create(seed)
         await self.wallet.open()
 
         await self.create_link_secret(self._link_secret)  # carry over link secret to new wallet

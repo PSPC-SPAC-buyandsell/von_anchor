@@ -43,7 +43,6 @@ from von_anchor.error import (
     AbsentCred,
     AbsentCredDef,
     AbsentInterval,
-    AbsentMetadata,
     AbsentSchema,
     AbsentTails,
     AbsentWallet,
@@ -54,7 +53,8 @@ from von_anchor.error import (
     BadWalletQuery,
     CacheIndex,
     ClosedPool,
-    CredentialFocus)
+    CredentialFocus,
+    ExtantWallet)
 from von_anchor.frill import Ink, ppjson
 from von_anchor.indytween import raw
 from von_anchor.nodepool import NodePool
@@ -135,6 +135,19 @@ def _download_tails(rr_id):
     assert len(Tails.unlinked(DIR_TAILS)) == 1
 
 
+async def get_wallets(wallet_data):
+    rv = {}
+    for (name, seed) in wallet_data.items():
+        w = Wallet(name)
+        try:
+            if seed:
+                await w.create(seed)
+        except ExtantWallet:
+            pass
+        rv[name] = w
+    return rv
+
+
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchors_api(
@@ -156,19 +169,28 @@ async def test_anchors_api(
     except AbsentWallet:
         pass
 
-    tan = TrusteeAnchor(await Wallet(seed_trustee1, 'trustee-anchor').create(), p)
-    san = SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p)
+    seeds = {
+        'trustee-anchor': seed_trustee1,
+        'sri': 'SRI-Anchor-000000000000000000000',
+        'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000',
+        'bc-org-hub': 'BC-Org-Book-Anchor-0000000000000',
+        'bc-registrar': 'BC-Registrar-Anchor-000000000000'
+    }
+    wallets = await get_wallets(seeds)
+
+    tan = TrusteeAnchor(wallets['trustee-anchor'], p)
+    san = SRIAnchor(wallets['sri'], p)
     pspcoban = OrgBookAnchor(
-        await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
+        wallets['pspc-org-book'],
         p,
-        cfg={
+        config={
             'parse-caches-on-open': True,
             'archive-holder-prover-caches-on-close': True
         })
     bcohan = OrgHubAnchor(
-        await Wallet('BC-Org-Book-Anchor-0000000000000', 'bc-org-hub').create(),
+        wallets['bc-org-hub'],
         p,
-        cfg={
+        config={
             'parse-caches-on-open': True,
             'archive-holder-prover-caches-on-close': True,
             'archive-verifier-caches-on-close': {
@@ -179,7 +201,7 @@ async def test_anchors_api(
                 ]
             }
         })
-    bcran = BCRegistrarAnchor(await Wallet('BC-Registrar-Anchor-000000000000', 'bc-registrar').create(), p)
+    bcran = BCRegistrarAnchor(wallets['bc-registrar'], p)
 
     await tan.open()
 
@@ -210,8 +232,9 @@ async def test_anchors_api(
         if not json.loads(await tan.get_nym(an.did)):
             await tan.send_nym(an.did, an.verkey, an.wallet.name, an.role())
 
+    assert json.loads(await tan.get_nym()) == json.loads(await tan.get_nym())  # check default param
     nyms = {
-        'tan': json.loads(await tan.get_nym(tan.did)),
+        'tan': json.loads(await tan.get_nym()),
         'san': json.loads(await tan.get_nym(san.did)),
         'pspcoban': json.loads(await tan.get_nym(pspcoban.did)),
         'bcohan': json.loads(await tan.get_nym(bcohan.did)),
@@ -371,7 +394,7 @@ async def test_anchors_api(
 
     for an in (bcohan, pspcoban):
         wallet_name = an.wallet.name
-        assert (await an.reset_wallet()) == wallet_name
+        assert (await an.reset_wallet(seeds[wallet_name])) == wallet_name
 
     # BC Registrar and SRI anchors (Issuers) create, store, publish cred definitions to ledger; create cred offers
     try:
@@ -1665,13 +1688,18 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
 
     print(Ink.YELLOW('\n\n== Testing offline anchor operation =='))
 
+    wallets = await get_wallets({
+        'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000',
+        'sri': 'SRI-Anchor-000000000000000000000'
+    })
+
     # Open PSPC Org Book anchor and create proof without opening node pool
     path = Path(path_home, 'pool', pool_name)
     p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
     pspcoban = OrgBookAnchor(
-        await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
+        wallets['pspc-org-book'],
         p,
-        cfg={
+        config={
             'parse-caches-on-open': True,
             'archive-holder-prover-caches-on-close': False
         })
@@ -1681,7 +1709,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     # PSPC Org Book anchor (as HolderProver) creates multi-cred proof with specification of one by pred
     cd_id = {}
     schema = {}
-    san = SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p)
+    san = SRIAnchor(wallets['sri'], p)
     async with san:
         S_ID = {
             'SRI-1.0': schema_id(san.did, 'sri', '1.0'),
@@ -1721,7 +1749,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
         'parse-caches-on-open': True,
         'archive-verifier-caches-on-close': json.loads(await pspcoban.get_box_ids_held())
     }
-    san = SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p, cfg=san_cfg)
+    san = SRIAnchor(wallets['sri'], p, config=san_cfg)
 
     _set_tails_state(False)  # simulate not having tails file & cache
     _set_cache_state(False)
@@ -1729,7 +1757,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     await san.open()  # open on-line, cache and archive from ledger ...
     await san.close()  # ... then close ...
     await p.close()
-    san.cfg = {
+    san.config = {
         'parse-caches-on-open': True
     }
     await san.open()  # ... and open off-line
@@ -1764,13 +1792,18 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
     await p.close()
     assert not path.exists(), 'Pool path {} still present'.format(path)
 
+    wallets = await get_wallets({
+        'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000',
+        'sri': 'SRI-Anchor-000000000000000000000'
+    })
+
     # Open pool, SRI + PSPC Org Book anchors (the tests above should obviate its need for trustee-anchor)
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-        SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p)) as san, (
+        SRIAnchor(wallets['sri'], p)) as san, (
         OrgBookAnchor(
-            await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
+            wallets['pspc-org-book'],
             p,
-            cfg={
+            config={
                 'parse-caches-on-open': True,
                 'archive-holder-prover-caches-on-close': True
             })) as pspcoban:
@@ -1811,18 +1844,14 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
     print(Ink.YELLOW('\n\n== Testing anchor revocation cache reg update maintenance =='))
 
     SRI_NAME = 'sri-0'
+    wallets = await get_wallets({
+        'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000',
+        SRI_NAME: 'SRI-Anchor-000000000000000000000'
+    })
+
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-        OrgBookAnchor(
-            await Wallet(
-                'PSPC-Org-Book-Anchor-00000000000',
-                'pspc-org-book').create(),
-            p)) as pspcoban, (
-        SRIAnchor(
-            await Wallet(
-                'SRI-Anchor-000000000000000000000',
-                SRI_NAME).create(),
-            p,
-            rrbx=True)) as san:  # exercise external rev reg builder
+        OrgBookAnchor(wallets['pspc-org-book'], p)) as pspcoban, (
+        SRIAnchor(wallets[SRI_NAME], p, rrbx=True)) as san:  # exercise external rev reg builder
 
         nyms = {
             'pspcoban': json.loads(await san.get_nym(pspcoban.did)),
@@ -1998,28 +2027,15 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
 
     print(Ink.YELLOW('\n\n== Testing anchor cache locking =='))
 
+    wallets = await get_wallets({
+        'sri-0': 'SRI-Anchor-000000000000000000000',
+        'sri-1': 'SRI-Anchor-111111111111111111111',
+        'sri-2': 'SRI-Anchor-222222222222222222222'
+    })
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-        SRIAnchor(
-            await Wallet(
-                'SRI-Anchor-000000000000000000000',
-                'sri-0',
-                None,
-                {'auto-remove': True}).create(),
-            p)) as san0, (
-        SRIAnchor(
-            await Wallet(
-                'SRI-Anchor-111111111111111111111',
-                'sri-1',
-                None,
-                {'auto-remove': True}).create(),
-            p)) as san1, (
-        SRIAnchor(
-            await Wallet(
-                'SRI-Anchor-222222222222222222222',
-                'sri-2',
-                None,
-                {'auto-remove': True}).create(),
-            p)) as san2:
+        SRIAnchor(Wallet('sri-0', None, {'auto-remove': True}), p)) as san0, (
+        SRIAnchor(Wallet('sri-1', None, {'auto-remove': True}), p)) as san1, (
+        SRIAnchor(Wallet('sri-2', None, {'auto-remove': True}), p)) as san2:
 
         sri_did = san0.did
         schema_key2seq_no = {
@@ -2073,14 +2089,20 @@ async def test_anchor_reseed(
     print(Ink.YELLOW('\n\n== Testing anchor reseed'))
 
     now = int(time())  # ten digits, unique and disposable each run
+    rsoban_seeds = ['Reseed-Org-Book-Anchor{}'.format(now + i) for i in range(2)]  # makes 32 characters
     # Generate seeds (in case of re-run on existing ledger, use fresh disposable identity every time)
-    seeds = ['Reseed-Org-Book-Anchor{}'.format(now + i) for i in range(2)]  # makes 32 characters
-    print('\n\n== 1 == seeds: {}'.format(seeds))
+    print('\n\n== 1 == seeds: {}'.format(rsoban_seeds))
+
+    seeds = {
+        'trustee-anchor': seed_trustee1,
+        'reseed-org-book': rsoban_seeds[0]
+    }
+    wallets = await get_wallets(seeds)
 
     # Open pool, init anchors
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-            TrusteeAnchor(await Wallet(seed_trustee1, 'trustee-anchor').create(), p)) as tan, (
-            OrgBookAnchor(await Wallet(seeds[0], 'reseed-org-book').create(), p)) as rsan:
+            TrusteeAnchor(wallets['trustee-anchor'], p)) as tan, (
+            OrgBookAnchor(wallets['reseed-org-book'], p)) as rsan:
         assert p.handle
 
         # Publish anchor particulars to ledger if not yet present
@@ -2102,18 +2124,18 @@ async def test_anchor_reseed(
         await rsan.create_link_secret('SecretLink')
 
         # Anchor reseed wallet
-        old_seed2did = await rsan.wallet._seed2did()
-        assert old_seed2did == rsan.did
+        old_found_did = await rsan.wallet.find_did()
+        assert old_found_did == rsan.did
         verkey_in_wallet = await did.key_for_local_did(rsan.wallet.handle, rsan.did)
         print('\n\n== 3 == Anchor DID {}, verkey in wallet {}'.format(rsan.did, verkey_in_wallet))
         nym_resp = json.loads(await rsan.get_nym(rsan.did))
         print('\n\n== 4 == Anchor nym on ledger {}'.format(ppjson(nym_resp)))
 
         old_verkey = rsan.verkey
-        await rsan.reseed(seeds[1])
+        await rsan.reseed(rsoban_seeds[1])
         assert rsan.verkey != old_verkey
-        assert old_seed2did == await rsan.wallet._seed2did()
-        assert old_seed2did == rsan.did
+        assert old_found_did == await rsan.wallet.find_did()
+        assert old_found_did == rsan.did
 
         verkey_in_wallet = await did.key_for_local_did(rsan.wallet.handle, rsan.did)
         print('\n\n== 5 == Anchor reseed operation retains DID {} on rekey from {} to {}'.format(
@@ -2121,22 +2143,21 @@ async def test_anchor_reseed(
             old_verkey,
             rsan.verkey))
 
-    # Fail to re-open on old seed
+    # Fail to re-create on old seed
     try:
-        async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-                OrgBookAnchor(await Wallet(seeds[0], 'reseed-org-book').create(), p)) as rsan:
-            assert False  # should have failed to open wallet on old seed
-    except AbsentMetadata:
-        print('\n\n== 6 == Anchor failed to re-open wallet on old seed as expected')
+        await Wallet('reseed-org-book').create(rsoban_seeds[0])
+        assert False
+    except ExtantWallet:
+        print('\n\n== 6 == Anchor failed to re-create wallet on old seed as expected')
 
-    # Re-open on new seed
+    # Re-open
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-            OrgBookAnchor(await Wallet(seeds[1], 'reseed-org-book', None, {'auto-remove': True}).create(), p)) as rsan:
+            OrgBookAnchor(Wallet('reseed-org-book', None, {'auto-remove': True}), p)) as rsan:
         assert p.handle
 
-        print('\n\n== 7 == Re-opened anchor wallet on new seed: using verkey {}'.format(rsan.verkey))
+        print('\n\n== 7 == Re-opened anchor wallet with new seed: using verkey {}'.format(rsan.verkey))
         await rsan.create_link_secret('SecretLink')
-        await rsan.reset_wallet()
+        await rsan.reset_wallet(seeds[rsan.wallet.name])
         assert rsan.wallet.auto_remove  # make sure auto-remove configuration survives reset
 
 @pytest.mark.skipif(False, reason='short-circuiting')
@@ -2151,14 +2172,20 @@ async def test_anchors_cache_only(
 
     _set_cache_state(False)
 
+    seeds = {
+        'sri': 'SRI-Anchor-000000000000000000000',
+        'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000'
+    }
+    wallets = await get_wallets(seeds)
+
     # Open pool, init anchors
     p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
 
-    san = SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p)
+    san = SRIAnchor(wallets['sri'], p)
     pspcoban = OrgBookAnchor(
-        await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(),
+        wallets['pspc-org-book'],
         p,
-        cfg={
+        config={
             'parse-caches-on-open': True,
             'archive-holder-prover-caches-on-close': True
         })
@@ -2169,7 +2196,7 @@ async def test_anchors_cache_only(
     await san.open()
     await pspcoban.open()
     await pspcoban.create_link_secret('SecretLink')
-    await pspcoban.reset_wallet()
+    await pspcoban.reset_wallet(seeds[pspcoban.wallet.name])
 
     # Publish schema to ledger if not yet present; get from ledger
     S_ID = {
@@ -2347,7 +2374,7 @@ async def test_anchors_cache_only(
         'parse-caches-on-open': True,
         'archive-verifier-caches-on-close': json.loads(await pspcoban.get_box_ids_held())
     }
-    san.cfg = san_cfg
+    san.config = san_cfg
     await san.load_cache_for_verification(False)
     await p.close()  # The pool is now closed - from here on in, we are off-line
 
@@ -2546,10 +2573,15 @@ async def test_util_wranglers(
 
     print(Ink.YELLOW('\n\n== Testing utility wranglers =='))
 
+    wallets = await get_wallets({
+        'sri': 'SRI-Anchor-000000000000000000000',
+        'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000'
+    })
+
     # Open pool, init anchors
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-        SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p)) as san, (
-        OrgBookAnchor(await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(), p)) as pspcoban:
+        SRIAnchor(wallets['sri'], p)) as san, (
+        OrgBookAnchor(wallets['pspc-org-book'], p)) as pspcoban:
 
         assert p.handle is not None
 
@@ -2882,10 +2914,15 @@ async def test_crypto(
 
     print(Ink.YELLOW('\n\n== Testing encryption/decryption =='))
 
+    wallets = await get_wallets({
+        'sri': 'SRI-Anchor-000000000000000000000',
+        'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000'
+    })
+
     # Open pool, init anchors
     async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-        SRIAnchor(await Wallet('SRI-Anchor-000000000000000000000', 'sri').create(), p)) as san, (
-        OrgBookAnchor(await Wallet('PSPC-Org-Book-Anchor-00000000000', 'pspc-org-book').create(), p)) as pspcoban:
+        SRIAnchor(wallets['sri'], p)) as san, (
+        OrgBookAnchor(wallets['pspc-org-book'], p)) as pspcoban:
 
         assert p.handle is not None
 

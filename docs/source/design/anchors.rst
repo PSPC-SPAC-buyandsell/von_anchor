@@ -81,9 +81,9 @@ Specifying external posture takes more time at initialization (to spawn a new pr
 
 The design recommends specifying external posture for issuer anchors that may use credential definitions supporting revocation.
 
-Within the initializer, an external revocation registry builder checks the state of the revocation registry process. If starting a new process, it first writes configuration data (the seed and logging directives) to a file in the tails tree for the new process to pick up and delete nearly instantaneously. The seed is sensitive; in this way the process obviates exposing it as a parameter in the operating system's process tree, in the clear.
+Within the initializer, an external revocation registry builder checks the state of the revocation registry process. If starting a new process, it first writes configuration data (logging directives and wallet configuration) to a file in the tails tree for the new process to pick up and delete nearly instantaneously. Wallet access credentials are sensitive; in this way the process obviates exposing them, in the clear, as a parameter in the operating system's process tree.
 
-The external posture uses the RevRegBuilder methods ``_get_state()``, ``serve()``, ``stop()``, the (free) ``main()`` line, and the ``RevRegBuilder._State`` enum to manage the operation of the external process running the external revocation registry builder.
+The external posture uses the RevRegBuilder methods ``_get_state()``, ``start_data_json()``, ``serve()``, ``stop()``, the (free) ``main()`` line, and the ``RevRegBuilder._State`` enum to manage the operation of the external process running the external revocation registry builder.
 
 The ``_State`` enum encapsulates the operational state of an external revocation registry builder process: absent, running, or stopping (gracefully).
 

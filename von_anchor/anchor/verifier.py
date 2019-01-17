@@ -50,7 +50,7 @@ class Verifier(BaseAnchor):
 
         :param wallet: wallet for anchor use
         :param pool: pool for anchor use
-        :param cfg: configuration dict for cache archive behaviour; e.g.,
+        :param config: configuration dict for cache archive behaviour; e.g.,
 
         ::
 
@@ -86,8 +86,8 @@ class Verifier(BaseAnchor):
 
         super().__init__(wallet, pool, **kwargs)
 
-        self._cfg = kwargs.get('cfg', {})
-        validate_config('verifier', self._cfg)
+        self._config = kwargs.get('config', {})
+        validate_config('verifier', self._config)
 
         self._dir_cache = join(expanduser('~'), '.indy_client', 'cache', self.wallet.name)
         makedirs(self._dir_cache, exist_ok=True)
@@ -110,25 +110,25 @@ class Verifier(BaseAnchor):
         return rv
 
     @property
-    def cfg(self) -> dict:
+    def config(self) -> dict:
         """
         Accessor for configuration dict
 
         :return: verifier config dict
         """
 
-        return self._cfg
+        return self._config
 
-    @cfg.setter
-    def cfg(self, value: dict) -> None:
+    @config.setter
+    def config(self, value: dict) -> None:
         """
         Set configuration dict
 
         :param value: configuration dict
         """
 
-        self._cfg = value or {}
-        validate_config('verifier', self._cfg)
+        self._config = value or {}
+        validate_config('verifier', self._config)
 
     @property
     def dir_cache(self) -> str:
@@ -329,19 +329,19 @@ class Verifier(BaseAnchor):
         # Once indy-sdk supports get-cred-def by schema-id, get-rev-reg by schema-id/cred-def-id, should cascade
 
         rv = int(time())
-        for s_id in self.cfg.get('archive-verifier-caches-on-close', {}).get('schema_id', {}):
+        for s_id in self.config.get('archive-verifier-caches-on-close', {}).get('schema_id', {}):
             if ok_schema_id(s_id):
                 with SCHEMA_CACHE.lock:
                     await self.get_schema(s_id)
             else:
                 LOGGER.info('Not archiving schema for specified bad id %s', s_id)
-        for cd_id in self.cfg.get('archive-verifier-caches-on-close', {}).get('cred_def_id', {}):
+        for cd_id in self.config.get('archive-verifier-caches-on-close', {}).get('cred_def_id', {}):
             if ok_cred_def_id(cd_id):
                 with CRED_DEF_CACHE.lock:
                     await self.get_cred_def(cd_id)
             else:
                 LOGGER.info('Not archiving cred def for specified bad id %s', cd_id)
-        for rr_id in self.cfg.get('archive-verifier-caches-on-close', {}).get('rev_reg_id', {}):
+        for rr_id in self.config.get('archive-verifier-caches-on-close', {}).get('rev_reg_id', {}):
             if ok_rev_reg_id(rr_id):
                 await self.get_rev_reg_def(rr_id)
                 with REVO_CACHE.lock:
@@ -376,7 +376,7 @@ class Verifier(BaseAnchor):
         LOGGER.debug('Verifier.open >>>')
 
         await super().open()
-        if self.cfg.get('parse-caches-on-open', False):
+        if self.config.get('parse-caches-on-open', False):
             ArchivableCaches.parse(self.dir_cache)
 
         LOGGER.debug('Verifier.open <<<')
@@ -393,7 +393,7 @@ class Verifier(BaseAnchor):
 
         LOGGER.debug('Verifier.close >>>')
 
-        if self.cfg.get('archive-verifier-caches-on-close', {}):
+        if self.config.get('archive-verifier-caches-on-close', {}):
             await self.load_cache_for_verification(True)
             ArchivableCaches.purge_archives(self.dir_cache, True)
 

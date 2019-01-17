@@ -88,7 +88,7 @@ class OrgHubAnchor(Verifier, Origin, Issuer, OrgBookAnchor):
 
         :param wallet: wallet for anchor use
         :param pool: pool for anchor use
-        :param cfg: configuration dict for cache archive behaviour qua Issuer and Verifier roles; e.g.,
+        :param config: configuration dict for cache archive behaviour qua Issuer and Verifier roles; e.g.,
 
         ::
 
@@ -126,8 +126,8 @@ class OrgHubAnchor(Verifier, Origin, Issuer, OrgBookAnchor):
 
         super().__init__(wallet, pool, **kwargs)
 
-        self._cfg = kwargs.get('cfg', {})
-        validate_config('org-hub', self._cfg)
+        self._config = kwargs.get('config', {})
+        validate_config('org-hub', self._config)
 
         LOGGER.debug('OrgHubAnchor.__init__ <<<')
 
@@ -154,10 +154,10 @@ class OrgHubAnchor(Verifier, Origin, Issuer, OrgBookAnchor):
         LOGGER.debug('OrgHubAnchor.close >>>')
 
         archive_caches = False
-        if self.cfg.get('archive-holder-prover-caches-on-close', False):
+        if self.config.get('archive-holder-prover-caches-on-close', False):
             archive_caches = True
             await self.load_cache_for_proof(False)
-        if self.cfg.get('archive-verifier-caches-on-close', {}):
+        if self.config.get('archive-verifier-caches-on-close', {}):
             archive_caches = True
             await self.load_cache_for_verification(False)
         if archive_caches:
@@ -189,7 +189,7 @@ class SRIAnchor(Verifier, Origin, Issuer):
 
         :param wallet: wallet for anchor use
         :param pool: pool for anchor use
-        :param cfg: configuration dict for cache archive behaviour qua Verifier role
+        :param config: configuration dict for cache archive behaviour qua Verifier role
         :param rrbx: whether revocation registry builder is an external process
         """
 

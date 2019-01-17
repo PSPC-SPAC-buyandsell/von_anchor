@@ -149,31 +149,31 @@ class NodePool:
     Class encapsulating indy-sdk node pool.
     """
 
-    def __init__(self, name: str, genesis_txn_path: str, cfg: dict = None) -> None:
+    def __init__(self, name: str, genesis_txn_path: str, config: dict = None) -> None:
         """
         Initializer for node pool. Does not open the pool, only retains input parameters.
 
         :param name: name of the pool
         :param genesis_txn_path: path to genesis transaction file
-        :param cfg: configuration, None for default;
+        :param config: configuration, None for default;
             i.e., {
                 'auto-remove': bool (default False), whether to remove serialized indy configuration data on close
                 'protocol': str ('1.3' or '1.4', default '1.4), indy protocol version
             }
         """
 
-        LOGGER.debug('NodePool.__init__ >>> name: %s, genesis_txn_path: %s, cfg: %s', name, genesis_txn_path, cfg)
+        LOGGER.debug('NodePool.__init__ >>> name: %s, genesis_txn_path: %s, config: %s', name, genesis_txn_path, config)
 
-        self._cfg = cfg or {}
-        validate_config('pool', self._cfg)
+        self._config = config or {}
+        validate_config('pool', self._config)
 
         # pop and retain configuration specific to von_anchor.NodePool, extrinsic to indy-sdk
-        self._auto_remove = self._cfg.pop('auto-remove') if self._cfg and 'auto-remove' in self._cfg else False
-        self._protocol = Protocol.get(self._cfg.pop('protocol', None))
-        if 'refresh_on_open' not in self._cfg:
-            self._cfg['refresh_on_open'] = True
-        if 'auto_refresh_time' not in self._cfg:
-            self._cfg['auto_refresh_time'] = 0
+        self._auto_remove = self._config.pop('auto-remove') if self._config and 'auto-remove' in self._config else False
+        self._protocol = Protocol.get(self._config.pop('protocol', None))
+        if 'refresh_on_open' not in self._config:
+            self._config['refresh_on_open'] = True
+        if 'auto_refresh_time' not in self._config:
+            self._config['auto_refresh_time'] = 0
 
         self._name = name
         self._genesis_txn_path = genesis_txn_path
@@ -212,14 +212,14 @@ class NodePool:
         return self._handle
 
     @property
-    def cfg(self) -> dict:
+    def config(self) -> dict:
         """
         Accessor for pool config.
 
         :return: pool config
         """
 
-        return self._cfg
+        return self._config
 
     @property
     def auto_remove(self) -> bool:
@@ -280,7 +280,7 @@ class NodePool:
                 LOGGER.debug('NodePool.open: <!< indy error code %s', x_indy.error_code)
                 raise x_indy
 
-        self._handle = await pool.open_pool_ledger(self.name, json.dumps(self.cfg))
+        self._handle = await pool.open_pool_ledger(self.name, json.dumps(self.config))
 
         LOGGER.debug('NodePool.open <<<')
         return self

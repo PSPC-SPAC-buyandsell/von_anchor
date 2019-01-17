@@ -88,26 +88,9 @@ class RevRegBuilder(BaseAnchor):
                     rrb_state = _State.ABSENT
 
             if rrb_state == _State.ABSENT:  # run it
+                start_data_json = self._start_data_json()
                 with open(join(RevRegBuilder.dir_tails_sentinel(wallet.name), '.start'), 'w') as fh_start:
-                    print(wallet._seed, file=fh_start)  # keep seed out of arguments where it shows in ps, in the clear
-
-                    logger = LOGGER
-                    while not logger.level:
-                        logger = logger.parent
-                        if logger is None:
-                            break
-                    print(logger.level, file=fh_start)  # write log level
-
-                    logger = LOGGER
-                    log_paths = [realpath(h.baseFilename) for h in logger.handlers if hasattr(h, 'baseFilename')]
-                    while not log_paths:
-                        logger = logger.parent
-                        if logger is None:
-                            break
-                        log_paths = [realpath(h.baseFilename) for h in logger.handlers if hasattr(h, 'baseFilename')]
-                    for log_path in log_paths:
-                        print(log_path, file=fh_start)  # write log paths, if any
-
+                    print(start_data_json, file=fh_start)
                 rrb_proc = Popen([
                     'python',
                     realpath(__file__),
@@ -130,6 +113,44 @@ class RevRegBuilder(BaseAnchor):
                         wallet.name))
 
         LOGGER.debug('RevRegBuilder.__init__ <<<')
+
+    def _start_data_json(self) -> str:
+        """
+        Output json with start data to write for external revocation registry builder process pickup.
+
+        :return: logging and wallet init data json
+        """
+
+        rv = {
+            'logging': {
+                'paths': []
+            },
+            'wallet': {
+            }
+        }
+
+        logger = LOGGER
+        while not logger.level:
+            logger = logger.parent
+            if logger is None:
+                break
+        rv['logging']['level'] = logger.level
+
+        logger = LOGGER
+        log_paths = [realpath(h.baseFilename) for h in logger.handlers if hasattr(h, 'baseFilename')]
+        while not log_paths:
+            logger = logger.parent
+            if logger is None:
+                break
+            log_paths = [realpath(h.baseFilename) for h in logger.handlers if hasattr(h, 'baseFilename')]
+        for log_path in log_paths:
+            rv['logging']['paths'].append(log_path)
+
+        rv['wallet']['storage_type'] = self.wallet.storage_type
+        rv['wallet']['config'] = self.wallet.config
+        rv['wallet']['access_creds'] = self.wallet.access_creds
+
+        return json.dumps(rv)
 
     @staticmethod
     def _get_state(wallet_name: str) -> _State:
@@ -347,7 +368,7 @@ async def main(pool_name: str, pool_genesis_txn_path: str, wallet_name: str) -> 
 
     :param pool_name: name of (running) node pool
     :param genesis_txn_path: path to genesis transaction file
-    :param wallet_name: wallet name - must match that of issuer
+    :param wallet_name: wallet name - must match that of issuer with existing wallet
     """
 
     logging.basicConfig(level=logging.WARN, format='%(levelname)-8s | %(name)-12s | %(message)s')
@@ -357,15 +378,21 @@ async def main(pool_name: str, pool_genesis_txn_path: str, wallet_name: str) -> 
     path_start = join(RevRegBuilder.dir_tails_sentinel(wallet_name), '.start')
 
     with open(path_start, 'r') as fh_start:
-        start_lines = [line.rstrip() for line in fh_start.readlines()]
-        seed = start_lines[0]
-        logging.getLogger(__name__).setLevel(int(start_lines[1]))
-        for log_file in start_lines[2:]:
-            logging.getLogger(__name__).addHandler(logging.FileHandler(log_file))
+        start_data = json.loads(fh_start.read())
+    remove(path_start)
 
-    remove(path_start)  # contains seed
+    logging.getLogger(__name__).setLevel(start_data['logging']['level'])
+    for path_log in start_data['logging']['paths']:
+        logging.getLogger(__name__).addHandler(logging.FileHandler(path_log))
 
-    async with RevRegBuilder(await Wallet(seed, wallet_name).create(), pool, rrbx=True) as rrban:
+    async with RevRegBuilder(
+            Wallet(
+                wallet_name,
+                start_data['wallet']['storage_type'],
+                start_data['wallet']['config'],
+                start_data['wallet']['access_creds']),
+            pool,
+            rrbx=True) as rrban:
         await rrban.serve()
 
 

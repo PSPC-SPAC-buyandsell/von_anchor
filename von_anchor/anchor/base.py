@@ -191,24 +191,24 @@ class BaseAnchor:
 
         LOGGER.debug('BaseAnchor.reseed_init <<<')
 
-    async def get_nym(self, target_did: str) -> str:
+    async def get_nym(self, target_did: str = None) -> str:
         """
         Get json cryptonym (including current verification key) for input (anchor) DID from ledger.
 
         Raise BadLedgerTxn on failure.
 
-        :param target_did: DID of cryptonym to fetch
+        :param target_did: DID of cryptonym to fetch (default own DID)
         :return: cryptonym json
         """
 
         LOGGER.debug('BaseAnchor.get_nym >>> target_did: %s', target_did)
 
-        if not ok_did(target_did):
+        if target_did and not ok_did(target_did):
             LOGGER.debug('BaseAnchor._get_nym <!< Bad DID %s', target_did)
             raise BadIdentifier('Bad DID {}'.format(target_did))
 
         rv = json.dumps({})
-        get_nym_req = await ledger.build_get_nym_request(self.did, target_did)
+        get_nym_req = await ledger.build_get_nym_request(self.did, target_did or self.did)
         resp_json = await self._submit(get_nym_req)
 
         data_json = (json.loads(resp_json))['result']['data']  # it's double-encoded on the ledger

@@ -48,6 +48,7 @@ class ErrorCode(IntEnum):
     BadWalletQuery = 3001
     AbsentCred = 3002
     AbsentMetadata = 3003
+    ExtantWallet = 3004
 
     # Errors to do with node pool operation
     ClosedPool = 4000
@@ -392,6 +393,21 @@ class AbsentMetadata(VonAnchorError):
         """
 
         super().__init__(ErrorCode.AbsentMetadata, message)
+
+
+class ExtantWallet(VonAnchorError):
+    """
+    Wallet already exists.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.ExtantWallet, message)
 
 
 class ClosedPool(VonAnchorError):

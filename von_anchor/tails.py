@@ -84,7 +84,7 @@ class Tails:
         if not isfile(path_tails):
             raise AbsentTails('No tails file present at {} for rev reg id {}'.format(path_tails, self._rr_id))
 
-        self._tails_cfg_json = json.dumps({
+        self._tails_config_json = json.dumps({
             'base_dir': dirname(path_tails),
             'uri_pattern': '',
             'file': basename(path_tails)
@@ -103,7 +103,7 @@ class Tails:
 
         LOGGER.debug('Tails.open >>>')
 
-        self._reader_handle = await blob_storage.open_reader('default', self._tails_cfg_json)
+        self._reader_handle = await blob_storage.open_reader('default', self._tails_config_json)
 
         LOGGER.debug('Tails.open <<<')
         return self
@@ -335,8 +335,8 @@ class Tails:
         :return: (stringified) path to current tails file.
         """
 
-        cfg = json.loads(self._tails_cfg_json)
-        return join(cfg['base_dir'], cfg['file'])
+        config = json.loads(self._tails_config_json)
+        return join(config['base_dir'], config['file'])
 
     def __str__(self) -> str:
         """
@@ -345,5 +345,5 @@ class Tails:
         :return: string representation
         """
 
-        cfg = json.loads(self._tails_cfg_json)
-        return 'Tails: {}/{} -> {}'.format(cfg['base_dir'], self._rr_id, cfg['file'])
+        config = json.loads(self._tails_config_json)
+        return 'Tails: {}/{} -> {}'.format(config['base_dir'], self._rr_id, config['file'])

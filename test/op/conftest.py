@@ -41,7 +41,7 @@ def seed_von_anchor():
     logger = logging.getLogger(__name__)
     logger.debug("seed_von_anchor: >>>")
 
-    res = "{}000000000000VonAnchor1".format(int(time()))
+    res = "{}000000000000VonAnchor1".format(int(time()))  # OK while epoch is 10 digits, through circa 2286-11
 
     logger.debug("seed_von_anchor: <<< res: %r", res)
     return res
@@ -84,7 +84,7 @@ def setnym_ini_file(path_setnym_ini, pool_name, seed_trustee1, seed_von_anchor):
         '[VON Anchor]',
         'role=TRUST_ANCHOR',
         'seed={}'.format(seed_von_anchor),
-        'wallet.name=anchor-{}'.format(seed_von_anchor[0:10]),  # OK while epoch is 10 digits, some time in 2286-11
+        'wallet.name=anchor-{}'.format(seed_von_anchor[0:10]),
         'wallet.type=',
         'wallet.key='])
 

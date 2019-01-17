@@ -18,56 +18,18 @@ limitations under the License.
 import json
 import logging
 
-from hashlib import sha256
 from ctypes import CDLL
+from hashlib import sha256
+from time import time
 
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
 
-from von_anchor.error import AbsentMetadata, AbsentWallet, CorruptWallet
+from von_anchor.error import AbsentMetadata, AbsentWallet, ExtantWallet
 from von_anchor.validcfg import validate_config
 
 
 LOGGER = logging.getLogger(__name__)
-
-
-async def register_wallet_storage_library(storage_type: str, c_library: str, entry_point: str) -> None:
-    """
-    Load a wallet storage plug-in.
-
-    An indy-sdk wallet storage plug-in is a shared library; relying parties must explicitly
-    load it before creating or opening a wallet with the plug-in.
-
-    The implementation loads a dynamic library and calls an entry point; internally,
-    the plug-in calls the indy-sdk wallet
-    async def register_wallet_storage_library(storage_type: str, c_library: str, fn_pfx: str).
-
-    :param storage_type: wallet storage type
-    :param c_library: plug-in library
-    :param entry_point: function to initialize the library
-    """
-
-    LOGGER.debug(
-        'register_wallet_storage_library >>> storage_type %s, c_library %s, entry_point %s',
-        storage_type,
-        c_library,
-        entry_point)
-
-    try:
-        stg_lib = CDLL(c_library)
-        result = stg_lib[entry_point]()
-        if result:
-            raise IndyError(result)
-
-        LOGGER.info('Loaded wallet library type %s (%s)', storage_type, c_library)
-    except IndyError as x_indy:
-        LOGGER.debug(
-            'Wallet.register <!< indy error code %s on load of wallet storage %s %s',
-            x_indy.error_code,
-            storage_type, c_library)
-        raise
-
-    LOGGER.debug('register_wallet_storage_library <<<')
 
 
 class Wallet:
@@ -80,20 +42,17 @@ class Wallet:
 
     def __init__(
             self,
-            seed: str,
             name: str,
-            wallet_type: str = None,
-            cfg: dict = None,
+            storage_type: str = None,
+            config: dict = None,
             access_creds: dict = None) -> None:
         """
-        Initializer for wallet. Store input parameters, packing name and wallet_type into cfg (the
-        signature retains them independently as a convenience and to retain compatibility with prior releases).
-        Does not create wallet until call to create(). Do not open until call to open() or __aenter__().
+        Initializer for wallet. Store input parameters, packing name and storage_type into config.
+        Do not create wallet until call to create(). Do not open until call to open() or __aenter__().
 
-        :param seed: seed for wallet user
         :param name: name of the wallet
-        :param wallet_type: wallet type str, None for default
-        :param cfg: configuration dict, None for default; i.e.,
+        :param storage_type: storage type (default None)
+        :param config: configuration dict (default None); i.e.,
             ::
             {
                 'auto-remove': bool (default False) - whether to remove serialized indy configuration data on close,
@@ -103,31 +62,29 @@ class Wallet:
         """
 
         LOGGER.debug(
-            'Wallet.__init__ >>> seed [SEED], name %s, wallet_type %s, cfg %s, access_creds %s',
+            'Wallet.__init__ >>> name %s, storage_type %s, config %s, access_creds %s',
             name,
-            wallet_type,
-            cfg,
+            storage_type,
+            config,
             access_creds)
 
-        self._seed = seed
         self._next_seed = None
         self._handle = None
 
-        self._cfg = cfg or {}
-        self._cfg['id'] = name
-        self._cfg['storage_type'] = wallet_type or 'default'
-        if 'freshness_time' not in self._cfg:
-            self._cfg['freshness_time'] = 0
+        self._config = config or {}
+        self._config['id'] = name
+        self._config['storage_type'] = storage_type
+        if 'freshness_time' not in self._config:
+            self._config['freshness_time'] = 0
 
-        validate_config('wallet', self._cfg)
+        validate_config('wallet', self._config)
 
         # pop and retain configuration specific to von_anchor.Wallet, extrinsic to indy-sdk
-        self._auto_remove = self._cfg.pop('auto-remove') if self._cfg and 'auto-remove' in self._cfg else False
+        self._auto_remove = self._config.pop('auto-remove') if self._config and 'auto-remove' in self._config else False
 
-        self._access_creds = access_creds or Wallet.DEFAULT_ACCESS_CREDS
+        self._access_creds = access_creds
         self._did = None
         self._verkey = None
-        self._created = False
 
         LOGGER.debug('Wallet.__init__ <<<')
 
@@ -139,7 +96,7 @@ class Wallet:
         :return: wallet name
         """
 
-        return self.cfg['id']
+        return self.config['id']
 
     @property
     def handle(self) -> int:
@@ -152,14 +109,14 @@ class Wallet:
         return self._handle
 
     @property
-    def cfg(self) -> dict:
+    def config(self) -> dict:
         """
         Accessor for wallet config.
 
         :return: wallet config
         """
 
-        return self._cfg
+        return self._config
 
     @property
     def auto_remove(self) -> bool:
@@ -182,14 +139,14 @@ class Wallet:
         return self._access_creds
 
     @property
-    def xtype(self) -> str:
+    def storage_type(self) -> str:
         """
         Accessor for wallet type, as configuration retains at key 'storage_type'.
 
         :return: wallet type
         """
 
-        return self.cfg['storage_type']
+        return self.config['storage_type']
 
     @property
     def did(self) -> str:
@@ -221,32 +178,23 @@ class Wallet:
 
         self._verkey = value
 
-    @property
-    def created(self) -> str:
+    async def find_did(self, seed: str = None) -> str:
         """
-        Accessor for wallet creation state.
+        Derive DID from metadata (default most recent). Raise AbsentMetadata for no match.
 
-        :return: wallet creation state
-        """
-
-        return self._created
-
-    # on purpose: don't expose seed via a property
-
-    async def _seed2did(self) -> str:
-        """
-        Derive DID, as per indy-sdk, from seed, via metadata match by hash. Raise AbsentMetadata for no match.
-
+        :param seed: seed to resolve (default most recent)
         :return: DID
         """
 
+        LOGGER.debug('Wallet.find_did >>> seed [SEED]')
+
         rv = None
-        seed_hash = sha256(self._seed.encode()).hexdigest()
         dids_with_meta = json.loads(await did.list_my_dids_with_meta(self.handle))  # list
 
         if dids_with_meta:
-            for did_with_meta in dids_with_meta:  # dict
-                if 'metadata' in did_with_meta:
+            if seed:
+                seed_hash = sha256(seed.encode()).hexdigest()
+                for did_with_meta in dids_with_meta:  # dict
                     try:
                         meta = json.loads(did_with_meta['metadata'])
                         if isinstance(meta, dict) and meta.get('seed_hash', None) == seed_hash:
@@ -255,35 +203,44 @@ class Wallet:
                     except json.decoder.JSONDecodeError:
                         continue  # it's not one of ours, carry on
 
-        if not rv:  # seed not in metadata
-            LOGGER.debug('Wallet._seed2did <!< no metadata match for seed in wallet %s', self.name)
-            raise AbsentMetadata('No metadata match for seed in wallet {}'.format(self.name))
+            else:
+                latest = 0
+                for did_with_meta in dids_with_meta:
+                    try:
+                        meta = json.loads(did_with_meta['metadata'])
+                        if isinstance(meta, dict) and meta.get('since', -1) > latest:
+                            rv = did_with_meta.get('did')
+                    except json.decoder.JSONDecodeError:
+                        continue  # it's not one of ours, carry on
 
+        if not rv:  # no match in metadata
+            LOGGER.debug('Wallet._seed2did <!< no did match in wallet %s by metadata', self.name)
+            raise AbsentMetadata('No did match in wallet {} by metadata'.format(self.name))
+
+        LOGGER.debug('Wallet.find_did <<< %s', rv)
         return rv
 
-    async def create(self) -> 'Wallet':
+    async def create(self, seed: str) -> 'Wallet':
         """
-        Create wallet as configured and store DID, or else re-use any existing configuration.
-        Operation sequence create/store-DID/close does not auto-remove the wallet on close,
-        even if so configured.
+        Create wallet as configured and store DID.
 
-        Raise AbsentMetadata on attempt to re-use configuration for wallet initialized
-        with seed not corresponding to DID in metadata.
+        Raise ExtantWallet if wallet already exists on current name.
 
+        :param seed: seed
         :return: current object
         """
 
-        LOGGER.debug('Wallet.create >>>')
+        LOGGER.debug('Wallet.create >>> seed [SEED]')
 
         try:
             await wallet.create_wallet(
-                config=json.dumps(self.cfg),
-                credentials=json.dumps(self.access_creds))
-            self._created = True
+                config=json.dumps(self.config),
+                credentials=json.dumps(self.access_creds or Wallet.DEFAULT_ACCESS_CREDS))
             LOGGER.info('Created wallet %s', self.name)
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.WalletAlreadyExistsError:
-                LOGGER.info('Wallet already exists: %s', self.name)
+                LOGGER.info('Wallet %s already exists', self.name)
+                raise ExtantWallet('Wallet {} already exists'.format(self.name))
             else:
                 LOGGER.debug(
                     'Wallet.create <!< indy error code %s on creation of wallet %s',
@@ -293,37 +250,23 @@ class Wallet:
 
         LOGGER.debug('Attempting to open wallet %s', self.name)
         self._handle = await wallet.open_wallet(
-            json.dumps(self.cfg),
-            json.dumps(self.access_creds))
+            json.dumps(self.config),
+            json.dumps(self.access_creds or Wallet.DEFAULT_ACCESS_CREDS))
         LOGGER.info('Opened wallet %s on handle %s', self.name, self.handle)
 
         try:
-            if self._created:
-                (self._did, self.verkey) = await did.create_and_store_my_did(
-                    self.handle,
-                    json.dumps({'seed': self._seed}))
-                LOGGER.debug('Wallet %s stored new DID %s, verkey %s from seed', self.name, self.did, self.verkey)
-                await did.set_did_metadata(
-                    self.handle,
-                    self.did,
-                    json.dumps({
-                        'seed_hash': sha256(self._seed.encode()).hexdigest()
-                    }))
-                LOGGER.info('Wallet %s set seed hash metadata for DID %s', self.name, self.did)
-            else:
-                self._created = True
-                LOGGER.debug('Attempting to derive seed to did for wallet %s', self.name)
-                self._did = await self._seed2did()
-                try:
-                    self.verkey = await did.key_for_local_did(self.handle, self.did)
-                except IndyError:
-                    LOGGER.debug(
-                        'Wallet.create <!< no verkey for DID %s on ledger, wallet %s may pertain to another',
-                        self.did,
-                        self.name)
-                    raise CorruptWallet(
-                        'No verkey for DID {} on ledger, wallet {} may pertain to another'.format(self.did, self.name))
-                LOGGER.info('Wallet %s got verkey %s for existing DID %s', self.name, self.verkey, self.did)
+            (self._did, self.verkey) = await did.create_and_store_my_did(
+                self.handle,
+                json.dumps({'seed': seed}))
+            LOGGER.debug('Wallet %s stored new DID %s, verkey %s from seed', self.name, self.did, self.verkey)
+            await did.set_did_metadata(
+                self.handle,
+                self.did,
+                json.dumps({
+                    'seed_hash': sha256(seed.encode()).hexdigest(),
+                    'since': int(time())
+                }))
+            LOGGER.info('Wallet %s set seed hash metadata for DID %s', self.name, self.did)
         finally:
             await wallet.close_wallet(self.handle)
 
@@ -336,8 +279,8 @@ class Wallet:
         For use in monolithic call opening, using, and closing wallet.
 
         Raise any IndyError causing failure to open wallet, or AbsentWallet on attempt to enter wallet
-        not yet created. Raise AbsentMetadata on attempt to open wallet initialized with seed not
-        corresponding to DID in metadata.
+        not yet created. Raise AbsentMetadata on attempt to open wallet without DID having metadata
+        identifying any current seed.
 
         :return: current object
         """
@@ -354,24 +297,27 @@ class Wallet:
         For use when keeping wallet open across multiple calls.
 
         Raise any IndyError causing failure to open wallet, or AbsentWallet on attempt to enter wallet
-        not yet created. Raise AbsentMetadata on attempt to open wallet initialized with seed not
-        corresponding to DID in metadata.
+        not yet created. Raise AbsentMetadata on attempt to open wallet without DID having metadata
+        identifying any current seed.
 
         :return: current object
         """
 
         LOGGER.debug('Wallet.open >>>')
 
-        if not self.created:
-            LOGGER.debug('Wallet.open <!< absent wallet %s', self.name)
-            raise AbsentWallet('Cannot open wallet {}: not created'.format(self.name))
+        try:
+            self._handle = await wallet.open_wallet(
+                json.dumps(self.config),
+                json.dumps(self.access_creds or Wallet.DEFAULT_ACCESS_CREDS))
+            LOGGER.info('Opened wallet %s on handle %s', self.name, self.handle)
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletNotFoundError:
+                LOGGER.info('Wallet %s does not exist', self.name)
+                raise AbsentWallet('Wallet {} does not exist'.format(self.name))
+            else:
+                raise
 
-        self._handle = await wallet.open_wallet(
-            json.dumps(self.cfg),
-            json.dumps(self.access_creds))
-        LOGGER.info('Opened wallet %s on handle %s', self.name, self.handle)
-
-        self._did = await self._seed2did()
+        self._did = await self.find_did()
         self.verkey = await did.key_for_local_did(self.handle, self.did)
         LOGGER.info('Wallet %s got verkey %s for existing DID %s', self.name, self.verkey, self.did)
 
@@ -414,7 +360,7 @@ class Wallet:
 
         LOGGER.debug('Wallet.close <<<')
 
-    async def reseed_init(self, seed) -> str:
+    async def reseed_init(self, next_seed) -> str:
         """
         Begin reseed operation: generate new key.
 
@@ -422,10 +368,10 @@ class Wallet:
         :return: new verification key
         """
 
-        LOGGER.debug('Wallet.reseed_init >>>')
+        LOGGER.debug('Wallet.reseed_init >>> next_seed [SEED]')
 
-        self._next_seed = seed
-        rv = await did.replace_keys_start(self.handle, self.did, json.dumps({'seed': seed}))
+        self._next_seed = next_seed
+        rv = await did.replace_keys_start(self.handle, self.did, json.dumps({'seed': next_seed}))
         LOGGER.debug('Wallet.reseed_init <<< %s', rv)
         return rv
 
@@ -438,16 +384,16 @@ class Wallet:
 
         await did.replace_keys_apply(self.handle, self.did)
         self.verkey = await did.key_for_local_did(self.handle, self.did)
-        self._seed = self._next_seed
-        self._next_seed = None
 
         await did.set_did_metadata(
             self.handle,
             self.did,
             json.dumps({
-                'seed_hash': sha256(self._seed.encode()).hexdigest()
+                'seed_hash': sha256(self._next_seed.encode()).hexdigest(),
+                'since': int(time())
             }))
         LOGGER.info('Wallet %s set seed hash metadata for DID %s', self.name, self.did)
+        self._next_seed = None
 
         LOGGER.debug('Wallet.reseed_apply <<<')
 
@@ -460,7 +406,9 @@ class Wallet:
 
         try:
             LOGGER.info('Removing wallet: %s', self.name)
-            await wallet.delete_wallet(json.dumps(self.cfg), json.dumps(self.access_creds))
+            await wallet.delete_wallet(
+                json.dumps(self.config),
+                json.dumps(self.access_creds or Wallet.DEFAULT_ACCESS_CREDS))
         except IndyError as x_indy:
             LOGGER.info('Abstaining from wallet removal; indy-sdk error code %s', x_indy.error_code)
 
@@ -473,4 +421,48 @@ class Wallet:
         :return: representation for current object
         """
 
-        return '{}([SEED], {}, {}, {}, [ACCESS_CREDS])'.format(self.__class__.__name__, self.name, self.xtype, self.cfg)
+        return '{}({}, {}, {}, [ACCESS_CREDS])'.format(
+            self.__class__.__name__,
+            self.name,
+            self.storage_type,
+            self.config)
+
+
+async def register_wallet_storage_library(storage_type: str, c_library: str, entry_point: str) -> None:
+    """
+    Load a wallet storage plug-in.
+
+    An indy-sdk wallet storage plug-in is a shared library; relying parties must explicitly
+    load it before creating or opening a wallet with the plug-in.
+
+    The implementation loads a dynamic library and calls an entry point; internally,
+    the plug-in calls the indy-sdk wallet
+    async def register_wallet_storage_library(storage_type: str, c_library: str, fn_pfx: str).
+
+    :param storage_type: wallet storage type
+    :param c_library: plug-in library
+    :param entry_point: function to initialize the library
+    """
+
+    LOGGER.debug(
+        'register_wallet_storage_library >>> storage_type %s, c_library %s, entry_point %s',
+        storage_type,
+        c_library,
+        entry_point)
+
+    try:
+        stg_lib = CDLL(c_library)
+        result = stg_lib[entry_point]()
+        if result:
+            raise IndyError(result)
+
+        LOGGER.info('Loaded wallet library type %s (%s)', storage_type, c_library)
+    except IndyError as x_indy:
+        LOGGER.debug(
+            'Wallet.register <!< indy error code %s on load of wallet storage %s %s',
+            x_indy.error_code,
+            storage_type,
+            c_library)
+        raise
+
+    LOGGER.debug('register_wallet_storage_library <<<')

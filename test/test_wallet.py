@@ -22,7 +22,7 @@ import pytest
 from indy import IndyError
 from indy.error import ErrorCode
 
-from von_anchor.error import JSONValidation
+from von_anchor.error import ExtantWallet, JSONValidation
 from von_anchor.frill import Ink
 from von_anchor.wallet import Wallet
 
@@ -34,26 +34,24 @@ async def test_wallet(path_home):
 
     seed = '00000000000000000000000000000000'
     name = 'my-wallet'
+    access_creds = {'key': 'secret-squirrel'}
     path = Path(path_home, 'wallet', name)
-    path_seed2did = path.with_name('{}.seed2did'.format(path.name))
 
     # 1. Configuration with auto-remove set
-    w = Wallet(seed, name, None, {'auto-remove': True})
-    await w.create()
+    w = Wallet(name, None, {'auto-remove': True}, access_creds=access_creds)
+    await w.create(seed)
     assert path.exists(), 'Wallet path {} not present'.format(path)
     await w.open()
     assert w.did
     assert w.verkey
     await w.close()
     assert not path.exists(), 'Wallet path {} still present'.format(path)
-    assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
     print('\n\n== 1 == New wallet with auto-remove OK')
 
     # 2. Default configuration (auto-remove=False)
-    w = Wallet(seed, name)
-    await w.create()
+    w = Wallet(name, access_creds=access_creds)
+    await w.create(seed)
     assert path.exists(), 'Wallet path {} not present'.format(path)
-    assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
 
     await w.open()
     assert w.did
@@ -61,35 +59,43 @@ async def test_wallet(path_home):
     (w_did, w_verkey) = (w.did, w.verkey)
     await w.close()
     assert path.exists(), 'Wallet path {} not present'.format(path)
-    assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
     print('\n\n== 2 == New wallet with default config (no auto-remove) OK')
 
-    # 3. Make sure wallet opens from extant file
-    x = Wallet(seed, name, None, {'auto-remove': True})
-    await x.create()
+    # 3. Make sure wallet opens from extant file, only on correct access credentials
+    x = Wallet(name, None, {'auto-remove': True})
+    try:
+        await x.create(seed)
+    except ExtantWallet:
+        pass
 
-    async with x:
-        assert x.did == w_did
-        assert x.verkey == w_verkey
+    try:
+        async with x:
+            assert False
+    except IndyError as x_indy:
+        assert x_indy.error_code == ErrorCode.WalletAccessFailed
+
+    ww = Wallet(name, None, {'auto-remove': True}, access_creds=access_creds)
+    async with ww:
+        assert ww.did == w_did
+        assert ww.verkey == w_verkey
 
     assert not path.exists(), 'Wallet path {} still present'.format(path)
-    assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
-    print('\n\n== 3 == Re-use extant wallet OK')
+    print('\n\n== 3 == Re-use extant wallet on good access creds OK, wrong access creds fails as expected')
 
     # 4. Double-open
     try:
-        async with await Wallet(seed, name, None, {'auto-remove': True}).create() as w:
+        w = await Wallet(name, None, {'auto-remove': True}).create(seed)
+        async with w:
             async with w:
                 assert False
-    except IndyError as e:
-        assert e.error_code == ErrorCode.WalletAlreadyOpenedError
+    except IndyError as x_indy:
+        assert x_indy.error_code == ErrorCode.WalletAlreadyOpenedError
 
     assert not path.exists(), 'Wallet path {} still present'.format(path)
-    assert not path_seed2did.exists(), 'Wallet path {} still present'.format(path_seed2did)
 
     # 5. Bad config
     try:
-        Wallet(seed, name, None, {'auto-remove': 'a suffusion of yellow'})
+        Wallet(name, None, {'auto-remove': 'a suffusion of yellow'})
     except JSONValidation:
         pass
     print('\n\n== 4 == Error cases error as expected')

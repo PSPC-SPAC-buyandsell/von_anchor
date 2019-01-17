@@ -94,19 +94,19 @@ class ArchivableCaches {
 }
 
 class Wallet {
-    -_seed2did()
     -_seed
     -_next_seed
     +name
-    +xtype
+    +storage_type
     +handle
     +did
     +verkey
-    +cfg
+    +config
     +auto_remove
     +access_creds
     +created
     +create()
+    +find_did()
     +open()
     +close()
     +reseed()
@@ -126,7 +126,7 @@ class NodePool {
     +name
     +genesis_txn_path
     +handle
-    +cfg
+    +config
     +auto_remove
     +remove()
     +open()
@@ -184,11 +184,12 @@ class RevRegBuilder {
     {static} +get_state()
     {static} +dir_tails()
     {static} +dir_tails_sentinel()
+    -_start_data_json()
+    -_create_rev_reg()
     +dir_tails_top()
     +dir_tails_target()
     +serve()
     +stop()
-    -_create_rev_reg()
 }
 
 enum State {
@@ -211,7 +212,7 @@ class Issuer {
 }
 
 class HolderProver {
-    +cfg
+    +config
     +dir_cache
     -_link_secret
     -_sync_revoc_for_proof()
@@ -238,7 +239,7 @@ class HolderProver {
 }
 
 class Verifier {
-    +cfg
+    +config
     +dir_cache
     -_build_rr_state_json()
     {static} +role()
@@ -277,7 +278,6 @@ BaseAnchor -left-> SchemaKey
 NodePool "1" *-- "1" Protocol
 
 RevRegBuilder *-- State
-
 
 BaseAnchor -up-> SchemaCache
 BaseAnchor "1" *-left- "1" Wallet

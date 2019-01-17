@@ -27,12 +27,13 @@ from von_anchor.nodepool import NodePool, Protocol
 
 @pytest.mark.asyncio
 async def test_pool_open(
-    path_home,
-    pool_name,
-    pool_genesis_txn_path,
-    pool_genesis_txn_file):
+        path_home,
+        pool_name,
+        pool_ip,
+        pool_genesis_txn_path,
+        pool_genesis_txn_file):
 
-    print(Ink.YELLOW('\n\n== Testing Pool Config =='))
+    print(Ink.YELLOW('\n\n== Testing Pool Config vs. IP {} =='.format(pool_ip)))
 
     assert Protocol.V_13.indy() != Protocol.V_14.indy()
     assert Protocol.V_14.indy() == Protocol.V_15.indy()
