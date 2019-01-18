@@ -19,7 +19,7 @@ import pytest
 
 from pathlib import Path
 
-from von_anchor.error import JSONValidation
+from von_anchor.error import AbsentGenesis, JSONValidation
 from von_anchor.frill import Ink
 from von_anchor.nodepool import NodePool, Protocol
 
@@ -54,6 +54,10 @@ async def test_pool_open(
     except JSONValidation:
         pass
 
+    try:
+        pool = NodePool(pool_name)
+    except AbsentGenesis:
+        assert False
 
     try:
         pool = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True, 'extra-property': True})
@@ -74,7 +78,7 @@ async def test_pool_open(
     await pool.close()
     assert path.exists(), 'Pool path {} not present'.format(path)
 
-    pool = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})  # check survival re-opening existing pool
+    pool = NodePool(pool_name, None, {'auto-remove': True})  # check pool reopen, optionability of genesis txn path
     await pool.open()
     assert pool.handle is not None
     await pool.close()

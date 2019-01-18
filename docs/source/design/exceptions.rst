@@ -31,6 +31,7 @@ This section outlines the Exception descendants that the von_anchor package defi
     "AbsentMetadata", "3003", "No matching metadata found in wallet", "Wallet cannot find DID by metadata on opening"
     "ExtantWallet", "3004", "Attempted to create a wallet that already exists", "Anchor attempts to create a wallet on a name corresponding to an existing wallet"
     "ClosedPool", "4000", "Pool is closed but operation needs it open", "Anchor attempts to call a node pool for ledger data, but the pool is not open"
+    "AbsentGenesis", "4001", "Pool creation requires genesis transactions but specified location does not exist", "Actuator attempts to create new pool with non-file genesis transaction path"
     "CacheIndex", "5000", "Schema cache, credential definition cache, or revocation cache has no entry at given index", "Anchor attempts to retrieve schema for a transaction number or schema key that it has not yet cached"
     "JSONValidation", "9000", "JSON schema is corrupt or JSON form does not match schema", "Node pool configuration dict missing required properties"
 

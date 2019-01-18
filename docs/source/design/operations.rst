@@ -26,7 +26,7 @@ Section [Node Pool]
 This section configures the node pool to which the operation applies. It contains:
 
 * ``name``: the name of the node pool to which the operation applies
-* ``genesis.txn.path``: the path to the genesis transaction file for the node pool.
+* ``genesis.txn.path``: the path to the genesis transaction file for the node pool (may omit if node pool already exists).
 
 Section [Trustee Anchor]
 ******************************

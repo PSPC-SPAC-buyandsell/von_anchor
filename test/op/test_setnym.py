@@ -111,7 +111,7 @@ async def test_setnym(
         for section in cfg:
             print('[{}]'.format(section), file=ini_fh)
             for (key, value) in cfg[section].items():
-                if key == 'seed':
+                if key in ('seed', 'genesis.txn.path'):
                     continue
                 print('{}={}'.format(key, '' if key == 'role' else value), file=ini_fh)
             print(file=ini_fh)
@@ -167,7 +167,7 @@ async def test_setnym(
         for section in cfg:
             print('[{}]'.format(section), file=ini_fh)
             for (key, value) in cfg[section].items():
-                if key == 'seed':
+                if key in ('seed', 'genesis.txn.path'):
                     continue
                 print('{}={}'.format(key, 'BAD_ROLE' if key == 'role' else value), file=ini_fh)
             print(file=ini_fh)

@@ -20,10 +20,12 @@ import logging
 
 from collections import namedtuple
 from enum import Enum
+from os.path import isfile
 
 from indy import pool
 from indy.error import IndyError, ErrorCode
 
+from von_anchor.error import AbsentGenesis
 from von_anchor.indytween import SchemaKey
 from von_anchor.validcfg import validate_config
 
@@ -41,7 +43,8 @@ class Protocol(Enum):
     V_14 = ProtocolMap('1.4', 2)
     V_15 = ProtocolMap('1.5', 2)
     V_16 = ProtocolMap('1.6', 2)
-    DEFAULT = ProtocolMap('1.6', 2)
+    V_17 = ProtocolMap('1.7', 2)
+    DEFAULT = ProtocolMap('1.7', 2)
 
     @staticmethod
     def get(version: str) -> 'Protocol':
@@ -149,12 +152,12 @@ class NodePool:
     Class encapsulating indy-sdk node pool.
     """
 
-    def __init__(self, name: str, genesis_txn_path: str, config: dict = None) -> None:
+    def __init__(self, name: str, genesis_txn_path: str = None, config: dict = None) -> None:
         """
         Initializer for node pool. Does not open the pool, only retains input parameters.
 
         :param name: name of the pool
-        :param genesis_txn_path: path to genesis transaction file
+        :param genesis_txn_path: path to genesis transaction file, to create named pool if it does not yet exist
         :param config: configuration, None for default;
             i.e., {
                 'auto-remove': bool (default False), whether to remove serialized indy configuration data on close
@@ -244,6 +247,7 @@ class NodePool:
     async def __aenter__(self) -> 'NodePool':
         """
         Context manager entry. Opens pool as configured, for closure on context manager exit.
+        Creates pool if it does not yet exist, using configured genesis transaction file.
         For use in monolithic call opening, using, and closing the pool.
 
         :return: current object
@@ -259,6 +263,7 @@ class NodePool:
     async def open(self) -> 'NodePool':
         """
         Explicit entry. Opens pool as configured, for later closure via close().
+        Creates pool if it does not yet exist, using configured genesis transaction file.
         For use when keeping pool open across multiple calls.
 
         Raise any IndyError causing failure to create ledger configuration.
@@ -272,13 +277,16 @@ class NodePool:
             await pool.set_protocol_version(self.protocol.indy())
             LOGGER.info('Pool ledger %s set protocol %s', self.name, self.protocol)
             if self.name not in (p['pool'] for p in await pool.list_pools()):
+                if not (self.genesis_txn_path and isfile(self.genesis_txn_path)):
+                    LOGGER.debug('NodePool.open: <!< Genesis transaction path [%s] not present', self.genesis_txn_path)
+                    raise AbsentGenesis('Genesis transaction path [{}] not present'.format(self_genesis_txn_path))
                 await pool.create_pool_ledger_config(self.name, json.dumps({'genesis_txn': str(self.genesis_txn_path)}))
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.PoolLedgerConfigAlreadyExistsError:
                 LOGGER.info('Pool ledger config for %s already exists', self.name)
             else:
                 LOGGER.debug('NodePool.open: <!< indy error code %s', x_indy.error_code)
-                raise x_indy
+                raise
 
         self._handle = await pool.open_pool_ledger(self.name, json.dumps(self.config))
 
@@ -287,7 +295,7 @@ class NodePool:
 
     async def __aexit__(self, exc_type, exc, traceback) -> None:
         """
-        Context manager exit. Closes pool and deletes its configuration to ensure clean next entry.
+        Context manager exit. Closes pool, removes its files if so configured.
         For use in monolithic call opening, using, and closing the pool.
 
         Raise any IndyError causing failure to create ledger configuration.
@@ -305,7 +313,7 @@ class NodePool:
 
     async def close(self) -> None:
         """
-        Explicit exit. Closes pool and deletes its configuration to ensure clean next entry.
+        Explicit exit. Closes pool, removes its files if so configured.
         For use when keeping pool open across multiple calls.
         """
 

@@ -52,6 +52,7 @@ class ErrorCode(IntEnum):
 
     # Errors to do with node pool operation
     ClosedPool = 4000
+    AbsentGenesis = 4001
 
     # Errors to do with caching
     CacheIndex = 5000
@@ -423,6 +424,21 @@ class ClosedPool(VonAnchorError):
         """
 
         super().__init__(ErrorCode.ClosedPool, message)
+
+
+class AbsentGenesis(VonAnchorError):
+    """
+    Specified genesis transaction file does not exist.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.AbsentGenesis, message)
 
 
 class CacheIndex(VonAnchorError):

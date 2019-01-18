@@ -53,7 +53,7 @@ def usage() -> None:
     print('  * section [Node Pool]:')
     print('    - name: the name of the node pool to which the operation applies')
     print('    - genesis.txn.path: the path to the genesis transaction file')
-    print('        for the node pool')
+    print('        for the node pool (may omit if node pool already exists)')
     print('  * section [Trustee Anchor]:')
     print("    - seed: the trustee anchor's seed (omit if wallet exists)")
     print("    - wallet.name: the trustee anchor's wallet name")
@@ -89,7 +89,9 @@ async def setnym(ini_path: str) -> int:
     if not ok_role(cfg_van_role):
         raise BadRole('Configured role {} is not valid'.format(cfg_van_role))
 
-    pool_data = NodePoolData(config['Node Pool']['name'], config['Node Pool']['genesis.txn.path'])
+    pool_data = NodePoolData(
+        config['Node Pool']['name'],
+        config['Node Pool'].get('genesis.txn.path', None) or None)
     an_data = {
         'tan': AnchorData(
             Role.TRUSTEE,
