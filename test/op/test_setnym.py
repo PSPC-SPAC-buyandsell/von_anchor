@@ -113,7 +113,7 @@ async def test_setnym(
             for (key, value) in cfg[section].items():
                 if key in ('seed', 'genesis.txn.path'):
                     continue
-                print('{}={}'.format(key, '' if key == 'role' else value), file=ini_fh)
+                print('{}={}'.format(key, '${NEXT_ROLE:-}' if key == 'role' else value), file=ini_fh)  # exercise dflt
             print(file=ini_fh)
     with open(path_setnym_ini, 'r') as cfg_fh:
         print('\n\n== 5 == Next configuration, no seeds, no VON Anchor role:\n{}'.format(cfg_fh.read()))
@@ -169,7 +169,7 @@ async def test_setnym(
             for (key, value) in cfg[section].items():
                 if key in ('seed', 'genesis.txn.path'):
                     continue
-                print('{}={}'.format(key, 'BAD_ROLE' if key == 'role' else value), file=ini_fh)
+                print('{}={}'.format(key, '${NEXT_ROLE:-BAD_ROLE}' if key == 'role' else value), file=ini_fh)
             print(file=ini_fh)
     with open(path_setnym_ini, 'r') as cfg_fh:
         print('\n\n== 10 == Next configuration, no seeds, bad VON Anchor role:\n{}'.format(cfg_fh.read()))

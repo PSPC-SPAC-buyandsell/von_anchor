@@ -17,6 +17,7 @@ limitations under the License.
 
 import asyncio
 import json
+import re
 
 from configparser import ConfigParser
 from enum import IntEnum
@@ -63,10 +64,24 @@ def do_wait(coro: Callable) -> Any:
 
 def inis2dict(ini_paths: Union[str, Iterable]) -> dict:
     """
-    Take one or more ini files and return a dict with configuration from all.
+    Take one or more ini files and return a dict with configuration from all,
+    interpolating bash-style variables ${VAR} or ${VAR:-DEFAULT}.
 
     :param ini_paths: path or paths to .ini files
     """
+
+    VAR_DFLT = r'\${(.*?):-(.*?)}'
+    def _interpolate(content):
+        rv = expandvars(content)
+        while True:
+            match = re.search(VAR_DFLT, rv)
+            if match is None:
+                break
+            bash_var = '${{{}}}'.format(match.group(1))
+            value = expandvars(bash_var)
+            rv = re.sub(VAR_DFLT, match.group(2) if value == bash_var else value, rv, count=1)
+
+        return rv
 
     parser = ConfigParser()
 
@@ -74,7 +89,7 @@ def inis2dict(ini_paths: Union[str, Iterable]) -> dict:
         if not isfile(ini):
             raise FileNotFoundError('No such file: {}'.format(ini))
         with open(ini, 'r') as ini_fh:
-            ini_text = expandvars(ini_fh.read())
+            ini_text = _interpolate(ini_fh.read())
             parser.read_string(ini_text)
 
     return {s: dict(parser[s].items()) for s in parser.sections()}

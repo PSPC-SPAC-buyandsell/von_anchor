@@ -239,7 +239,7 @@ The ``do_wait`` utility takes a coroutine. Its operation creates an event loop i
 Function inis2dict()
 ***********************************
 
-The ``inis2dict()`` utility takes a path to a Windows ``.ini``-style configuration file or an iterable collection thereof. Its operation parses such files and returns a ``dict`` with their configuration (string) data, nesting a further ``dict`` for each section. The processing interpolates bash-style environment variables with braces (e.g., ``${HOME}``).
+The ``inis2dict()`` utility takes a path to a Windows ``.ini``-style configuration file or an iterable collection thereof. Its operation parses such files and returns a ``dict`` with their configuration (string) data, nesting a further ``dict`` for each section. The processing interpolates bash-style environment variables with braces (e.g., ``${HOME}``), substituting defaults where specified (e.g., ``${VAR:-DEFAULT}`` would interpolate to ``DEFAULT`` if the environment did not set ``${VAR}``).
 
 Input configuration files must not repeat section headers.
 
