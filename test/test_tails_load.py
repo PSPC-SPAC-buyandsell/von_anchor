@@ -125,146 +125,93 @@ async def test_anchors_tails_load(
         assert 'dest' in nyms[k]
 
     # Publish schema to ledger if not yet present; get from ledger
-    S_ID = {
-        'TAILS-LOAD': schema_id(san.did, 'tails_load', '{}.0'.format(int(time.time())))
-    }
+    S_ID = schema_id(san.did, 'tails_load', '{}.0'.format(int(time.time())))
+    S_KEY = schema_key(S_ID)
 
     schema_data = {
-        S_ID['TAILS-LOAD']: {
-            'name': schema_key(S_ID['TAILS-LOAD']).name,
-            'version': schema_key(S_ID['TAILS-LOAD']).version,
-            'attr_names': [
-                'number',
-                'remainder'
-            ]
-        }
+        'name': schema_key(S_ID).name,
+        'version': schema_key(S_ID).version,
+        'attr_names': [
+            'number',
+            'remainder'
+        ]
     }
 
-    # index by transaction number
-    seq_no2schema = {}
-    seq_no2schema_id = {}
+    try:
+        await san.get_schema(S_KEY)  # may exist (almost certainly not)
+    except AbsentSchema:
+        await san.send_schema(json.dumps(schema_data))
+    schema_json = await san.get_schema(S_KEY)
+    schema = json.loads(schema_json)
+    assert schema  # should exist now
+    print('\n\n== 2 == SCHEMA [{} v{}]: {}'.format(S_KEY.name, S_KEY.version, ppjson(schema)))
 
-    # index by schema id
-    schema_json = {}
-    schema = {}
-    cred_offer_json = {}
-    cred_offer = {}
-    cred_def_json = {}
-    cred_def = {}
-    cd_id = {}
-    cred_data = {}
-    cred_req_json = {}
-    cred_req = {}
-    cred_json = {}
-    cred_req_metadata_json = {}
-
-    i = 0
-    for s_id in schema_data:
-        s_key = schema_key(s_id)
-        try:
-            await san.get_schema(s_key)  # may exist
-        except AbsentSchema:
-            await san.send_schema(json.dumps(schema_data[s_id]))
-        schema_json[s_id] = await san.get_schema(s_key)
-        assert json.loads(schema_json[s_id])  # should exist now
-
-        schema_by_id_json = await san.get_schema(s_id)  # exercise get_schema on schema_id
-        schema[s_id] = json.loads(schema_json[s_id])
-        assert json.loads(schema_by_id_json)['seqNo'] == schema[s_id]['seqNo']
-
-        seq_no2schema_id[schema[s_id]['seqNo']] = s_id
-        seq_no2schema[schema[s_id]['seqNo']] = schema[s_id]
-        print('\n\n== 2.{} == SCHEMA [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
-        assert schema[s_id]
-        i += 1
-
-    # wait for rev reg builder to spin up
+    '''
+    # wait for rev reg builder to spin up?
     if rrbx:
         while not isfile(join(san._dir_tails_sentinel, '.pid')):
             await asyncio.sleep(1)
+    '''
 
     # Setup link secret for creation of cred req or proof
     await san.create_link_secret('LinkSecret')
 
     # SRI anchor create, store, publish cred definitions to ledger; create cred offers
-    i = 0
-    for s_id in schema_data:
-        s_key = schema_key(s_id)
+    await san.send_cred_def(S_ID, revocation=True)
+    cd_id = cred_def_id(S_KEY.origin_did, schema['seqNo'], p.protocol)
 
-        await san.send_cred_def(s_id, revocation=True)
-        cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'], p.protocol)
+    assert ((not Tails.unlinked(san._dir_tails)) and
+        [f for f in Tails.links(san._dir_tails, san.did) if cd_id in f])
 
-        assert ((not Tails.unlinked(san._dir_tails)) and
-            [f for f in Tails.links(san._dir_tails, san.did) if cd_id[s_id] in f])
+    cred_def_json = await san.get_cred_def(cd_id)  # ought to exist now
+    cred_def = json.loads(cred_def_json)
+    print('\n\n== 3.0 == Cred def [{} v{}]: {}'.format(
+        S_KEY.name,
+        S_KEY.version,
+        ppjson(json.loads(cred_def_json))))
+    assert cred_def.get('schemaId', None) == str(schema['seqNo'])
 
-        cred_def_json[s_id] = await san.get_cred_def(cd_id[s_id])  # ought to exist now
-        cred_def[s_id] = json.loads(cred_def_json[s_id])
-        print('\n\n== 3.{}.0 == Cred def [{} v{}]: {}'.format(
-            i,
-            s_key.name,
-            s_key.version,
-            ppjson(json.loads(cred_def_json[s_id]))))
-        assert cred_def[s_id].get('schemaId', None) == str(schema[s_id]['seqNo'])
+    cred_offer_json = await san.create_cred_offer(schema['seqNo'])
+    cred_offer = json.loads(cred_offer_json)
+    print('\n\n== 3.1 == Credential offer [{} v{}]: {}'.format(
+        S_KEY.name,
+        S_KEY.version,
+        ppjson(cred_offer_json)))
 
-        cred_offer_json[s_id] = await san.create_cred_offer(schema[s_id]['seqNo'])
-        cred_offer[s_id] = json.loads(cred_offer_json[s_id])
-        print('\n\n== 3.{}.1 == Credential offer [{} v{}]: {}'.format(
-            i,
-            s_key.name,
-            s_key.version,
-            ppjson(cred_offer_json[s_id])))
-        i += 1
-
-    i = 0
-    for s_id in schema_data:
-        s_key = schema_key(s_id)
-        (cred_req_json[s_id], cred_req_metadata_json[s_id]) = await san.create_cred_req(
-            cred_offer_json[s_id],
-            cd_id[s_id])
-        cred_req[s_id] = json.loads(cred_req_json[s_id])
-        print('\n\n== 4.{} == Credential request [{} v{}]: metadata {}, cred {}'.format(
-            i,
-            s_key.name,
-            s_key.version,
-            ppjson(cred_req_metadata_json[s_id]),
-            ppjson(cred_req_json[s_id])))
-        assert json.loads(cred_req_json[s_id])
-        i += 1
+    (cred_req_json, cred_req_metadata_json) = await san.create_cred_req(cred_offer_json, cd_id)
+    cred_req = json.loads(cred_req_json)
+    print('\n\n== 4 == Credential request [{} v{}]: metadata {}, cred {}'.format(
+        S_KEY.name,
+        S_KEY.version,
+        ppjson(cred_req_metadata_json),
+        ppjson(cred_req_json)))
+    assert json.loads(cred_req_json)
 
     # BC Reg anchor (as Issuer) issues creds and stores at HolderProver: get cred req, create cred, store cred
-    cred_data = {
-        S_ID['TAILS-LOAD']: []
-    }
-
-    i = 0
     CREDS = 4034  # enough to kick off rev reg on size 4096 and issue two creds in it: 1 needing set-rev-reg, 1 not
     print('\n\n== 5 == creating {} credentials'.format(CREDS))
     swatch = Stopwatch(2)
     optima = {}  # per rev-reg, fastest/slowest pairs
-    for s_id in cred_data:
-        for number in range(CREDS):
-            swatch.mark()
-            (cred_json[s_id], _) = await san.create_cred(
-                cred_offer_json[s_id],
-                cred_req_json[s_id],
-                {
-                    'number': str(number),
-                    'remainder': str(number % 100)
-                }
-            )
-            elapsed = swatch.mark()
-            tag = rev_reg_id2tag(Tails.current_rev_reg_id(san._dir_tails, cd_id[s_id]))
-            if tag not in optima:
-                optima[tag] = (elapsed, elapsed)
-            else:
-                optima[tag] = (min(optima[tag][0], elapsed), max(optima[tag][1], elapsed))
-            print('.', end='', flush=True)
-            if ((i + 1) % 100) == 0:
-                print('{}: #{}: {:.2f}-{:.2f}s'.format(i + 1, tag, *optima[tag]), flush=True)
+    for number in range(CREDS):
+        swatch.mark()
+        (cred_json, _) = await san.create_cred(
+            cred_offer_json,
+            cred_req_json,
+            {
+                'number': str(number),
+                'remainder': str(number % 100)
+            })
+        elapsed = swatch.mark()
+        tag = rev_reg_id2tag(Tails.current_rev_reg_id(san._dir_tails, cd_id))
+        if tag not in optima:
+            optima[tag] = (elapsed, elapsed)
+        else:
+            optima[tag] = (min(optima[tag][0], elapsed), max(optima[tag][1], elapsed))
+        print('.', end='', flush=True)
+        if ((number + 1) % 100) == 0:
+            print('{}: #{}: {:.2f}-{:.2f}s'.format(number + 1, tag, *optima[tag]), flush=True)
 
-            assert json.loads(cred_json[s_id])
-
-            i += 1
+        assert json.loads(cred_json)
 
     print('\n\n== 6 == best, worst times by revocation registry: {}'.format(ppjson(optima)))
     assert (not rrbx) or (max(optima[tag][1] for tag in optima) <
