@@ -36,7 +36,8 @@ from von_anchor.error import (
     BadIdentifier,
     BadLedgerTxn,
     BadRevocation,
-    CorruptWallet)
+    CorruptWallet,
+    WalletState)
 from von_anchor.indytween import cred_attr_value
 from von_anchor.tails import Tails
 from von_anchor.util import (
@@ -247,8 +248,8 @@ class Issuer(RevRegBuilder):
         Create a credential definition as Issuer, store it in its wallet, and send it to the ledger.
 
         Raise CorruptWallet for wallet not pertaining to current ledger, BadLedgerTxn on failure
-        to send credential definition to ledger if need be, or IndyError for any other failure
-        to create and store credential definition in wallet.
+        to send credential definition to ledger if need be, WalletState for closed wallet,
+        or IndyError for any other failure to create and store credential definition in wallet.
 
         :param s_id: schema identifier
         :param revocation: whether to support revocation for cred def
@@ -262,6 +263,10 @@ class Issuer(RevRegBuilder):
         if not ok_schema_id(s_id):
             LOGGER.debug('Issuer.send_cred_def <!< Bad schema id %s', s_id)
             raise BadIdentifier('Bad schema id {}'.format(s_id))
+
+        if not self.wallet.handle:
+            LOGGER.debug('Issuer.send_cred_def <!< Wallet %s is closed', self.wallet.name)
+            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
 
         rv_json = json.dumps({})
         schema_json = await self.get_schema(schema_key(s_id))
@@ -358,12 +363,17 @@ class Issuer(RevRegBuilder):
         Create credential offer as Issuer for given schema.
 
         Raise CorruptWallet if the wallet has no private key for the corresponding credential definition.
+        Raise WalletState for closed wallet.
 
         :param schema_seq_no: schema sequence number
         :return: credential offer json for use in storing credentials at HolderProver.
         """
 
         LOGGER.debug('Issuer.create_cred_offer >>> schema_seq_no: %s', schema_seq_no)
+
+        if not self.wallet.handle:
+            LOGGER.debug('Issuer.create_cred_offer <!< Wallet %s is closed', self.wallet.name)
+            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
 
         rv = None
         cd_id = cred_def_id(self.did, schema_seq_no, self.pool.protocol)
@@ -396,6 +406,7 @@ class Issuer(RevRegBuilder):
         entries for attributes.
 
         Return credential json, and if cred def supports revocation, credential revocation identifier.
+        Raise WalletState for closed wallet.
 
         If the credential definition supports revocation, and the current revocation registry is full,
         the processing creates a new revocation registry en passant. Depending on the revocation
@@ -428,6 +439,10 @@ class Issuer(RevRegBuilder):
             cred_req_json,
             cred_attrs,
             rr_size)
+
+        if not self.wallet.handle:
+            LOGGER.debug('Issuer.create_cred <!< Wallet %s is closed', self.wallet.name)
+            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
 
         cd_id = json.loads(cred_offer_json)['cred_def_id']
         if not ok_cred_def_id(cd_id):
@@ -491,10 +506,10 @@ class Issuer(RevRegBuilder):
 
         Return (epoch seconds) time of revocation.
 
-        Raise AbsentTails if no tails file is available for input
-        revocation registry identifier. Raise BadRevocation if issuer cannot
-        revoke specified credential for any other reason (e.g., did not issue it,
-        already revoked it).
+        Raise AbsentTails if no tails file is available for input revocation registry identifier.
+        Raise WalletState for closed wallet.
+        Raise BadRevocation if issuer cannot revoke specified credential for any other reason
+        (e.g., did not issue it, already revoked it).
 
         :param rr_id: revocation registry identifier
         :param cr_id: credential revocation identifier
@@ -502,6 +517,10 @@ class Issuer(RevRegBuilder):
         """
 
         LOGGER.debug('Issuer.revoke_cred >>> rr_id: %s, cr_id: %s', rr_id, cr_id)
+ 
+        if not self.wallet.handle:
+            LOGGER.debug('Issuer.revoke_cred <!< Wallet %s is closed', self.wallet.name)
+            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('Issuer.revoke_cred <!< Bad rev reg id %s', rr_id)

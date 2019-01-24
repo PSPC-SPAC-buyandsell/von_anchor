@@ -89,6 +89,9 @@ async def setnym(ini_path: str) -> int:
     if not ok_role(cfg_van_role):
         raise BadRole('Configured role {} is not valid'.format(cfg_van_role))
 
+    if config['Trustee Anchor']['wallet.name'] == config['VON Anchor']['wallet.name']:
+        raise ExtantWallet('Wallet names must differ between VON Anchor and Trustee Anchor')
+
     pool_data = NodePoolData(
         config['Node Pool']['name'],
         config['Node Pool'].get('genesis.txn.path', None) or None)
@@ -121,9 +124,11 @@ async def setnym(ini_path: str) -> int:
             except ExtantWallet:
                 pass
 
-    async with NodePool(pool_data.name, pool_data.genesis_txn_path) as pool, (
-            TrusteeAnchor(an_wallet['tan'], pool)) as tan, (
-            NominalAnchor(an_wallet['van'], pool)) as van:
+    async with an_wallet['tan'] as w_tan, (
+            an_wallet['van']) as w_van, (
+            NodePool(pool_data.name, pool_data.genesis_txn_path)) as pool, (
+            TrusteeAnchor(w_tan, pool)) as tan, (
+            NominalAnchor(w_van, pool)) as van:
 
         ledger_nym = json.loads(await tan.get_nym(van.did))
 

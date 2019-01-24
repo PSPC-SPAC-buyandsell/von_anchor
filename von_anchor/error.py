@@ -42,6 +42,7 @@ class ErrorCode(IntEnum):
     AbsentProcess = 1017
     BadKey = 1018
     BadRole = 1019
+    BadAttribute = 1020
 
     # Errors to do with wallet operation
     AbsentWallet = 3000
@@ -49,6 +50,7 @@ class ErrorCode(IntEnum):
     AbsentCred = 3002
     AbsentMetadata = 3003
     ExtantWallet = 3004
+    WalletState = 3005
 
     # Errors to do with node pool operation
     ClosedPool = 4000
@@ -336,6 +338,21 @@ class BadRole(VonAnchorError):
         super().__init__(ErrorCode.BadRole, message)
 
 
+class BadAttribute(VonAnchorError):
+    """
+    Invalid specifier for indy-sdk role.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.BadAttribute, message)
+
+
 class AbsentWallet(VonAnchorError):
     """
     Wallet has not been created (within indy-sdk).
@@ -409,6 +426,21 @@ class ExtantWallet(VonAnchorError):
         """
 
         super().__init__(ErrorCode.ExtantWallet, message)
+
+
+class WalletState(VonAnchorError):
+    """
+    Wallet needs to be open.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.WalletState, message)
 
 
 class ClosedPool(VonAnchorError):

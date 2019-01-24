@@ -17,6 +17,7 @@ limitations under the License.
 
 import json
 import logging
+import re
 
 from asyncio import sleep
 
@@ -24,7 +25,7 @@ from indy import anoncreds, ledger
 
 from von_anchor.anchor.base import BaseAnchor
 from von_anchor.cache import SCHEMA_CACHE
-from von_anchor.error import AbsentSchema, BadLedgerTxn
+from von_anchor.error import AbsentSchema, BadAttribute, BadLedgerTxn
 from von_anchor.util import schema_id, schema_key
 
 
@@ -39,7 +40,8 @@ class Origin(BaseAnchor):
     async def send_schema(self, schema_data_json: str) -> str:
         """
         Send schema to ledger, then retrieve it as written to the ledger and return it.
-        Raise BadLedgerTxn on failure.
+        Raise BadLedgerTxn on failure. Raise BadAttribute for attribute name with spaces or
+        reserved for indy-sdk.
 
         If schema already exists on ledger, log error and return schema.
 
@@ -59,6 +61,11 @@ class Origin(BaseAnchor):
         LOGGER.debug('Origin.send_schema >>> schema_data_json: %s', schema_data_json)
 
         schema_data = json.loads(schema_data_json)
+        for attr in schema_data['attr_names']:
+            if not (re.match(r'(?=[^- ])[-_a-zA-Z0-9 ]+(?<=[^- ])$', attr)) or attr.strip().lower() == 'hash':
+                LOGGER.debug('Origin.send_schema <!< Bad attribute name [%s]', attr)
+                raise BadAttribute('Bad attribute name [{}]'.format(attr))
+
         s_id = schema_id(self.did, schema_data['name'], schema_data['version'])
         s_key = schema_key(s_id)
         rv_json = None

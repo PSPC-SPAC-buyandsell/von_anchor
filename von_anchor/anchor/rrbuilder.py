@@ -34,7 +34,7 @@ if DIR_VON_ANCHOR not in sys_path:
     sys_path.append(DIR_VON_ANCHOR)
 
 from von_anchor.anchor.base import BaseAnchor
-from von_anchor.error import AbsentProcess, BadIdentifier
+from von_anchor.error import AbsentProcess, BadIdentifier, WalletState
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.util import ok_rev_reg_id, rev_reg_id2cred_def_id, rev_reg_id2cred_def_id_tag
@@ -305,11 +305,17 @@ class RevRegBuilder(BaseAnchor):
         If revocation registry builder operates in a process external to its Issuer's,
         target directory is hopper directory.
 
+        Raise WalletState for closed wallet.
+
         :param rr_id: revocation registry identifier
         :param rr_size: revocation registry size (defaults to 64)
         """
 
         LOGGER.debug('RevRegBuilder._create_rev_reg >>> rr_id: %s, rr_size: %s', rr_id, rr_size)
+
+        if not self.wallet.handle:
+            LOGGER.debug('RevRegBuilder._create_rev_reg <!< Wallet %s is closed', self.wallet.name)
+            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('RevRegBuilder._create_rev_reg <!< Bad rev reg id %s', rr_id)
@@ -385,14 +391,12 @@ async def main(pool_name: str, pool_genesis_txn_path: str, wallet_name: str) -> 
     for path_log in start_data['logging']['paths']:
         logging.getLogger(__name__).addHandler(logging.FileHandler(path_log))
 
-    async with RevRegBuilder(
-            Wallet(
+    async with Wallet(
                 wallet_name,
                 start_data['wallet']['storage_type'],
                 start_data['wallet']['config'],
-                start_data['wallet']['access_creds']),
-            pool,
-            rrbx=True) as rrban:
+                start_data['wallet']['access_creds']) as wallet, (
+            RevRegBuilder(wallet, pool, rrbx=True)) as rrban:
         await rrban.serve()
 
 

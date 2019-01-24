@@ -44,6 +44,8 @@ The ``rev_reg_id2cred_def_id__tag()`` convenience function returns the a tuple w
 
 The ``ok_wallet_reft()``, ``ok_did()``, ``ok_role()``, ``ok_schema_id()``, ``ok_cred_def_id()``, and ``ok_rev_reg_id()`` functions return whether, on composition alone, their respective input strings represent acceptable wallet referents (a.k.a. wallet credential uuids or wallet credential identifiers), DIDs, indy anchor roles, schema identifiers, credential definition identifiers, and revocation registry identifiers.
 
+The ``did2uri()`` and ``uri2did()`` functions convert between native sovrin (base58) DIDs and their corresponding URIs. The conversion is straightforward: the URI formulation prepends ``did:sov:`` to the native DID.
+
 .. _wranglers:
 
 Credential and Proof Data Structure Wranglers

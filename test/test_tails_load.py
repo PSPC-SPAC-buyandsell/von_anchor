@@ -62,10 +62,10 @@ async def test_anchors_tails_load(
     await RevRegBuilder.stop(WALLET_NAME)  # in case of re-run
 
     # Open pool, init anchors
-    p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
-    await p.open()
+    pool = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
+    await pool.open()
 
-    wallet_data = {
+    wallets = {
         'trustee-anchor': {
             'seed': seed_trustee1,
             'storage_type': None,
@@ -75,37 +75,35 @@ async def test_anchors_tails_load(
         WALLET_NAME: {
             'seed': 'Superstar-Anchor-000000000000000',
             'storage_type': None,
-            'config': { 
-                'extra-property': True
-            },
+            'config': None,
             'access_creds': {
                 'key': 'rrbx-test'
             }
         }
     }
-    for (name, wdata) in wallet_data.items():
+    for (name, wdata) in wallets.items():
+        wdata['wallet'] = Wallet(name, None, wdata['config'], wdata['access_creds'])
         try:
-            await Wallet(name, None, wdata['config'], wdata['access_creds']).create(wdata['seed'])
+            await wdata['wallet'].create(wdata['seed'])
         except ExtantWallet:
             pass
+        finally:
+            await wdata['wallet'].open()
 
-    tan = TrusteeAnchor(Wallet('trustee-anchor'), p)
+    tan = TrusteeAnchor(wallets['trustee-anchor']['wallet'], pool)
     no_prox = rrbx_prox()
-    san = OrgHubAnchor(
-        Wallet(WALLET_NAME, None, wallet_data[WALLET_NAME]['config'], wallet_data[WALLET_NAME]['access_creds']),
-        p,
-        rrbx=rrbx)
+    san = OrgHubAnchor(wallets[WALLET_NAME]['wallet'], pool, rrbx=rrbx)
     if rrbx:
         await beep('external rev reg builder process on {}'.format(WALLET_NAME), 5)
         assert rrbx_prox() == no_prox + 1
         async with OrgHubAnchor(
-                Wallet(WALLET_NAME, None, wallet_data[WALLET_NAME]['config'], wallet_data[WALLET_NAME]['access_creds']),
-                p,
+                wallets[WALLET_NAME]['wallet'],
+                pool,
                 rrbx=rrbx):  # check for exactly 1 external rev reg builder process
             await beep('external rev reg builder process uniqueness test on {}'.format(WALLET_NAME), 5)
             assert rrbx_prox() == no_prox + 1
 
-    assert p.handle
+    assert pool.handle
 
     await tan.open()
     await san.open()
@@ -158,7 +156,7 @@ async def test_anchors_tails_load(
 
     # SRI anchor create, store, publish cred definitions to ledger; create cred offers
     await san.send_cred_def(S_ID, revocation=True)
-    cd_id = cred_def_id(S_KEY.origin_did, schema['seqNo'], p.protocol)
+    cd_id = cred_def_id(S_KEY.origin_did, schema['seqNo'], pool.protocol)
 
     assert ((not Tails.unlinked(san._dir_tails)) and
         [f for f in Tails.links(san._dir_tails, san.did) if cd_id in f])
@@ -221,4 +219,6 @@ async def test_anchors_tails_load(
     if rrbx:
         await RevRegBuilder.stop(WALLET_NAME)
     await tan.close()
-    await p.close()
+    for (name, wdata) in wallets.items():
+        await wdata['wallet'].close()
+    await pool.close()

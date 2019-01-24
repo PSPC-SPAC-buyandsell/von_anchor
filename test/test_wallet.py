@@ -22,7 +22,7 @@ import pytest
 from indy import IndyError
 from indy.error import ErrorCode
 
-from von_anchor.error import ExtantWallet, JSONValidation
+from von_anchor.error import ExtantWallet, JSONValidation, WalletState
 from von_anchor.frill import Ink
 from von_anchor.wallet import Wallet
 
@@ -88,8 +88,8 @@ async def test_wallet(path_home):
         async with w:
             async with w:
                 assert False
-    except IndyError as x_indy:
-        assert x_indy.error_code == ErrorCode.WalletAlreadyOpenedError
+    except WalletState:
+        pass
 
     assert not path.exists(), 'Wallet path {} still present'.format(path)
 

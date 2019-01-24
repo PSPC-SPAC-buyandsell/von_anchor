@@ -40,6 +40,7 @@ The table below specifies which ``von_anchor`` unit tests require the node pool 
    :header: "Unit Test", "Node Pool Operation Requirement?"
    :widths: 25, 75
 
+    "test_a2a.py", "No"
     "test_anchors.py", "Yes"
     "test_cache.py", "No"
     "test_canon.py", "No"
@@ -108,6 +109,19 @@ This section specifies the operation of the VON anchor unit tests. These tests r
 - the successful test of ``von_base`` as per :ref:`test_von_base`
 - the full installation of ``von_anchor`` from pypi as per :ref:`install_von_anchor_pypi`
 - the fulfilment of prerequisites as per :ref:`prereq_von_anchor` (node pool necessity depends on choice of unit test as per :ref:`nodepool_test`).
+
+Agent-to-Agent Utilities
++++++++++++++++++++++++++++++++++
+
+This unit test starts from a JSON-LD DID document. It converts it to a ``DIDDoc`` object and, from this object, back to JSON-LD. The test checks that the output JSON matches the input.
+
+To operate the test harness, issue at the prompt:
+
+.. code-block:: bash
+
+    $ cd
+    $ cd von_anchor/test
+    $ pipenv run pytest -s test_a2a.py
 
 Cache Operation and Thread Safety
 +++++++++++++++++++++++++++++++++

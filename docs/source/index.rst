@@ -9,18 +9,19 @@
    :maxdepth: 2
    :caption: VON Anchor Design, Installation, and Unit Tests
 
-   design/anchors
-   design/anchor-interactions
-   design/revocation-and-tails-files
-   design/cache
-   design/nodepool
-   design/wallet
-   design/util
-   design/operations
-   design/exceptions
-   design/class-hierarchy
-   design/packaging
-   design/configuration-validation
+   von_anchor/anchors
+   von_anchor/anchor-interactions
+   von_anchor/a2a
+   von_anchor/revocation-and-tails-files
+   von_anchor/cache
+   von_anchor/nodepool
+   von_anchor/wallet
+   von_anchor/util
+   von_anchor/operations
+   von_anchor/exceptions
+   von_anchor/class-hierarchy
+   von_anchor/packaging
+   von_anchor/configuration-validation
    installation/installation
    installation/unit-tests
    modules.rst

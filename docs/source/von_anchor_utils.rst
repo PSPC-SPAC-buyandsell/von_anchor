@@ -1,6 +1,14 @@
 Package: VON Anchor Utilities
 ====================================
 
+von\_anchor.a2a
+------------------------
+
+.. automodule:: von_anchor.a2a
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 von\_anchor.cache
 ------------------------
 

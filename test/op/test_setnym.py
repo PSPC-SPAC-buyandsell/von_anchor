@@ -30,15 +30,17 @@ from von_anchor.nodepool import NodePool
 from von_anchor.wallet import Wallet
 
 
-async def get_wallets(wallet_data):
+async def get_wallets(wallet_data, open_all, auto_remove=False):
     rv = {}
     for (name, seed) in wallet_data.items():
-        w = Wallet(name)
+        w = Wallet(name, storage_type=None, config={'auto-remove': True} if auto_remove else None)
         try:
             if seed:
                 await w.create(seed)
         except ExtantWallet:
             pass
+        if open_all:
+            await w.open()
         rv[name] = w
     return rv
 
@@ -64,7 +66,7 @@ async def test_setnym(
         'trustee-anchor': seed_trustee1,
         cfg['VON Anchor']['wallet.name']: cfg['VON Anchor']['seed']
     }
-    wallets = await get_wallets(seeds)
+    wallets = await get_wallets(seeds, True)
 
     # Open pool, check if nym already present
     p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
@@ -213,3 +215,5 @@ async def test_setnym(
 
     await van.close()
     await p.close()
+    for name in wallets:
+        await wallets[name].close()

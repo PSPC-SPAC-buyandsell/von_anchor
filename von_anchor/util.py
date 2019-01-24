@@ -23,6 +23,7 @@ from collections.abc import Iterable
 from copy import deepcopy
 from typing import Union
 
+from von_anchor.error import BadIdentifier
 from von_anchor.nodepool import Protocol
 from von_anchor.indytween import Role, Predicate, SchemaKey
 
@@ -93,6 +94,34 @@ def ok_schema_id(token: str) -> bool:
     return bool(re.match('[{}]{{21,22}}:2:.+:[0-9.]+$'.format(B58), token))
 
 
+def did2uri(did: str) -> str:
+    """
+    Convert a DID into a URI, prepending 'did:sov:'. Raise BadIdentifier for invalid input DID.
+
+    :param did: input DID
+    :return: corresponding URI
+    """
+
+    if ok_did(did):
+        return 'did:sov:{}'.format(did)
+    raise BadIdentifier('Bad DID {}'.format(did))
+
+
+def uri2did(uri: str) -> str:
+    """
+    Convert a URI into a DID, left-stripping 'did:sov:'. Raise BadIdentifier for invalid input URI.
+
+    :param uri: input URI
+    :return: corresponding DID
+    """
+
+    if uri.startswith('did:sov:'):
+        rv = uri[8:]
+        if ok_did(rv):
+            return rv
+    raise BadIdentifier('Bad URI {} does not correspond to a sovrin DID'.format(uri))
+
+
 def schema_key(s_id: str) -> SchemaKey:
     """
     Return schema key (namedtuple) convenience for schema identifier components.
@@ -140,12 +169,15 @@ def ok_cred_def_id(token: str, issuer_did: str = None) -> bool:
 def cred_def_id2seq_no(cd_id: str) -> int:
     """
     Given a credential definition identifier, return its schema sequence number.
+    Raise BadIdentifier on input that is not a credential definition identifier.
 
     :param cd_id: credential definition identifier
     :return: sequence number
     """
 
-    return int(cd_id.split(':')[3])  # sequence number is token at 0-based position 3
+    if ok_cred_def_id(cd_id):
+        return int(cd_id.split(':')[3])  # sequence number is token at 0-based position 3
+    raise BadIdentifier('Bad credential definition identifier {}'.format(cd_id))
 
 
 def rev_reg_id(cd_id: str, tag: Union[str, int]) -> str:
@@ -180,12 +212,15 @@ def ok_rev_reg_id(token: str, issuer_did: str = None) -> bool:
 def rev_reg_id2cred_def_id(rr_id: str) -> str:
     """
     Given a revocation registry identifier, return its corresponding credential definition identifier.
+    Raise BadIdentifier if input is not a revocation registry identifier.
 
     :param rr_id: revocation registry identifier
     :return: credential definition identifier
     """
 
-    return ':'.join(rr_id.split(':')[2:-2])  # rev reg id comprises (prefixes):<cred_def_id>:(suffixes)
+    if ok_rev_reg_id(rr_id):
+        return ':'.join(rr_id.split(':')[2:-2])  # rev reg id comprises (prefixes):<cred_def_id>:(suffixes)
+    raise BadIdentifier('Bad revocation registry identifier {}'.format(rr_id))
 
 
 def rev_reg_id2tag(rr_id: str) -> str:
@@ -202,16 +237,18 @@ def rev_reg_id2tag(rr_id: str) -> str:
 def rev_reg_id2cred_def_id_tag(rr_id: str) -> (str, str):
     """
     Given a revocation registry identifier, return its corresponding credential definition identifier and
-    (stringified int) tag.
+    (stringified int) tag. Raise BadIdentifier if input is not a revocation registry identifier.
 
     :param rr_id: revocation registry identifier
     :return: credential definition identifier and tag
     """
 
-    return (
-        ':'.join(rr_id.split(':')[2:-2]),  # rev reg id comprises (prefixes):<cred_def_id>:(suffixes)
-        str(rr_id.split(':')[-1])  # tag is last token
-    )
+    if ok_rev_reg_id(rr_id):
+        return (
+            ':'.join(rr_id.split(':')[2:-2]),  # rev reg id comprises (prefixes):<cred_def_id>:(suffixes)
+            str(rr_id.split(':')[-1])  # tag is last token
+        )
+    raise BadIdentifier('Bad revocation registry identifier {}'.format(rr_id))
 
 
 def iter_briefs(briefs: Union[Iterable, dict]) -> tuple:

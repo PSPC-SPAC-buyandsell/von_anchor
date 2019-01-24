@@ -164,7 +164,8 @@ class OrgHubAnchor(Verifier, Origin, Issuer, OrgBookAnchor):
             ArchivableCaches.archive(self.dir_cache)
             ArchivableCaches.purge_archives(self.dir_cache, True)
 
-        await self.wallet.close()
+        # Do not close wallet independently: allow for sharing open wallet over many anchor lifetimes
+        # await self.wallet.close() #1.7.8
         # Do not close pool independently: let relying party decide when to go on-line and off-line
 
         for path_rr_id in Tails.links(self._dir_tails):

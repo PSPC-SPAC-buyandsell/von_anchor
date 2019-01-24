@@ -25,7 +25,7 @@ from time import time
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
 
-from von_anchor.error import AbsentMetadata, AbsentWallet, ExtantWallet
+from von_anchor.error import AbsentMetadata, AbsentWallet, ExtantWallet, WalletState
 from von_anchor.validcfg import validate_config
 
 
@@ -71,7 +71,7 @@ class Wallet:
         self._next_seed = None
         self._handle = None
 
-        self._config = config or {}
+        self._config = {**config} if config else {}
         self._config['id'] = name
         self._config['storage_type'] = storage_type
         if 'freshness_time' not in self._config:
@@ -268,7 +268,8 @@ class Wallet:
                 }))
             LOGGER.info('Wallet %s set seed hash metadata for DID %s', self.name, self.did)
         finally:
-            await wallet.close_wallet(self.handle)
+            await wallet.close_wallet(self.handle)  # bypass self.close() in case auto-remove set
+            self._handle = None
 
         LOGGER.debug('Wallet.create <<<')
         return self
@@ -296,9 +297,9 @@ class Wallet:
         Explicit entry. Open wallet as configured, for later closure via close().
         For use when keeping wallet open across multiple calls.
 
-        Raise any IndyError causing failure to open wallet, or AbsentWallet on attempt to enter wallet
-        not yet created. Raise AbsentMetadata on attempt to open wallet without DID having metadata
-        identifying any current seed.
+        Raise any IndyError causing failure to open wallet, WalletState if wallet already open,
+        or AbsentWallet on attempt to enter wallet not yet created. Raise AbsentMetadata on
+        attempt to open wallet without DID having metadata identifying any current seed.
 
         :return: current object
         """
@@ -314,6 +315,9 @@ class Wallet:
             if x_indy.error_code == ErrorCode.WalletNotFoundError:
                 LOGGER.info('Wallet %s does not exist', self.name)
                 raise AbsentWallet('Wallet {} does not exist'.format(self.name))
+            elif x_indy.error_code == ErrorCode.WalletAlreadyOpenedError:
+                LOGGER.info('Wallet %s is alreadly open', self.name)
+                raise WalletState('Wallet {} is already open'.format(self.name))
             else:
                 raise
 
@@ -326,7 +330,7 @@ class Wallet:
 
     async def __aexit__(self, exc_type, exc, traceback) -> None:
         """
-        Context manager exit. Close wallet and delete if so configured.
+        Context manager exit. Close wallet (and delete if so configured).
         For use in monolithic call opening, using, and closing the wallet.
 
         :param exc_type:
@@ -342,7 +346,7 @@ class Wallet:
 
     async def close(self) -> None:
         """
-        Explicit exit. Close and delete wallet.
+        Explicit exit. Close wallet (and delete if so configured).
         For use when keeping wallet open across multiple calls.
         """
 
@@ -353,6 +357,7 @@ class Wallet:
         else:
             LOGGER.debug('Closing wallet %s', self.name)
             await wallet.close_wallet(self.handle)
+            self._handle = None
             if self.auto_remove:
                 LOGGER.info('Auto-removing wallet %s', self.name)
                 await self.remove()
@@ -362,13 +367,17 @@ class Wallet:
 
     async def reseed_init(self, next_seed) -> str:
         """
-        Begin reseed operation: generate new key.
+        Begin reseed operation: generate new key. Raise WalletState if wallet is closed.
 
         :param seed: incoming replacement seed
         :return: new verification key
         """
 
         LOGGER.debug('Wallet.reseed_init >>> next_seed [SEED]')
+
+        if not self.handle:
+            LOGGER.debug('Wallet.reseed_init <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         self._next_seed = next_seed
         rv = await did.replace_keys_start(self.handle, self.did, json.dumps({'seed': next_seed}))
@@ -378,9 +387,14 @@ class Wallet:
     async def reseed_apply(self) -> None:
         """
         Replace verification key with new verification key from reseed operation.
+        Raise WalletState if wallet is closed.
         """
 
         LOGGER.debug('Wallet.reseed_apply >>>')
+
+        if not self.handle:
+            LOGGER.debug('Wallet.reseed_init <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         await did.replace_keys_apply(self.handle, self.did)
         self.verkey = await did.key_for_local_did(self.handle, self.did)
@@ -399,10 +413,14 @@ class Wallet:
 
     async def remove(self) -> None:
         """
-        Remove serialized wallet if it exists.
+        Remove serialized wallet if it exists. Raise WalletState if wallet is open.
         """
 
         LOGGER.debug('Wallet.remove >>>')
+
+        if self.handle:
+            LOGGER.debug('Wallet.reseed_init <!< Wallet %s is open', self.name)
+            raise WalletState('Wallet {} is open'.format(self.name))
 
         try:
             LOGGER.info('Removing wallet: %s', self.name)
