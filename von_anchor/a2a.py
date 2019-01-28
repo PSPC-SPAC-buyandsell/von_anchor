@@ -19,14 +19,76 @@ import json
 
 from collections import namedtuple
 from enum import Enum
-from typing import Iterable, Union
+from typing import Iterable, List, Union
+from urllib.parse import urlparse
 
 from von_anchor.error import BadIdentifier
-from von_anchor.util import did2uri, ok_did, uri2did
+from von_anchor.util import ok_did
 
 
 DIDPair = namedtuple('DIDPair', 'did verkey')
 LinkedDataKeySpec = namedtuple('LinkedDataKeySpec', 'ver_type authn_type specifier')
+
+
+def resource(ref: str, delimiter: str = None) -> str:
+    """
+    Given a (URI) reference, return up to its delimiter (exclusively), or all of it if there is none.
+
+    :param ref: reference
+    :param delimiter: delimiter character (default None maps to '#', or ';' introduces identifiers)
+    """
+
+    return ref.split(delimiter if delimiter else '#')[0]
+
+
+def canon_did(uri: str) -> str:
+    """
+    Convert a URI into a DID if need be, left-stripping 'did:sov:' if present.
+    Return input if already a DID. Raise BadIdentifier for invalid input.
+
+    :param uri: input URI or DID
+    :return: corresponding DID
+    """
+
+    if ok_did(uri):
+        return uri
+
+    if uri.startswith('did:sov:'):
+        rv = uri[8:]
+        if ok_did(rv):
+            return rv
+    raise BadIdentifier('Bad specification {} does not correspond to a sovrin DID'.format(uri))
+
+
+def canon_ref(did: str, ref: str, delimiter: str = None):
+    """
+    Given a reference in a DID document, return it in its canonical form of a URI.
+
+    :param did: DID acting as the identifier of the DID document
+    :param ref: reference to canonicalize, either a DID or a fragment pointing to a location in the DID doc
+    :param delimiter: delimiter character marking fragment ('#', to which default None maps) or
+        introducing identifier (';') against DID resource
+    """
+
+    if not ok_did(did):
+        raise BadIdentifier('Bad DID {} cannot act as DID document identifier'.format(did))
+
+    if ok_did(ref):  # e.g., LjgpST2rjsoxYegQDRm7EL
+        return 'did:sov:{}'.format(did)
+
+    if ref.startswith('did:sov:'):  # e.g., did:sov:LjgpST2rjsoxYegQDRm7EL, did:sov:LjgpST2rjsoxYegQDRm7EL#3
+        rv = ref[8:]
+        if ok_did(resource(rv, delimiter)):
+            return ref
+        raise BadIdentifier('Bad URI {} does not correspond to a sovrin DID'.format(ref))
+
+    if urlparse(ref).scheme:  # e.g., https://example.com/messages/8377464
+        return ref
+
+    if ref == PublicKey.ID_ROUTING:  # e.g., routing
+        return ref
+
+    return 'did:sov:{}{}{}'.format(did, delimiter if delimiter else '#', ref)  # e.g., 3
 
 
 class PublicKeyType(Enum):
@@ -96,30 +158,48 @@ class PublicKeyType(Enum):
 
 class PublicKey:
     """
-    Public key specification to embed in DIDDoc.
+    Public key specification to embed in DID document. Retains DIDs as raw values
+    (orientated toward indy-facing operations), everything else as URIs
+    (oriented toward W3C-facing operations).
     """
 
     ID_ROUTING = 'routing'
 
-    def __init__(self, ident: str, pk_type: PublicKeyType, owner_did: str, value: str, is_authn: bool = False) -> None:
+    def __init__(
+            self,
+            did: str,
+            ident: str,
+            pk_type: PublicKeyType,
+            controller: str,
+            value: str,
+            authn: bool = False) -> None:
         """
-        Retain key specification particulars. Raise BadIdentifier on bad input owner DID.
+        Retain key specification particulars. Raise BadIdentifier on any bad input DID.
 
+        :param did: DID of DID document embedding public key
         :param ident: identifier for public key
         :param pk_type: public key type (enum)
-        :param owner_did: owner DID, as a raw base58 (sovrin) value
+        :param controller: controller DID
         :param value: key content, encoded as key specification requires
-        :param is_authn: mark key as having DID authentication privilege
+        :param authn: whether key as has DID authentication privilege
         """
 
-        if not ok_did(owner_did):
-            raise BadIdentifier('Bad owner DID: {}'.format(owner_did))
-
-        self._id = ident
+        self._did = canon_did(did)
+        self._id = canon_ref(self._did, ident)
         self._type = pk_type
-        self._owner_did = owner_did
+        self._controller = canon_did(controller)
         self._value = value
-        self._is_authn = is_authn
+        self._authn = authn
+
+    @property
+    def did(self) -> str:
+        """
+        Return DID.
+
+        :return: DID
+        """
+
+        return self._did
 
     @property
     def id(self) -> str:
@@ -132,7 +212,7 @@ class PublicKey:
         return self._id
 
     @property
-    def type(self) -> str:
+    def type(self) -> PublicKeyType:
         """
         Return public key type.
 
@@ -152,24 +232,35 @@ class PublicKey:
         return self._value
 
     @property
-    def owner(self) -> str:
+    def controller(self) -> str:
         """
-        Return owner DID.
+        Return controller DID.
 
-        :return: owner DID
+        :return: controller DID
         """
 
-        return self._owner_did
+        return self._controller
 
     @property
-    def is_authn(self) -> str:
+    def authn(self) -> bool:
         """
-        Return public key identifier.
+        Return whether public key is marked as having DID authentication privilege.
 
         :return: whether public key is marked as having DID authentication privilege
         """
 
-        return self._is_authn
+        return self._authn
+
+    @authn.setter
+    def authn(self, value: bool) -> None:
+        """
+        Set or clear authentication marker.
+
+        :param value: authentication marker
+        """
+
+        self._authn = value
+
 
     def to_dict(self):
         """
@@ -177,34 +268,107 @@ class PublicKey:
         """
 
         return {
-            'id': self._id,
+            'id': self.id,
             'type': str(self.type.ver_type),
-            'owner': did2uri(self.owner),
+            'controller': canon_ref(self.did, self.controller),
             **self.type.specification(self.value)
+        }
+
+
+class Service:
+    """
+    Service specification to embed in DID document. Retains DIDs as raw values
+    (orientated toward indy-facing operations), everything else as URIs
+    (oriented toward W3C-facing operations).
+    """
+
+    def __init__(self, did: str, ident: str, s_type: str, endpoint: str):
+        """
+        Retain service specification particulars. Raise BadIdentifier on bad input controller DID.
+
+        :param did: DID of DID document embedding public key, specified raw (operation converts to URI)
+        :param ident: identifier for public key
+        :param s_type: service type
+        :param endpoint: service endpoint
+        """
+
+        self._did = canon_did(did)
+        self._id = canon_ref(self._did, ident, ';')
+        self._type = s_type
+        self._endpoint = canon_ref(self._did, endpoint)
+
+    @property
+    def did(self) -> str:
+        """
+        Return DID.
+
+        :return: DID
+        """
+
+        return self._did
+
+    @property
+    def id(self) -> str:
+        """
+        Return public key identifier.
+
+        :return: public key identifier
+        """
+
+        return self._id
+
+    @property
+    def type(self) -> str:
+        """
+        Return service type.
+
+        :return: service type
+        """
+
+        return self._type
+
+    @property
+    def endpoint(self) -> str:
+        """
+        Return endpoint value.
+
+        :return: endpoint value
+        """
+
+        return self._endpoint
+
+    def to_dict(self):
+        """
+        Return dict representation of service to embed in DID document.
+        """
+
+        return {
+            'id': self.id,
+            'type': self.type,
+            'serviceEndpoint': self.endpoint
         }
 
 
 class DIDDoc:
     """
-    DID document, grouping a DID with verification keys and endpoints.
+    DID document, grouping a DID with verification keys and services.
+    Retains DIDs as raw values (orientated toward indy-facing operations),
+    everything else as URIs (oriented toward W3C-facing operations).
     """
 
     CONTEXT = 'https://w3id.org/did/v1'
 
     def __init__(self, did: str = None) -> None:
         """
-        Initializer. Retain DID ('id' in DIDDoc context); initialize verification keys and endpoints to empty lists.
+        Initializer. Retain DID ('id' in DIDDoc context); initialize verification keys and services to empty lists.
         Raise BadIdentifier for bad input DID.
 
         :param did: DID for current DIDdoc
         """
 
-        if did and not ok_did(did):
-            raise BadIdentifier('Bad DID: {}'.format(did))
-
-        self._did = did
+        self._did = canon_did(did) if did else None  # allow specification post-hoc
         self._verkeys = []
-        self._endpoints = []
+        self._services = []
 
     @property
     def did(self) -> str:
@@ -222,12 +386,10 @@ class DIDDoc:
         :param value: DID
         """
 
-        if value and not ok_did(value):
-            raise BadIdentifier('Bad DID: {}'.format(value))
-        self._did = value
+        self._did = canon_did(value) if value else None
 
     @property
-    def verkeys(self) -> str:
+    def verkeys(self) -> List:
         """
         Accessor for verification keys.
         """
@@ -248,25 +410,33 @@ class DIDDoc:
             self._verkeys = []
 
     @property
-    def endpoints(self) -> str:
+    def authnkeys(self) -> List:
         """
-        Accessor for endpoints.
+        Accessor for verification keys marked as authentication keys.
         """
 
-        return self._endpoints
+        return [k for k in self._verkeys if k.authn]
 
-    @endpoints.setter
-    def endpoints(self, value: Union[Iterable, str] = None) -> None:
+    @property
+    def services(self) -> List:
         """
-        Set endpoints.
+        Accessor for services.
+        """
 
-        :param value: endpoint or endpoints (specify None to clear)
+        return self._services
+
+    @services.setter
+    def services(self, value: Union[Iterable, Service] = None) -> None:
+        """
+        Set services.
+
+        :param value: service or services (specify None to clear)
         """
 
         if value:
-            self._endpoints = [value] if isinstance(value, str) else list(value)
+            self._services = [value] if isinstance(value, Service) else list(value)
         else:
-            self._endpoints = []
+            self._services = []
 
     def to_json(self) -> str:
         """
@@ -277,16 +447,13 @@ class DIDDoc:
 
         return json.dumps({
             '@context': DIDDoc.CONTEXT,
-            'id': did2uri(self.did),
+            'id': canon_ref(self.did, self.did),
             'publicKey': [verkey.to_dict() for verkey in self.verkeys],
             'authentication': [{
                 'type': verkey.type.authn_type,
-                'publicKey': '{}#{}'.format(did2uri(self.did), verkey.id)
-            } for verkey in self.verkeys if verkey.is_authn],
-            'service': [{
-                'type': 'Agency',
-                'serviceEndpoint': did2uri(endpoint) if ok_did(endpoint) else endpoint
-            } for endpoint in self.endpoints]
+                'publicKey': canon_ref(self.did, verkey.id)
+            } for verkey in self.verkeys if verkey.authn],
+            'service': [service.to_dict() for service in self.services]
         })
 
     @staticmethod
@@ -299,22 +466,34 @@ class DIDDoc:
         """
 
         did_doc = json.loads(did_doc_json)
-        rv = DIDDoc(uri2did(did_doc['id']))
+        rv = DIDDoc(did_doc['id'])
 
         verkeys = []
-        for pubkey in did_doc['publicKey']:
+        for pubkey in did_doc['publicKey']:  # include public keys and authentication keys by reference
             pubkey_type = PublicKeyType.get(pubkey['type'])
-            owner_did = uri2did(pubkey['owner'])
+            controller = canon_did(pubkey['controller'])
             value = pubkey[pubkey_type.specifier]
-            is_authn = any(ak.get('publicKey', '').split('#')[-1] == pubkey['id'] for ak in did_doc['authentication'])
-            verkeys.append(PublicKey(pubkey['id'], pubkey_type, owner_did, value, is_authn))
+            authn = any(
+                canon_ref(rv.did, ak.get('publicKey', '')) == canon_ref(rv.did, pubkey['id'])
+                for ak in did_doc['authentication'] if isinstance(ak.get('publicKey', None), str))
+            verkeys.append(PublicKey(rv.did, pubkey['id'], pubkey_type, controller, value, authn))
+
+        for akey in did_doc['authentication']:  # include embedded authentication keys
+            pk_ref = akey.get('publicKey', None)
+            if pk_ref:
+                pass  # got it already with public keys
+            else:
+                pubkey_type = PublicKeyType.get(akey['type'])
+                controller = canon_did(akey['controller'])
+                value = akey[pubkey_type.specifier]
+                verkeys.append(PublicKey(rv.did, akey['id'], pubkey_type, controller, value, True))
         rv.verkeys = verkeys
 
-        endpoints = []
-        for service in did_doc['service']:
-            serviceEndpoint = service['serviceEndpoint']
-            endpoints.append(uri2did(serviceEndpoint) if ok_did(serviceEndpoint) else serviceEndpoint)
-        rv.endpoints = endpoints
+        rv.services = [Service(
+            rv.did,
+            service['id'],
+            service['type'],
+            service['serviceEndpoint']) for service in did_doc['service']]
 
         return rv
 

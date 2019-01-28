@@ -28,6 +28,7 @@ from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, ENDPOINT_CACHE, REV
 from von_anchor.error import (
     AbsentCredDef,
     AbsentRevReg,
+    AbsentNym,
     AbsentSchema,
     BadIdentifier,
     BadKey,
@@ -190,7 +191,12 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor.reseed_init >>> seed: [SEED]')
 
         verkey = await self.wallet.reseed_init(seed)
-        req_json = await ledger.build_nym_request(self.did, self.did, verkey, self.wallet.name, self.role())
+        req_json = await ledger.build_nym_request(
+            self.did,
+            self.did,
+            verkey,
+            self.wallet.name,
+            (await self.get_nym_role()).token())
         await self._sign_submit(req_json)
         await self.wallet.reseed_apply()
 
@@ -199,6 +205,7 @@ class BaseAnchor:
     async def get_nym(self, target_did: str = None) -> str:
         """
         Get json cryptonym (including current verification key) for input (anchor) DID from ledger.
+        Return empty production {} if the ledger has no such cryptonym.
 
         Raise BadLedgerTxn on failure. Raise WalletState if target DID is default (own DID) value but
         wallet does not have it (neither created nor opened since initialization).
@@ -228,19 +235,43 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor.get_nym <<< %s', rv)
         return rv
 
+    async def get_nym_role(self, target_did: str = None) -> Role:
+        """
+        Return the cryptonym role for input did from the ledger - note that this may exceed
+        the role of least privilege for the class.
+
+        Raise AbsentNym if current anchor has no cryptonym on the ledger, or WalletState if current DID unavailable.
+
+        :param target_did: DID of cryptonym role to fetch (default own DID)
+        :return: identifier for current cryptonym role on ledger
+        """
+
+        LOGGER.debug('BaseAnchor.get_nym_role >>> target_did: %s', target_did)
+
+        nym = json.loads(await self.get_nym(target_did))
+        if not nym:
+            LOGGER.debug('BaseAnchor.get_nym_role <!< Ledger has no cryptonym for anchor %s', self.wallet.name)
+            raise AbsentNym('Ledger has no cryptonym for anchor {}'.format(self.wallet.name))
+
+        rv = Role.get(nym['role'])
+
+        LOGGER.debug('BaseAnchor.get_nym_role <<< %s', rv)
+        return rv
+
     @staticmethod
-    def role() -> str:
+    def least_role() -> Role:
         """
-        Return the indy-sdk role for an anchor in building its nym for the trust anchor to send to the ledger.
+        Return the indy-sdk role of least privilege for an anchor (class) in building
+        its cryptonym for the trust anchor to send to the ledger.
 
-        :return: role string
+        :return: role of least privilege by anchor class
         """
 
-        LOGGER.debug('BaseAnchor.role >>>')
+        LOGGER.debug('BaseAnchor.least_role >>>')
 
-        rv = Role.TRUST_ANCHOR.token()
+        rv = Role.TRUST_ANCHOR
 
-        LOGGER.debug('BaseAnchor.role <<< %s', rv)
+        LOGGER.debug('BaseAnchor.least_role <<< %s', rv)
         return rv
 
     async def get_endpoint(self, target_did: str = None, from_cache: bool = True) -> str:
@@ -260,7 +291,7 @@ class BaseAnchor:
 
         if not (target_did or self.did):
             LOGGER.debug('BaseAnchor.get_endpoint <!< Bad wallet state: DID for %s unavailable', self.wallet.name)
-            raise WalletState('Bad wallet state: DID for %s unavailable'.format(self.wallet.name))
+            raise WalletState('Bad wallet state: DID for {} unavailable'.format(self.wallet.name))
 
         target_did = target_did or self.did
         if not ok_did(target_did):

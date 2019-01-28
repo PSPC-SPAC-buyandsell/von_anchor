@@ -15,7 +15,6 @@ limitations under the License.
 """
 
 
-import json
 import logging
 
 from os import sys
@@ -28,7 +27,7 @@ if DIR_VON_ANCHOR not in sys_path:
     sys_path.append(DIR_VON_ANCHOR)
 
 from von_anchor import NominalAnchor, TrusteeAnchor
-from von_anchor.error import BadRole, ExtantWallet, VonAnchorError
+from von_anchor.error import AbsentNym, BadRole, ExtantWallet, VonAnchorError
 from von_anchor.frill import do_wait, inis2dict
 from von_anchor.indytween import Role
 from von_anchor.nodepool import NodePool
@@ -130,13 +129,15 @@ async def setnym(ini_path: str) -> int:
             TrusteeAnchor(w_tan, pool)) as tan, (
             NominalAnchor(w_van, pool)) as van:
 
-        ledger_nym = json.loads(await tan.get_nym(van.did))
+        try:
+            nym_role = await tan.get_nym_role(van.did)
+            if an_data['van'].role == nym_role:
+                return 0  # ledger is as per configuration
+            await tan.send_nym(van.did, van.verkey, van.wallet.name, Role.ROLE_REMOVE)
+        except AbsentNym:
+            pass  # cryptonym not there yet, fall through
 
-        if ledger_nym:
-            if Role.get(ledger_nym['role']) == an_data['van'].role:  # ledger is as per configuration
-                return 0
-            await tan.send_nym(van.did, van.verkey, van.wallet.name, Role.token_reset())
-        await tan.send_nym(van.did, van.verkey, van.wallet.name, cfg_van_role)
+        await tan.send_nym(van.did, van.verkey, van.wallet.name, an_data['van'].role)
 
     return 0
 

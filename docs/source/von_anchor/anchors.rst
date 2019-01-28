@@ -19,11 +19,13 @@ The class's ``_submit()`` and ``_sign_submit()`` methods encapsulate boilerplate
 
 Its ``get_nym()`` method fetches and return the anchor's cryptonym from the distributed ledger via the indy-sdk.
 
+Its ``get_nym_role()`` method fetches and return the anchor's role from its current cryptonym on the ledger, raising AbsentNym if not yet anchored on the ledger.
+
 Its ``get_endpoint()`` method gets the endpoint attribute that the ledger associates with the identity on the input DID, or the current anchor's endpoint if the caller specifies no DID. The ``send_endpoint()`` method sends the input endpoint attribute value to the ledger to associate with the current anchor, if such is not already the case – the caller can specify a null to clear the anchor's endpoint attribute on the ledger.
 
 Its ``get_rev_reg_def()`` method gets a revocation registry definition from the ledger. Typically the result comes from the revocation cache; if it goes to the ledger, the implementation populates the cache before returning.
 
-Its (static) ``role()`` method returns the ``TRUST_ANCHOR`` indicator, sufficing for all subclasses except ``AnchorSmith``.
+Its (static) ``least_role()`` method returns the ``TRUST_ANCHOR`` role, sufficing for most subclasses.
 
 Its ``get_schema()`` and ``get_cred_def()`` methods retrieve schema and credential definitions the ledger. Typically the result comes from its cache; if it goes to the ledger, the implementation populates the applicable cache before returning.
 
@@ -44,7 +46,7 @@ AnchorSmith
 
 The ``AnchorSmith`` class exposes ``send_nym()`` to fulfill calls to send a cryptonym to the ledger.
 
-Its (static) ``role()`` method returns the ``TRUSTEE`` indicator.
+Its (static) ``least_role()`` method returns the ``TRUSTEE`` role.
 
 Origin
 ****************************************************
@@ -267,7 +269,7 @@ Its configuration dict, specified on initialization, has a boolean setting for k
 
 The ``Verifier`` class exposes the ``verify_proof()`` method to verify an input proof against its proof request. It returns True or False.
 
-Its static ``role()`` method returns null; pure verifier anchors need not write to the ledger.
+Its static ``least_role()`` method returns the ``USER`` role; pure verifier anchors need not write to the ledger.
 
 The class's ``build_proof_req_json()`` helper takes a specification construct. It returns an indy-sdk proof_request structure (JSON encoded). The specification construct is a dict on credential definition identifiers. Each key is a credential definition identifier; its value is a dict mapping:
 

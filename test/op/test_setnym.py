@@ -22,7 +22,7 @@ from time import time
 
 import pytest
 
-from von_anchor import NominalAnchor, TrusteeAnchor
+from von_anchor import NominalAnchor, TrusteeAnchor, SRIAnchor
 from von_anchor.error import ExtantWallet
 from von_anchor.frill import Ink, inis2dict, ppjson
 from von_anchor.indytween import Role
@@ -76,13 +76,13 @@ async def test_setnym(
     tan = TrusteeAnchor(wallets['trustee-anchor'], p)
     await tan.open()
 
-    van = NominalAnchor(wallets[cfg['VON Anchor']['wallet.name']], p)
+    noman = NominalAnchor(wallets[cfg['VON Anchor']['wallet.name']], p)
 
-    nym = json.loads(await van.get_nym(van.did))
+    nym = json.loads(await noman.get_nym(noman.did))
     print('\n\n== 2 == Nym {} on ledger for anchor {} on DID {}'.format(
         '{} already'.format(ppjson(nym)) if nym else 'not yet',
-        van.wallet.name,
-        van.did))
+        noman.wallet.name,
+        noman.did))
 
     await tan.close()
     await p.close()
@@ -96,17 +96,17 @@ async def test_setnym(
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     assert not sub_proc.returncode
-    print('\n\n== 3 == Set nym with {} role on {} for {}'.format(van.role(), van.did, van.wallet.name))
+    print('\n\n== 3 == Set nym with TRUST_ANCHOR role on {} for {}'.format(noman.did, noman.wallet.name))
 
     await p.open()
-    await van.open()
-    nym = json.loads(await van.get_nym(van.did))
+    await noman.open()
+    nym = json.loads(await noman.get_nym(noman.did))
     assert nym and Role.get(nym['role']) == Role.TRUST_ANCHOR
     print('\n\n== 4 == Got nym transaction from ledger for DID {} ({}): {}'.format(
-        van.did,
-        van.wallet.name,
+        noman.did,
+        noman.wallet.name,
         ppjson(nym)))
-    await van.close()
+    await noman.close()
     await p.close()
 
     with open(path_setnym_ini, 'w+') as ini_fh:
@@ -115,7 +115,7 @@ async def test_setnym(
             for (key, value) in cfg[section].items():
                 if key in ('seed', 'genesis.txn.path'):
                     continue
-                print('{}={}'.format(key, '${NEXT_ROLE:-}' if key == 'role' else value), file=ini_fh)  # exercise dflt
+                print('{}={}'.format(key, '${X_ROLE:-}' if key == 'role' else value), file=ini_fh)  # exercise default
             print(file=ini_fh)
     with open(path_setnym_ini, 'r') as cfg_fh:
         print('\n\n== 5 == Next configuration, no seeds, no VON Anchor role:\n{}'.format(cfg_fh.read()))
@@ -129,18 +129,18 @@ async def test_setnym(
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     assert not sub_proc.returncode
-    print('\n\n== 6 == Set nym with {} role on {} for {}'.format(van.role(), van.did, van.wallet.name))
+    print('\n\n== 6 == Set nym with default role on {} for {}'.format(noman.did, noman.wallet.name))
 
     await p.open()
-    await van.open()
-    nym = json.loads(await van.get_nym(van.did))
+    await noman.open()
+    nym = json.loads(await noman.get_nym(noman.did))
     assert nym and Role.get(nym['role']) == Role.USER
     last_nym_seqno = nym['seqNo']
     print('\n\n== 7 == Got nym transaction from ledger for DID {} ({}): {}'.format(
-        van.did,
-        van.wallet.name,
+        noman.did,
+        noman.wallet.name,
         ppjson(nym)))
-    await van.close()
+    await noman.close()
     await p.close()
 
     sub_proc = subprocess.run(  #  do it again
@@ -152,17 +152,17 @@ async def test_setnym(
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     assert not sub_proc.returncode
-    print('\n\n== 8 == Set nym again with {} role on {} for {}'.format(van.role(), van.did, van.wallet.name))
+    print('\n\n== 8 == Set nym again with default role on {} for {}'.format(noman.did, noman.wallet.name))
 
     await p.open()
-    await van.open()
-    nym = json.loads(await van.get_nym(van.did))
+    await noman.open()
+    nym = json.loads(await noman.get_nym(noman.did))
     last_nym_seqno = nym['seqNo']
     print('\n\n== 9 == Got (same) nym transaction from ledger for DID {} ({}): {}'.format(
-        van.did,
-        van.wallet.name,
+        noman.did,
+        noman.wallet.name,
         ppjson(nym)))
-    await van.close()
+    await noman.close()
     await p.close()
 
     with open(path_setnym_ini, 'w+') as ini_fh:
@@ -171,7 +171,7 @@ async def test_setnym(
             for (key, value) in cfg[section].items():
                 if key in ('seed', 'genesis.txn.path'):
                     continue
-                print('{}={}'.format(key, '${NEXT_ROLE:-BAD_ROLE}' if key == 'role' else value), file=ini_fh)
+                print('{}={}'.format(key, 'BAD_ROLE' if key == 'role' else value), file=ini_fh)
             print(file=ini_fh)
     with open(path_setnym_ini, 'r') as cfg_fh:
         print('\n\n== 10 == Next configuration, no seeds, bad VON Anchor role:\n{}'.format(cfg_fh.read()))
@@ -186,34 +186,38 @@ async def test_setnym(
         stderr=subprocess.DEVNULL)
     assert sub_proc.returncode
     print('\n\n== 11 == Called to set bad role for {}, got error text {}'.format(
-        van.wallet.name,
+        noman.wallet.name,
         sub_proc.stdout.decode()))
 
     await p.open()
-    await van.open()
-    nym = json.loads(await van.get_nym(van.did))
+    await noman.open()
+    nym = json.loads(await noman.get_nym(noman.did))
+    noman_role = await noman.get_nym_role()
     assert nym and nym['seqNo'] == last_nym_seqno
-    await van.close()
+    await noman.close()
     await p.close()
 
     print('\n\n== 12 == Got nym transaction from ledger for DID {} ({}): {}'.format(
-        van.did,
-        van.wallet.name,
+        noman.did,
+        noman.wallet.name,
         ppjson(nym)))
 
     await p.open()
-    await van.open()
+    san = SRIAnchor(wallets[cfg['VON Anchor']['wallet.name']], p)
+    await san.open()
     next_seed = "{}000000000000VonAnchor1".format(int(time()) + 1)
-    await van.reseed(next_seed)
-    nym = json.loads(await van.get_nym(van.did))
+    await san.reseed(next_seed)
+    nym = json.loads(await san.get_nym(noman.did))
+    san_role = await san.get_nym_role()
     assert nym and nym['seqNo'] != last_nym_seqno
+    assert san_role == noman_role  # ensure that reseed does not side-effect role on ledger
 
-    print('\n\n== 13 == Reseeded then, got nym transaction from ledger for DID {} ({}): {}'.format(
-        van.did,
-        van.wallet.name,
+    print('\n\n== 13 == As SRI Anchor, reseeded, then got nym transaction from ledger for DID {} ({}): {}'.format(
+        san.did,
+        san.wallet.name,
         ppjson(nym)))
 
-    await van.close()
+    await san.close()
     await p.close()
     for name in wallets:
         await wallets[name].close()

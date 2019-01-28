@@ -43,6 +43,7 @@ class ErrorCode(IntEnum):
     BadKey = 1018
     BadRole = 1019
     BadAttribute = 1020
+    AbsentNym = 1021
 
     # Errors to do with wallet operation
     AbsentWallet = 3000
@@ -351,6 +352,21 @@ class BadAttribute(VonAnchorError):
         """
 
         super().__init__(ErrorCode.BadAttribute, message)
+
+
+class AbsentNym(VonAnchorError):
+    """
+    Ledger has no such cryptonym.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.AbsentNym, message)
 
 
 class AbsentWallet(VonAnchorError):

@@ -94,34 +94,6 @@ def ok_schema_id(token: str) -> bool:
     return bool(re.match('[{}]{{21,22}}:2:.+:[0-9.]+$'.format(B58), token))
 
 
-def did2uri(did: str) -> str:
-    """
-    Convert a DID into a URI, prepending 'did:sov:'. Raise BadIdentifier for invalid input DID.
-
-    :param did: input DID
-    :return: corresponding URI
-    """
-
-    if ok_did(did):
-        return 'did:sov:{}'.format(did)
-    raise BadIdentifier('Bad DID {}'.format(did))
-
-
-def uri2did(uri: str) -> str:
-    """
-    Convert a URI into a DID, left-stripping 'did:sov:'. Raise BadIdentifier for invalid input URI.
-
-    :param uri: input URI
-    :return: corresponding DID
-    """
-
-    if uri.startswith('did:sov:'):
-        rv = uri[8:]
-        if ok_did(rv):
-            return rv
-    raise BadIdentifier('Bad URI {} does not correspond to a sovrin DID'.format(uri))
-
-
 def schema_key(s_id: str) -> SchemaKey:
     """
     Return schema key (namedtuple) convenience for schema identifier components.

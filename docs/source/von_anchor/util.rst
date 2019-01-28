@@ -222,6 +222,7 @@ The ``Role`` enumeration specifies indy-sdk roles for use in cryptonyms:
 * ``TRUSTEE`` for a trustee role, which sends cryptonyms to the ledger for other anchors
 * ``TRUST_ANCHOR`` for a trust anchor role, which writes artifacts to the ledger
 * ``USER`` for a self-sovereign user role, which reads artifacts and writes its own entries on the ledger.
+* ``ROLE_REMOVE`` for the (temporary) role sentinel marking a reassignment operation in progress on the ledger.
 
 Frills
 ###################################

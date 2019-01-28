@@ -26,13 +26,36 @@ The ``PublicKey`` class helps to specify public keys to embed in DID documents.
 
 Each such key requires:
 
+* the DID of the DID document embedding the public key
 * an identifier (the class includes the ``PublicKey.ID_ROUTING`` class constant for the designated routing identifier)
 * a public key type
 * an owner, specified by DID
 * a key value
 * whether the public key is an authentication key in the context of a DID document.
 
+The implementation stores the DID document subject and controller DIDs in raw base58 sovrin format, geared toward
+interoperation with indy applications. It stores all other references as URIs, geared toward interoperation
+with W3C applications.
+
 The ``to_dict()`` method returns a dict representation of the public key to embed in a DID document.
+
+Services
+###################################
+
+The ``Service`` class helps to specify a service to embed in DID documents.
+
+Each such service requires:
+
+* the DID of the DID document embedding the service
+* an identifier
+* a service type
+* a service endpoint.
+
+The implementation stores the DID document subject DID in raw base58 sovrin format, geared toward
+interoperation with indy applications. It stores all other references as URIs, geared toward interoperation
+with W3C applications.
+
+The ``to_dict()`` method returns a dict representation of the service to embed in a DID document.
 
 DID Document Class
 ###################################

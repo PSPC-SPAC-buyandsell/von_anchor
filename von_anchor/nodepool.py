@@ -279,7 +279,7 @@ class NodePool:
             if self.name not in (p['pool'] for p in await pool.list_pools()):
                 if not (self.genesis_txn_path and isfile(self.genesis_txn_path)):
                     LOGGER.debug('NodePool.open: <!< Genesis transaction path [%s] not present', self.genesis_txn_path)
-                    raise AbsentGenesis('Genesis transaction path [{}] not present'.format(self_genesis_txn_path))
+                    raise AbsentGenesis('Genesis transaction path [{}] not present'.format(self.genesis_txn_path))
                 await pool.create_pool_ledger_config(self.name, json.dumps({'genesis_txn': str(self.genesis_txn_path)}))
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.PoolLedgerConfigAlreadyExistsError:

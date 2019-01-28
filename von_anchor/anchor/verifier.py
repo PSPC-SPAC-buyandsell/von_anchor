@@ -95,18 +95,18 @@ class Verifier(BaseAnchor):
         LOGGER.debug('Verifier.__init__ <<<')
 
     @staticmethod
-    def role() -> str:
+    def least_role() -> Role:
         """
-        Return the indy-sdk null role for a verifier, which does not need write access.
+        Return the indy-sdk USER (null) role for a verifier, which does not need write access.
 
-        :return: role string
+        :return: USER role
         """
 
-        LOGGER.debug('AnchorSmith.role >>>')
+        LOGGER.debug('AnchorSmith.least_role >>>')
 
-        rv = Role.USER.token()
+        rv = Role.USER
 
-        LOGGER.debug('AnchorSmith.role <<< %s', rv)
+        LOGGER.debug('AnchorSmith.least_role <<< %s', rv)
         return rv
 
     @property

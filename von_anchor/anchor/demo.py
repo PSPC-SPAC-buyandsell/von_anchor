@@ -43,18 +43,18 @@ class NominalAnchor(BaseAnchor):
     """
 
     @staticmethod
-    def role() -> str:
+    def least_role() -> Role:
         """
         Return the indy-sdk null role for a tails sync anchor, which does not need write access.
 
-        :return: role string
+        :return: USER role
         """
 
-        LOGGER.debug('NominalAnchor.role >>>')
+        LOGGER.debug('NominalAnchor.least_role >>>')
 
-        rv = Role.USER.token()
+        rv = Role.USER
 
-        LOGGER.debug('NominalAnchor.role <<< %s', rv)
+        LOGGER.debug('NominalAnchor.least_role <<< %s', rv)
         return rv
 
 
@@ -132,14 +132,18 @@ class OrgHubAnchor(Verifier, Origin, Issuer, OrgBookAnchor):
         LOGGER.debug('OrgHubAnchor.__init__ <<<')
 
     @staticmethod
-    def role() -> str:
+    def least_role() -> Role:
         """
-        Return the indy-sdk role for Org Hub anchor.
+        Return the indy-sdk TRUST_ANCHOR role for Org Hub anchor.
 
-        :return: role string
+        :return: TRUST_ANCHOR role
         """
 
-        rv = 'TRUST_ANCHOR'
+        LOGGER.debug('OrgHubAnchor.least_role >>>')
+
+        rv = Role.TRUST_ANCHOR
+
+        LOGGER.debug('OrgHubAnchor.least_role <<< %s', rv)
         return rv
 
     async def close(self) -> None:
@@ -201,12 +205,16 @@ class SRIAnchor(Verifier, Origin, Issuer):
         LOGGER.debug('SRIAnchor.close <<<')
 
     @staticmethod
-    def role() -> str:
+    def least_role() -> Role:
         """
-        Return the indy-sdk role for SRI anchor.
+        Return the indy-sdk TRUST_ANCHOR role for SRI anchor.
 
-        :return: role string
+        :return: TRUST_ANCHOR role
         """
 
-        rv = 'TRUST_ANCHOR'
+        LOGGER.debug('SRIAnchor.least_role >>>')
+
+        rv = Role.TRUST_ANCHOR
+
+        LOGGER.debug('SRIAnchor.least_role <<< %s', rv)
         return rv

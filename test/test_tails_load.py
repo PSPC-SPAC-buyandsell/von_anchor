@@ -111,7 +111,7 @@ async def test_anchors_tails_load(
     # Publish anchor particulars to ledger if not yet present
     for an in (tan, san):
         if not json.loads(await tan.get_nym(an.did)):
-            await tan.send_nym(an.did, an.verkey, an.wallet.name, an.role())
+            await tan.send_nym(an.did, an.verkey, an.wallet.name, an.least_role())
 
     nyms = {
         'tan': json.loads(await tan.get_nym(tan.did)),

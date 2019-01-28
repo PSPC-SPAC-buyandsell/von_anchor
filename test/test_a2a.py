@@ -27,25 +27,27 @@ from von_anchor.frill import Ink, ppjson
 async def test_a2a():
     print(Ink.YELLOW('\n\n== Testing DID Doc wranglers =='))
 
-    did_doc0 = {
+    # One authn key by reference
+    dd_in = {
         '@context': 'https://w3id.org/did/v1',
         'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
         'publicKey': [
             {
                 'id': 'routing',
                 'type': 'RsaVerificationKey2018',
-                'owner': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
                 'publicKeyPem': '-----BEGIN PUBLIC X...'
             },
             {
                 'id': '4',
                 'type': 'RsaVerificationKey2018',
-                'owner': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
-                'publicKeyPem': '-----BEGIN PUBLIC 9...'},
+                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyPem': '-----BEGIN PUBLIC 9...'
+            },
             {
                 'id': '6',
                 'type': 'RsaVerificationKey2018',
-                'owner': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
                 'publicKeyPem': '-----BEGIN PUBLIC A...'
             }
         ],
@@ -57,13 +59,113 @@ async def test_a2a():
         ],
         'service': [
             {
+                'id': '0',
                 'type': 'Agency',
                 'serviceEndpoint': 'did:sov:Q4zqM7aXqm7gDQkUVLng9h'
             }
         ]
     }
-    did_doc0_json = json.dumps(did_doc0)
-    did_doc1 = DIDDoc.from_json(did_doc0_json)
-    did_doc1_json = did_doc1.to_json()
-    assert json.loads(did_doc0_json) == json.loads(did_doc1_json)
-    print('\n\n== 1 == DID Doc from JSON and back again: {}'.format(ppjson(did_doc1_json)))
+    dd_json = json.dumps(dd_in)
+
+    dd_out = DIDDoc.from_json(dd_json)
+    assert len(dd_out.verkeys) == len(dd_in['publicKey'])
+    assert len(dd_out.authnkeys) == len(dd_in['authentication'])
+
+    dd_out_json = dd_out.to_json()
+    print('\n\n== 1 == DID Doc on referenced authn keys from JSON and back again: {}'.format(ppjson(dd_out_json)))
+
+    # One authn key embedded
+    dd_in = {
+        '@context': 'https://w3id.org/did/v1',
+        'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+        'publicKey': [
+            {
+                'id': 'routing',
+                'type': 'RsaVerificationKey2018',
+                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyPem': '-----BEGIN PUBLIC X...'
+            },
+            {
+                'id': '4',
+                'type': 'RsaVerificationKey2018',
+                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyPem': '-----BEGIN PUBLIC 9...'
+            }
+        ],
+        'authentication': [
+            {
+                'type': 'RsaSignatureAuthentication2018',
+                'publicKey': 'did:sov:LjgpST2rjsoxYegQDRm7EL#4'
+            },
+            {
+                'id': '6',
+                'type': 'RsaVerificationKey2018',
+                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyPem': '-----BEGIN PUBLIC A...'
+            }
+        ],
+        'service': [
+            {
+                'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL;0',
+                'type': 'Agency',
+                'serviceEndpoint': 'https://www.von.ca'
+            }
+        ]
+    }
+    dd_in_json = json.dumps(dd_in)
+
+    dd_out = DIDDoc.from_json(dd_in_json)
+    assert len(dd_out.verkeys) == len(dd_in['publicKey']) + 1
+    assert len(dd_out.authnkeys) == len(dd_in['authentication'])
+
+    dd_out_json = dd_out.to_json()
+    print('\n\n== 2 == DID Doc on 1 referenced and 1 embedded authn key from JSON and back again: {}'.format(
+        ppjson(dd_out_json)))
+
+    # One authn key embedded, all possible refs canonical
+    dd_in = {
+        '@context': 'https://w3id.org/did/v1',
+        'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+        'publicKey': [
+            {
+                'id': 'routing',
+                'type': 'RsaVerificationKey2018',
+                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyPem': '-----BEGIN PUBLIC X...'
+            },
+            {
+                'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL#4',
+                'type': 'RsaVerificationKey2018',
+                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyPem': '-----BEGIN PUBLIC 9...'
+            }
+        ],
+        'authentication': [
+            {
+                'type': 'RsaSignatureAuthentication2018',
+                'publicKey': 'did:sov:LjgpST2rjsoxYegQDRm7EL#4'
+            },
+            {
+                'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL#6',
+                'type': 'RsaVerificationKey2018',
+                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyPem': '-----BEGIN PUBLIC A...'
+            }
+        ],
+        'service': [
+            {
+                'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL;0',
+                'type': 'Agency',
+                'serviceEndpoint': 'https://www.von.ca'
+            }
+        ]
+    }
+    dd_in_json = json.dumps(dd_in)
+
+    dd_out = DIDDoc.from_json(dd_in_json)
+    assert len(dd_out.verkeys) == len(dd_in['publicKey']) + 1
+    assert len(dd_out.authnkeys) == len(dd_in['authentication'])
+
+    dd_out_json = dd_out.to_json()
+    print('\n\n== 3 == DID Doc on refs canonical where possible from JSON and back again: {}'.format(
+        ppjson(dd_out_json)))

@@ -139,7 +139,8 @@ class Role(Enum):
     STEWARD = (2,)
     TRUSTEE = (0,)
     TRUST_ANCHOR = (101,)
-    USER = (None, '')
+    USER = (None, '')  # reading from config, default empty specifier '' or None to USER
+    ROLE_REMOVE = ('',)  # but indy-sdk uses '' to identify a role in reset
 
     @staticmethod
     def get(token: Union[str, int] = None) -> 'Role':
@@ -154,6 +155,8 @@ class Role(Enum):
             return Role.USER
 
         for role in Role:
+            if role == Role.ROLE_REMOVE:
+                continue  # ROLE_REMOVE is not a sensible role to parse from any configuration
             if isinstance(token, int) and token in role.value:
                 return role
             if str(token).upper() == role.name or token in (str(v) for v in role.value):  # could be numeric string
@@ -161,21 +164,12 @@ class Role(Enum):
 
         return None
 
-    @staticmethod
-    def token_reset() -> str:
+    def to_indy_num_str(self) -> str:
         """
-        Return sentinel token (empty string) marking role as in transition in its cryptonym on the ledger.
+        Return (typically, numeric) string value that indy-sdk associates with role.
 
-        :return: empty string
-        """
-
-        return ''
-
-    def to_int(self) -> int:
-        """
-        Return integer value that indy-sdk associates with role.
-
-        :return: associated integer value (None for self-sovereign user having no additional write privileges to ledger)
+        :return: associated string value (None for self-sovereign user
+            having no additional write privileges to ledger, '' for role in reset)
         """
 
         return self.value[0]
@@ -184,7 +178,7 @@ class Role(Enum):
         """
         Return token identifying role to indy-sdk.
 
-        :return: token: 'STEWARD', 'TRUSTEE', 'TRUST_ANCHOR', or None
+        :return: token: 'STEWARD', 'TRUSTEE', 'TRUST_ANCHOR', or None (for USER)
         """
 
-        return None if self == Role.USER else self.name
+        return self.value[0] if self in (Role.USER, Role.ROLE_REMOVE) else self.name

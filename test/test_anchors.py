@@ -260,7 +260,7 @@ async def test_anchors_api(
     for an in (tan, san, pspcoban, bcohan, bcran):
         did2an[an.did] = an
         if not json.loads(await tan.get_nym(an.did)):
-            await tan.send_nym(an.did, an.verkey, an.wallet.name, an.role())
+            await tan.send_nym(an.did, an.verkey, an.wallet.name, an.least_role())
 
     assert json.loads(await tan.get_nym()) == json.loads(await tan.get_nym())  # check default param
     nyms = {
@@ -1984,7 +1984,7 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
             ppjson(cred_req_json)))
         assert json.loads(cred_req_json)
 
-        print('\n\n== 5 == Creating and revoking {} credentials'.format(RR_SIZE))
+        print('\n\n== 5 == Creating {} uniquely timestamped credentials and revoking them'.format(RR_SIZE))
         revocation2cred_json = {}  # map creation epoch to cred
         revocation2cred_data = {}
         now = int(time())
@@ -2165,7 +2165,7 @@ async def test_anchor_reseed(
     print(Ink.YELLOW('\n\n== Testing anchor reseed'))
 
     now = int(time())  # ten digits, unique and disposable each run
-    rsoban_seeds = ['Reseed-Org-Book-Anchor{}'.format(now + i) for i in range(2)]  # makes 32 characters
+    rsoban_seeds = ['Reseed-Org-Book-Anchor{}'.format(now + i) for i in range(3)]  # makes 32 characters
     # Generate seeds (in case of re-run on existing ledger, use fresh disposable identity every time)
     print('\n\n== 1 == seeds: {}'.format(rsoban_seeds))
 
@@ -2180,7 +2180,8 @@ async def test_anchor_reseed(
             wallets['reseed-org-book']) as w_reseed, (
             NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})) as p, (
             TrusteeAnchor(w_trustee, p)) as tan, (
-            OrgBookAnchor(w_reseed, p)) as rsan:
+            OrgBookAnchor(w_reseed, p)) as rsan, (
+            NominalAnchor(w_reseed, p)) as noman:
         assert p.handle
 
         # Publish anchor particulars to ledger if not yet present (almost certainly absent)
@@ -2188,7 +2189,7 @@ async def test_anchor_reseed(
         for an in (tan, rsan):
             did2an[an.did] = an
             if not json.loads(await tan.get_nym(an.did)):
-                await tan.send_nym(an.did, an.verkey, an.wallet.name, an.role())
+                await tan.send_nym(an.did, an.verkey, an.wallet.name, an.least_role())
 
         nyms = {
             'tan': json.loads(await tan.get_nym(tan.did)),
@@ -2209,24 +2210,40 @@ async def test_anchor_reseed(
         nym_resp = json.loads(await rsan.get_nym(rsan.did))
         print('\n\n== 4 == Anchor nym on ledger {}'.format(ppjson(nym_resp)))
 
-        old_verkey = rsan.verkey
+        old_rsan_verkey = rsan.verkey
+        old_rsan_nym_role = await rsan.get_nym_role()
         await rsan.reseed(rsoban_seeds[1])
-        assert rsan.verkey != old_verkey
+        assert rsan.verkey != old_rsan_verkey
         assert old_found_did == await rsan.wallet.find_did()
         assert old_found_did == rsan.did
+        assert await rsan.get_nym_role() == old_rsan_nym_role
 
         verkey_in_wallet = await did.key_for_local_did(rsan.wallet.handle, rsan.did)
-        print('\n\n== 5 == Anchor reseed operation retains DID {} on rekey from {} to {}'.format(
+        print('\n\n== 5 == Anchor reseed operation retains DID {} and role {} on rekey from {} to {}'.format(
             rsan.did,
-            old_verkey,
+            old_rsan_nym_role.token(),
+            old_rsan_verkey,
             rsan.verkey))
 
+        old_rsan_verkey = rsan.verkey
+        await noman.reseed(rsoban_seeds[2])
+        assert noman.verkey != old_rsan_verkey
+        assert rsan.verkey == noman.verkey
+        assert old_found_did == await rsan.wallet.find_did()
+        assert old_found_did == rsan.did
+        assert await noman.get_nym_role() == old_rsan_nym_role
+
+        print('\n\n== 6 == Nominal anchor reseed on org book anchor wallet retains DID {} and role {} on rekey'.format(
+            rsan.did,
+            old_rsan_nym_role.token()))
+
+        old_rsan_verkey = rsan.verkey
     # Fail to re-create on old seed
     try:
         await Wallet('reseed-org-book').create(rsoban_seeds[0])
         assert False
     except ExtantWallet:
-        print('\n\n== 6 == Anchor failed to re-create wallet on old seed as expected')
+        print('\n\n== 7 == Anchor failed to re-create wallet on old seed as expected')
 
     # Re-open
     w_rsob = Wallet('reseed-org-book', None, {'auto-remove': True})
@@ -2235,7 +2252,7 @@ async def test_anchor_reseed(
             OrgBookAnchor(w_rsob, p)) as rsan:
         assert p.handle
 
-        print('\n\n== 7 == Re-opened anchor wallet with new seed: using verkey {}'.format(rsan.verkey))
+        print('\n\n== 8 == Re-opened anchor wallet with new seed: using verkey {}'.format(rsan.verkey))
         await rsan.create_link_secret('SecretLink')
         await rsan.reset_wallet(seeds[rsan.wallet.name])
         assert rsan.wallet.auto_remove  # make sure auto-remove configuration survives reset
