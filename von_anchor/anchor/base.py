@@ -21,9 +21,10 @@ import logging
 
 from typing import Union
 
-from indy import crypto, did, ledger
+from indy import crypto, did, ledger, non_secrets
 from indy.error import IndyError, ErrorCode
 
+from von_anchor.a2a.didinfo import canon_pairwise_wql, DIDInfo, did_info2tags, record2did_info, TYPE_PAIRWISE
 from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, ENDPOINT_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.error import (
     AbsentCredDef,
@@ -694,6 +695,166 @@ class BaseAnchor:
         rv = await crypto.crypto_verify(verkey, message, signature)
 
         LOGGER.debug('BaseAnchor.verify <<< %s', rv)
+        return rv
+
+    async def store_pairwise(self, did_info: DIDInfo, replace_meta: bool = False) -> None:
+        """
+        Store a pairwise DID, verkey, and metadata. Raise WalletState for closed wallet,
+        or BadIdentifier for invalid pairwise DID.
+
+        :param did_info: pairwise DID, verkey, metadata
+        :param replace_meta: whether to (True) replace metadata or (default, False) overwrite it,
+            preserving metadata in wallet but not in input
+        """
+
+        LOGGER.debug('BaseAnchor.store_pairwise >>> did_info: %s, replace_meta: %s', did_info, replace_meta)
+
+        if not ok_did(did_info.did):
+            LOGGER.debug('BaseAnchor.store_pairwise <!< Bad DID %s', did_info.did)
+            raise BadIdentifier('Bad DID {}'.format(did_info.did))
+
+        if not self.wallet.handle:
+            LOGGER.debug('BaseAnchor.store_pairwise <!< Wallet %s is closed', self.wallet.name)
+            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+
+        try:
+            record = json.loads(await non_secrets.get_wallet_record(
+                self.wallet.handle,
+                TYPE_PAIRWISE,
+                did_info.did,
+                json.dumps({
+                    'retrieveType': False,
+                    'retrieveValue': True,
+                    'retrieveTags': True
+                })))
+            if record['value'] != did_info.verkey:
+                await non_secrets.update_wallet_record_value(
+                    self.wallet.handle,
+                    TYPE_PAIRWISE,
+                    did_info.did,
+                    did_info.verkey)
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletItemNotFound:
+                await non_secrets.add_wallet_record(
+                    self.wallet.handle,
+                    TYPE_PAIRWISE,
+                    did_info.did,
+                    did_info.verkey,
+                    did_info2tags(did_info))
+            else:
+                LOGGER.debug(
+                    'BaseAnchor.store_pairwise <!< Wallet lookup raised indy error code %s',
+                    x_indy.error_code)
+                raise BadLedgerTxn('Cannot store pairwise: indy error code {}'.format(x_indy.error_code))
+        else:
+            ex_did_info = record2did_info(record)
+            if did_info2tags(ex_did_info) != did_info2tags(did_info):
+                new_did_info = DIDInfo(
+                    did_info.did,
+                    did_info.verkey,
+                    did_info.metadata if replace_meta else {**ex_did_info.metadata, **(did_info.metadata or {})})
+                await non_secrets.update_wallet_record_tags(
+                    self.wallet.handle,
+                    TYPE_PAIRWISE,
+                    did_info.did,
+                    did_info2tags(new_did_info))
+
+        LOGGER.debug('BaseAnchor.store_pairwise <<<')
+
+    async def delete_pairwise(self, pairwise: str) -> None:
+        """
+        Remove a pairwise DID record. Silently return if no such record is present.
+        Raise WalletState for closed wallet, or BadIdentifier for invalid pairwise DID.
+
+        :param pairwise: pairwise DID to remove
+        """
+
+        LOGGER.debug('BaseAnchor.delete_pairwise >>> pairwise: %s', pairwise)
+
+        if not ok_did(pairwise):
+            LOGGER.debug('BaseAnchor.delete_pairwise <!< Bad DID %s', pairwise)
+            raise BadIdentifier('Bad DID {}'.format(pairwise))
+
+        if not self.wallet.handle:
+            LOGGER.debug('BaseAnchor.delete_pairwise <!< Wallet %s is closed', self.wallet.name)
+            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+
+        try:
+            await non_secrets.delete_wallet_record(self.wallet.handle, TYPE_PAIRWISE, pairwise)
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletItemNotFound:
+                LOGGER.info('BaseAnchor.delete_pairwise <!< no record for pairwise DID %s', pairwise)
+            else:
+                LOGGER.debug(
+                    'BaseAnchor.delete_pairwise <!< deletion of pairwise DID %s record raised indy error code %s',
+                    pairwise,
+                    x_indy.error_code)
+                raise
+
+        LOGGER.debug('BaseAnchor.delete_pairwise <<<')
+
+    async def get_pairwise(self, pairwise_filt: str = None) -> dict:
+        """
+        Return dict mapping each pairwise DID of interest in wallet to its verkey and metadata, or,
+        for no filter specified, mapping them all. If wallet has no such item, return None.
+
+        :param pairwise_filt: pairwise DID of interest, or WQL json (default all)
+        :return: dict mapping pairwise DID, or all pairwise DIDs, to verkey(s) and metadata, None for no such record
+        """
+
+        LOGGER.debug('BaseAnchor.get_pairwise >>> pairwise_filt: %s', pairwise_filt)
+
+        if not self.wallet.handle:
+            LOGGER.debug('BaseAnchor.get_pairwise <!< Wallet %s is closed', self.wallet.name)
+            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+
+        records = []
+        if pairwise_filt and ok_did(pairwise_filt):  # ordinary DID match
+            try:
+                records = [json.loads(await non_secrets.get_wallet_record(
+                    self.wallet.handle,
+                    TYPE_PAIRWISE,
+                    pairwise_filt,
+                    json.dumps({
+                        'retrieveType': False,
+                        'retrieveValue': True,
+                        'retrieveTags': True
+                    })))]
+            except IndyError as x_indy:
+                if x_indy.error_code == ErrorCode.WalletItemNotFound:
+                    pass
+                else:
+                    LOGGER.debug(
+                        'BaseAnchor.get_pairwise <!< Wallet %s lookup raised indy exception %s',
+                        self.wallet.name,
+                        x_indy.error_code)
+                    raise
+        else:
+            s_handle = await non_secrets.open_wallet_search(
+                self.wallet.handle,
+                TYPE_PAIRWISE,
+                json.dumps(canon_pairwise_wql(json.loads(pairwise_filt or '{}'))),
+                json.dumps({
+                    'retrieveRecords': True,
+                    'retrieveTotalCount': True,
+                    'retrieveType': False,
+                    'retrieveValue': True,
+                    'retrieveTags': True
+                }))
+
+            count = int(json.loads(
+                await non_secrets.fetch_wallet_search_next_records(self.wallet.handle, s_handle, 0))['totalCount'])
+            if count > 0:
+                records = json.loads(
+                    await non_secrets.fetch_wallet_search_next_records(self.wallet.handle, s_handle, count))['records']
+
+        #   record['id']: {**{'verkey': record['value']}, **record2metadata(record)} for record in records
+        rv = {
+            record['id']: record2did_info(record).metadata for record in records
+        } if records else None
+
+        # print(Ink.CYAN('\n** records {}\nrv {}'.format(ppjson(records), ppjson(rv))))
+        LOGGER.debug('BaseAnchor.get_pairwise <<< %s', rv)
         return rv
 
     async def get_txn(self, seq_no: int) -> str:

@@ -70,16 +70,16 @@ def inis2dict(ini_paths: Union[str, Iterable]) -> dict:
     :param ini_paths: path or paths to .ini files
     """
 
-    VAR_DFLT = r'\${(.*?):-(.*?)}'
+    var_dflt = r'\${(.*?):-(.*?)}'
     def _interpolate(content):
         rv = expandvars(content)
         while True:
-            match = re.search(VAR_DFLT, rv)
+            match = re.search(var_dflt, rv)
             if match is None:
                 break
             bash_var = '${{{}}}'.format(match.group(1))
             value = expandvars(bash_var)
-            rv = re.sub(VAR_DFLT, match.group(2) if value == bash_var else value, rv, count=1)
+            rv = re.sub(var_dflt, match.group(2) if value == bash_var else value, rv, count=1)
 
         return rv
 

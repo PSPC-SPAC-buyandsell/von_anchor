@@ -36,6 +36,7 @@ import pytest
 
 from indy import did
 
+from von_anchor.a2a.didinfo import DIDInfo
 from von_anchor import (
     BCRegistrarAnchor,
     OrgBookAnchor,
@@ -773,6 +774,7 @@ async def test_anchors_api(
                         "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:0"
                     }
                 ],
+                    }
                 "name": "Preferred Name"
             },
             "17_musthave_uuid": {
@@ -3117,10 +3119,19 @@ async def test_share_wallet(
 
     wallets = await get_wallets(
         {
-            'multipass': 'Multi-Pass-000000000000000000000'
+            'multipass': 'Multi-Pass-000000000000000000000',
+            'agent-86': 'Agent-86-00000000000000000000000',
+            'agent-99': 'Agent-99-00000000000000000000000',
         },
         False,
         True)
+
+    did_infos = {}
+    for name in wallets:
+        if name != 'multipass':
+            async with wallets[name]:  # engage auto-remove
+                did_infos[name] = await wallets[name].did_info()
+                did_infos[name].metadata = None
 
     # Open pool, init anchors
     async with wallets['multipass'] as w_multi, (
@@ -3132,3 +3143,253 @@ async def test_share_wallet(
 
         print('\n\n== 1 == DIDs: {}'.format(ppjson({'SRI anchor: ': san.did, 'Nominal anchor: ': noman.did})))
         assert san.did == noman.did and san.did
+        print('\n\n== 2 == DID Pairs: {}'.format(ppjson(did_infos)))
+
+        await san.delete_pairwise(did_infos['agent-86'].did)  # not present: silently carries on
+        assert await san.get_pairwise(did_infos['agent-86'].did) == None
+
+        # Store record for agent 86, 99; get by DID
+        did_infos['agent-99'].metadata = {'epoch': int(time())}  # preparing to exercise metadata int to str
+        await san.store_pairwise(did_infos['agent-86'])
+        await san.store_pairwise(did_infos['agent-99'])
+        records = await noman.get_pairwise(did_infos['agent-86'].did)  # make sure noman sees update
+        print('\n\n== 3 == Stored and got {} record{} for agent-86: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did'}
+
+        # Set metadata; get by DID
+        did_infos['agent-86'].metadata = {'epoch': int(time())}
+        await san.store_pairwise(did_infos['agent-86'])
+        records = await noman.get_pairwise(did_infos['agent-86'].did)
+        print('\n\n== 4 == Stored metadata and got {} record{} for agent-86: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'epoch'}
+
+        # Update metadata; get by DID
+        did_infos['agent-86'].metadata = {'clearance': 'galactic'}
+        await san.store_pairwise(did_infos['agent-86'])
+        records = await noman.get_pairwise(did_infos['agent-86'].did)
+        print('\n\n== 5 == Stored metadata and got {} record{} for agent-86: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'epoch', 'clearance'}
+
+        # Replace metadata; get by DID
+        did_infos['agent-86'].metadata = {'secrecy': 'hover cover'}
+        await san.store_pairwise(did_infos['agent-86'], replace_meta=True)
+        records = await noman.get_pairwise(did_infos['agent-86'].did)
+        print('\n\n== 6 == Replaced metadata and got {} record{} for agent-86: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'secrecy'}
+
+        # Update metadata with ~tags, exercise equivalence; get by DID
+        did_infos['agent-86'].metadata = {'~clearance': 'galactic'}
+        await san.store_pairwise(did_infos['agent-86'])  # update metadata should overwrite prior attr on ~
+        records = await noman.get_pairwise(did_infos['agent-86'].did)
+        print('\n\n== 7 == Updated metadata on ~tags and got {} record{} for agent-86: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'secrecy', 'clearance'}
+
+        # Replace metadata on ~tags, exercise equivalence; get by DID
+        did_infos['agent-86'].metadata = {'~secrecy': 'hover cover'}
+        await san.store_pairwise(did_infos['agent-86'], replace_meta=True)
+        records = await noman.get_pairwise(did_infos['agent-86'].did)
+        print('\n\n== 8 == Replaced metadata on ~tags and got {} record{} for agent-86: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'secrecy'}
+
+        # Vacuous storage changing nothing: show intact metadata; get by DID
+        await san.store_pairwise(did_infos['agent-86'])
+        records = await noman.get_pairwise(did_infos['agent-86'].did)
+        print('\n\n== 9 == Wrote non-delta and got {} record{} for agent-86: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'secrecy'}
+
+        # Clear metadata, show retention of did and verkey base line; get by DID
+        did_infos['agent-86'].metadata = None
+        await san.store_pairwise(did_infos['agent-86'], replace_meta=True)
+        records = await noman.get_pairwise(did_infos['agent-86'].did)
+        print('\n\n== 10 == Cleared metadata and got {} record{} for agent-86: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did'}
+
+        # Restore epoch to metadata; get all
+        did_infos['agent-86'].metadata = {'epoch': int(time())}
+        await san.store_pairwise(did_infos['agent-86'], replace_meta=True)
+        records = await noman.get_pairwise()
+        print('\n\n== 11 == Got {} record{} from get-all: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert len(records) == 2
+        assert all({k for k in records[did_infos[name].did]} == {'verkey', 'did', 'epoch'} for name in did_infos)
+
+        # Get by WQL $not
+        records = await noman.get_pairwise(json.dumps({
+            'verkey': {
+                '$neq': did_infos['agent-99'].verkey
+            }
+        }))
+        print('\n\n== 12 == Got {} record{} from by WQL on $not: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert len(records) == 1
+        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'epoch'}
+
+        # Get by WQL $in
+        records = await noman.get_pairwise(json.dumps({
+            'verkey': {
+                '$in': [did_infos[name].verkey for name in did_infos]
+            }
+        }))
+        print('\n\n== 13 == Got {} record{} from by WQL on $not: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert len(records) == 2
+        assert all({k for k in records[did_infos[name].did]} == {'verkey', 'did', 'epoch'} for name in did_infos)
+
+        # Get by WQL $or
+        records = await noman.get_pairwise(json.dumps({
+            '$or': [
+                {
+                    'verkey': did_infos['agent-86'].verkey,
+                },
+                {
+                    'did': did_infos['agent-99'].did,
+                }
+            ]
+        }))
+        print('\n\n== 14 == Got {} record{} from by WQL on $or: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert len(records) == 2
+        assert all({k for k in records[did_infos[name].did]} == {'verkey', 'did', 'epoch'} for name in did_infos)
+
+        # Get by WQL $neq
+        records = await noman.get_pairwise(json.dumps({
+            'verkey': {
+                '$neq': did_infos['agent-99'].verkey
+            }
+        }))
+        print('\n\n== 15 == Got {} record{} from by WQL on $neq: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert len(records) == 1
+        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'epoch'}
+
+        # Get by WQL $lte
+        records = await noman.get_pairwise(json.dumps({
+            'epoch': {
+                '$lte': int(time())
+            }
+        }))
+        print('\n\n== 16 == Got {} record{} from by WQL on $lte: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert len(records) == 2
+        assert all({k for k in records[did_infos[name].did]} == {'verkey', 'did', 'epoch'} for name in did_infos)
+
+        # Get by WQL $like
+        records = await noman.get_pairwise(json.dumps({
+            'did': {
+                '$like': '{}%'.format(did_infos['agent-86'].did)
+            }
+        }))
+        print('\n\n== 17 == Got {} record{} from by WQL on $like: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert len(records) == 1
+        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'epoch'}
+
+        # Get by WQL equality
+        records = await noman.get_pairwise(json.dumps({
+            'did': did_infos['agent-86'].did
+        }))
+        print('\n\n== 18 == Got {} record{} from by WQL on equality: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert len(records) == 1
+        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'epoch'}
+
+        # Get by nested WQL $or-$like
+        records = await noman.get_pairwise(json.dumps({
+            '$or': [
+                {
+                    'verkey': {
+                        '$like': '{}%'.format(did_infos['agent-86'].verkey)
+                    }
+                },
+                {
+                    'verkey': {
+                        '$like': '{}%'.format(did_infos['agent-99'].verkey)
+                    }
+                }
+            ]
+        }))
+        print('\n\n== 19 == Got {} record{} from by nested $or-$like WQL: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert len(records) == 2
+        assert all({k for k in records[did_infos[name].did]} == {'verkey', 'did', 'epoch'} for name in did_infos)
+
+        # Get by nested WQL
+        records = await noman.get_pairwise(json.dumps({
+            '$not': {
+                'did': None
+            },
+            'epoch': {
+                '$not': {
+                    '$in': [1, 2, 3, 4, 5]
+                }
+            },
+            'epoch': {
+                '$gt': 0,
+            },
+            '$or': [
+                {
+                    'verkey': {
+                        '$like': '{}%'.format(did_infos['agent-86'].verkey)
+                    }
+                },
+                {
+                    'verkey': {
+                        '$like': '{}%'.format(did_infos['agent-99'].verkey)
+                    }
+                }
+            ]
+        }))
+        print('\n\n== 20 == Got {} record{} from by nested WQL: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson(records)))
+        assert len(records) == 2
+        assert all({k for k in records[did_infos[name].did]} == {'verkey', 'did', 'epoch'} for name in did_infos)
+
+        # Delete
+        await san.delete_pairwise(did_infos['agent-86'].did)
+        records = await noman.get_pairwise(did_infos['agent-86'].did)
+        print('\n\n== 21 == Deleted agent-86 record and checked its absence')
+        assert not records

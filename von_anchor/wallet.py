@@ -25,6 +25,7 @@ from time import time
 from indy import did, wallet
 from indy.error import IndyError, ErrorCode
 
+from von_anchor.a2a.didinfo import DIDInfo
 from von_anchor.error import AbsentMetadata, AbsentWallet, ExtantWallet, WalletState
 from von_anchor.validcfg import validate_config
 
@@ -177,6 +178,14 @@ class Wallet:
         """
 
         self._verkey = value
+
+    async def did_info(self) -> DIDInfo:
+        """
+        Accessor for DID, verkey, and metadata all together.
+        """
+
+        metadata_json = await did.get_did_metadata(self.handle, self.did)
+        return DIDInfo(self.did, self.verkey, json.loads(metadata_json) if metadata_json else None)
 
     async def find_did(self, seed: str = None) -> str:
         """

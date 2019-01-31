@@ -29,7 +29,7 @@ from indy.error import IndyError, ErrorCode
 
 from von_anchor.anchor.base import BaseAnchor
 from von_anchor.cache import ArchivableCaches, RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
-from von_anchor.canon import canon_wql
+from von_anchor.canon import canon_cred_wql
 from von_anchor.error import (
     AbsentCred,
     AbsentCredDef,
@@ -704,7 +704,7 @@ class HolderProver(BaseAnchor):
 
         (handle, cardinality) = await anoncreds.prover_search_credentials(
             self.wallet.handle,
-            json.dumps(canon_wql(json.loads(query_json))))  # indy-sdk requires attr name canonicalization
+            json.dumps(canon_cred_wql(json.loads(query_json))))  # indy-sdk requires attr name canonicalization
         chunk = min(cardinality, limit or cardinality, Wallet.DEFAULT_CHUNK)  # heuristic
         if limit:
             cardinality = min(limit, cardinality)
@@ -950,7 +950,7 @@ class HolderProver(BaseAnchor):
         item_refts = set()
         x_queries = json.loads(x_queries_json or '{}')
         for k in x_queries:
-            x_queries[k] = canon_wql(x_queries[k])  # indy-sdk requires attr name canonicalization
+            x_queries[k] = canon_cred_wql(x_queries[k])  # indy-sdk requires attr name canonicalization
             item_refts.add(k)
 
         proof_req = json.loads(proof_req_json)

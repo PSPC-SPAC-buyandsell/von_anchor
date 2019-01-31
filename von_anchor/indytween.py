@@ -20,6 +20,8 @@ from enum import Enum
 from hashlib import sha256
 from typing import Any, Union
 
+from von_anchor.canon import raw
+
 
 SchemaKey = namedtuple('SchemaKey', 'origin_did name version')
 Relation = namedtuple('Relation', 'fortran wql math yes no')
@@ -53,17 +55,6 @@ def encode(orig: Any) -> str:
         rv = int.from_bytes(sha256(rv.encode()).digest(), 'big')  # sha256 maps no 32-bit int to another: terminates
 
     return str(rv)
-
-
-def raw(orig: Any) -> dict:
-    """
-    Stringify input value, empty string for None.
-
-    :param orig: original attribute value of any stringifiable type
-    :return: stringified raw value
-    """
-
-    return '' if orig is None else str(orig)
 
 
 def cred_attr_value(orig: Any) -> dict:

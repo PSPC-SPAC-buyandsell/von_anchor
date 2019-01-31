@@ -17,7 +17,7 @@ limitations under the License.
 
 import pytest
 
-from von_anchor.canon import canon, canon_wql
+from von_anchor.canon import canon, canon_cred_wql
 from von_anchor.frill import Ink
 from von_anchor.indytween import raw
 
@@ -33,8 +33,8 @@ async def test_canon():
 
 
 @pytest.mark.asyncio
-async def test_canon_wql():
-    print(Ink.YELLOW('\n\n== Testing WQL Canonicalization =='))
+async def test_canon_cred_wql():
+    print(Ink.YELLOW('\n\n== Testing credential WQL canonicalization =='))
     invariant = [
         {},
         {
@@ -57,12 +57,12 @@ async def test_canon_wql():
         }
     ]
 
-    assert all(canon_wql(q) == q for q in invariant)
+    assert all(canon_cred_wql(q) == q for q in invariant)
     print('\n\n== Canonicalization for invariant WQL works as expected')
 
     # simplest case
     q = {'attr::testAttributeName::marker': 1}
-    canon_q = canon_wql(q)
+    canon_q = canon_cred_wql(q)
     assert all(canon_q[canon(k)] == raw(q[k]) for k in q)
 
     # and
@@ -70,7 +70,7 @@ async def test_canon_wql():
         'attr::testAttributeName::marker': 1,
         'attr::testAttributeName::value': 0
     }
-    canon_q = canon_wql(q)
+    canon_q = canon_cred_wql(q)
     assert all(canon_q[canon(k)] == raw(q[k]) for k in q)
 
     # or
@@ -81,7 +81,7 @@ async def test_canon_wql():
             {'attr::testAttributeName::value': '2'}
         ]
     }
-    canon_q = canon_wql(q)
+    canon_q = canon_cred_wql(q)
     assert canon_q['$or'] == [
         {'attr::testattributename::value': '0'},
         {'attr::testattributename::value': '1'},
@@ -102,7 +102,7 @@ async def test_canon_wql():
             ]
         }
     }
-    canon_q = canon_wql(q)
+    canon_q = canon_cred_wql(q)
     assert canon_q['attr::testattributename::value'] == {'$like': '%'}
     canon_q.pop('attr::testattributename::value')
     assert canon_q['$not']['$or'] == [

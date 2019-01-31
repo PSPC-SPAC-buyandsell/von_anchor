@@ -18,8 +18,20 @@ limitations under the License.
 import json
 import re
 
+from typing import Any
+
 from von_anchor.error import BadWalletQuery
-from von_anchor.indytween import raw
+
+
+def raw(orig: Any) -> dict:
+    """
+    Stringify input value, empty string for None.
+
+    :param orig: original attribute value of any stringifiable type
+    :return: stringified raw value
+    """
+
+    return '' if orig is None else str(orig)
 
 
 def canon(raw_attr_name: str) -> str:
@@ -36,10 +48,10 @@ def canon(raw_attr_name: str) -> str:
     return raw_attr_name
 
 
-def canon_wql(query: dict) -> dict:
+def canon_cred_wql(query: dict) -> dict:
     """
     Canonicalize WQL attribute marker and value keys for input to indy-sdk wallet credential filtration.
-    Canonicalize original values to proper indy-sdk raw values as per raw().
+    Canonicalize comparison values to proper indy-sdk raw values as per raw().
 
     Raise BadWalletQuery for WQL mapping '$or' to non-list.
 
@@ -47,14 +59,14 @@ def canon_wql(query: dict) -> dict:
     :return: canonicalized WQL query dict
     """
 
-    for k in query:
+    for k in [qk for qk in query]:  # copy: iteration alters query keys
         attr_match = re.match('attr::([^:]+)::(marker|value)$', k)
         if isinstance(query[k], dict):  # only subqueries are dicts: recurse
-            query[k] = canon_wql(query[k])
+            query[k] = canon_cred_wql(query[k])
         if k == '$or':
             if not isinstance(query[k], list):
                 raise BadWalletQuery('Bad WQL; $or value must be a list in {}'.format(json.dumps(query)))
-            query[k] = [canon_wql(subq) for subq in query[k]]
+            query[k] = [canon_cred_wql(subq) for subq in query[k]]
         if attr_match:
             qkey = 'attr::{}::{}'.format(canon(attr_match.group(1)), canon(attr_match.group(2)))
             query[qkey] = query.pop(k)

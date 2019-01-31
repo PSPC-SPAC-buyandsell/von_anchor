@@ -18,7 +18,7 @@ limitations under the License.
 import json
 import pytest
 
-from von_anchor.a2a import PublicKeyType, PublicKey, DIDDoc
+from von_anchor.a2a.diddoc import DIDDoc
 from von_anchor.error import BadIdentifier
 from von_anchor.frill import Ink, ppjson
 
