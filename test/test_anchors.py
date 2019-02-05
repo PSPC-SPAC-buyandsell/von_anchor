@@ -188,7 +188,7 @@ async def test_anchors_api(
         'bc-org-hub': 'BC-Org-Book-Anchor-0000000000000',
         'bc-registrar': 'BC-Registrar-Anchor-000000000000'
     }
-    wallets = await get_wallets(seeds, True)
+    wallets = await get_wallets(seeds, open_all=True)
 
     async with p: # exercise get-own-did with wallet in all states
         xwallet = Wallet('xxx', None, {'auto-remove': True})
@@ -1745,7 +1745,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
             'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000',
             'sri': 'SRI-Anchor-000000000000000000000'
         },
-        False)
+        open_all=False)
 
     # Open PSPC Org Book anchor and create proof without opening node pool
     path = Path(path_home, 'pool', pool_name)
@@ -1860,7 +1860,7 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
             'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000',
             'sri': 'SRI-Anchor-000000000000000000000'
         },
-        False)
+        open_all=False)
 
     # Open pool, SRI + PSPC Org Book anchors (the tests above should obviate its need for trustee-anchor)
     async with wallets['sri'] as w_sri, (
@@ -1916,7 +1916,7 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
             'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000',
             SRI_NAME: 'SRI-Anchor-000000000000000000000'
         },
-        False)
+        open_all=False)
 
     async with wallets['pspc-org-book'] as w_pspc, (
             wallets[SRI_NAME]) as w_sri, (
@@ -2104,8 +2104,8 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
             'sri-1': 'SRI-Anchor-111111111111111111111',
             'sri-2': 'SRI-Anchor-222222222222222222222'
         },
-        False,
-        True)
+        open_all=False,
+        auto_remove=True)
 
     async with wallets['sri-0'] as w_sri0, (
             wallets['sri-1']) as w_sri1, (
@@ -2175,7 +2175,7 @@ async def test_anchor_reseed(
         'trustee-anchor': seed_trustee1,
         'reseed-org-book': rsoban_seeds[0]
     }
-    wallets = await get_wallets(seeds, False)
+    wallets = await get_wallets(seeds, open_all=False)
 
     # Open pool, init anchors
     async with wallets['trustee-anchor'] as w_trustee, (
@@ -2205,7 +2205,7 @@ async def test_anchor_reseed(
         await rsan.create_link_secret('SecretLink')
 
         # Anchor reseed wallet
-        old_found_did = await rsan.wallet.find_did()
+        old_found_did = await rsan.wallet.get_anchor_did()
         assert old_found_did == rsan.did
         verkey_in_wallet = await did.key_for_local_did(rsan.wallet.handle, rsan.did)
         print('\n\n== 3 == Anchor DID {}, verkey in wallet {}'.format(rsan.did, verkey_in_wallet))
@@ -2216,7 +2216,7 @@ async def test_anchor_reseed(
         old_rsan_nym_role = await rsan.get_nym_role()
         await rsan.reseed(rsoban_seeds[1])
         assert rsan.verkey != old_rsan_verkey
-        assert old_found_did == await rsan.wallet.find_did()
+        assert old_found_did == await rsan.wallet.get_anchor_did()
         assert old_found_did == rsan.did
         assert await rsan.get_nym_role() == old_rsan_nym_role
 
@@ -2231,7 +2231,7 @@ async def test_anchor_reseed(
         await noman.reseed(rsoban_seeds[2])
         assert noman.verkey != old_rsan_verkey
         assert rsan.verkey == noman.verkey
-        assert old_found_did == await rsan.wallet.find_did()
+        assert old_found_did == await rsan.wallet.get_anchor_did()
         assert old_found_did == rsan.did
         assert await noman.get_nym_role() == old_rsan_nym_role
 
@@ -2277,7 +2277,7 @@ async def test_anchors_cache_only(
         'sri': 'SRI-Anchor-000000000000000000000',
         'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000'
     }
-    wallets = await get_wallets(seeds, True)
+    wallets = await get_wallets(seeds, open_all=True)
 
     # Open pool, init anchors
     p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
@@ -2682,7 +2682,7 @@ async def test_util_wranglers(
             'sri': 'SRI-Anchor-000000000000000000000',
             'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000'
         }, 
-        False)
+        open_all=False)
 
     # Open pool, init anchors
     async with wallets['sri'] as w_sri, (
@@ -3026,7 +3026,7 @@ async def test_crypto(
             'sri': 'SRI-Anchor-000000000000000000000',
             'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000'
         },
-        False)
+        open_all=False)
 
     # Open pool, init anchors
     async with wallets['sri'] as w_sri, (
@@ -3055,12 +3055,15 @@ async def test_crypto(
         assert decr == plain
         print('\n\n== 2 == SRI anchor auto-encrypted then decrypted: {}'.format(decr.decode()))
 
-        # SRI anchor auth-encrypts and decrypts to and from itself, implicitly and explicitly
+        # SRI anchor auth-encrypts and decrypts to and from itself, implicitly and explicitly by DID and verkey
         encr = await san.encrypt(plain, True)
         decr = await san.decrypt(encr, san.did)
         assert decr == plain
         encr = await san.encrypt(plain, True, san.did)
         decr = await san.decrypt(encr, san.did)
+        assert decr == plain
+        encr = await san.encrypt(plain, True, san.verkey)
+        decr = await san.decrypt(encr, san.verkey)
         assert decr == plain
         print('\n\n== 3 == SRI anchor auto-auth-encrypted then auth-decrypted: {}'.format(decr.decode()))
 
@@ -3070,17 +3073,34 @@ async def test_crypto(
             await san.decrypt(encr, pspcoban.did)
             assert False
         except BadKey:
-            print('\n\n== 4 == SRI correctly failed to auth-decrypt from wrong DID')
+            pass
+        try:
+            await san.decrypt(encr, pspcoban.verkey)
+            assert False
+        except BadKey:
+            print('\n\n== 4 == SRI correctly failed to auth-decrypt from wrong sender')
 
         # SRI anchor anonymously encrypts to PSPC Org Book anchor, which anonymously decrypts
         encr = await san.encrypt(plain, False, pspcoban.did)
         decr = await pspcoban.decrypt(encr)
         assert decr == plain
+        encr = await san.encrypt(plain, False, pspcoban.verkey)
+        decr = await pspcoban.decrypt(encr)
+        assert decr == plain
         print('\n\n== 5 == SRI anchor encrypted to PSPC Org Book anchor, which decrypted: {}'.format(decr.decode()))
 
-        # SRI anchor auth-encrypts to PSPC Org Book anchor, which auth-decrypts
+        # SRI anchor auth-encrypts (by DID and verkey) to PSPC Org Book anchor, which auth-decrypts (by DID and verkey)
         encr = await san.encrypt(plain, True, pspcoban.did)
         decr = await pspcoban.decrypt(encr, san.did)
+        assert decr == plain
+        encr = await san.encrypt(plain, True, pspcoban.did)
+        decr = await pspcoban.decrypt(encr, san.verkey)
+        assert decr == plain
+        encr = await san.encrypt(plain, True, pspcoban.verkey)
+        decr = await pspcoban.decrypt(encr, san.did)
+        assert decr == plain
+        encr = await san.encrypt(plain, True, pspcoban.verkey)
+        decr = await pspcoban.decrypt(encr, san.verkey)
         assert decr == plain
         print('\n\n== 6 == SRI anchor auth-encrypted to PSPC Org Book anchor, which auth-decrypted: {}'.format(
             decr.decode()))
@@ -3089,6 +3109,22 @@ async def test_crypto(
         encr = await san.encrypt(plain, True, pspcoban.did)
         try:
             await pspcoban.decrypt(encr, pspcoban.did)
+            assert False
+        except BadKey:
+            pass
+        try:
+            await pspcoban.decrypt(encr, pspcoban.verkey)
+            assert False
+        except BadKey:
+            pass
+        encr = await san.encrypt(plain, True, pspcoban.verkey)
+        try:
+            await pspcoban.decrypt(encr, pspcoban.did)
+            assert False
+        except BadKey:
+            pass
+        try:
+            await pspcoban.decrypt(encr, pspcoban.verkey)
             assert False
         except BadKey:
             print('\n\n== 7 == PSPC Org Book anchor correctly failed to auth-decrypt from wrong DID')
@@ -3100,6 +3136,7 @@ async def test_crypto(
 
         # PSPC Org Book Anchor verifies
         assert await pspcoban.verify(plain, signature, san.did)
+        assert await pspcoban.verify(plain, signature, san.verkey)
         print('\n\n== 9 == SRI anchor signed, PSPC Org Book anchor verified {}-byte signature from: {}'.format(
             len(signature),
             plain))
@@ -3120,18 +3157,9 @@ async def test_share_wallet(
     wallets = await get_wallets(
         {
             'multipass': 'Multi-Pass-000000000000000000000',
-            'agent-86': 'Agent-86-00000000000000000000000',
-            'agent-99': 'Agent-99-00000000000000000000000',
         },
-        False,
-        True)
-
-    did_infos = {}
-    for name in wallets:
-        if name != 'multipass':
-            async with wallets[name]:  # engage auto-remove
-                did_infos[name] = await wallets[name].did_info()
-                did_infos[name].metadata = None
+        open_all=False,
+        auto_remove=True)
 
     # Open pool, init anchors
     async with wallets['multipass'] as w_multi, (
@@ -3143,253 +3171,4 @@ async def test_share_wallet(
 
         print('\n\n== 1 == DIDs: {}'.format(ppjson({'SRI anchor: ': san.did, 'Nominal anchor: ': noman.did})))
         assert san.did == noman.did and san.did
-        print('\n\n== 2 == DID Pairs: {}'.format(ppjson(did_infos)))
-
-        await san.delete_pairwise(did_infos['agent-86'].did)  # not present: silently carries on
-        assert await san.get_pairwise(did_infos['agent-86'].did) == None
-
-        # Store record for agent 86, 99; get by DID
-        did_infos['agent-99'].metadata = {'epoch': int(time())}  # preparing to exercise metadata int to str
-        await san.store_pairwise(did_infos['agent-86'])
-        await san.store_pairwise(did_infos['agent-99'])
-        records = await noman.get_pairwise(did_infos['agent-86'].did)  # make sure noman sees update
-        print('\n\n== 3 == Stored and got {} record{} for agent-86: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did'}
-
-        # Set metadata; get by DID
-        did_infos['agent-86'].metadata = {'epoch': int(time())}
-        await san.store_pairwise(did_infos['agent-86'])
-        records = await noman.get_pairwise(did_infos['agent-86'].did)
-        print('\n\n== 4 == Stored metadata and got {} record{} for agent-86: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'epoch'}
-
-        # Update metadata; get by DID
-        did_infos['agent-86'].metadata = {'clearance': 'galactic'}
-        await san.store_pairwise(did_infos['agent-86'])
-        records = await noman.get_pairwise(did_infos['agent-86'].did)
-        print('\n\n== 5 == Stored metadata and got {} record{} for agent-86: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'epoch', 'clearance'}
-
-        # Replace metadata; get by DID
-        did_infos['agent-86'].metadata = {'secrecy': 'hover cover'}
-        await san.store_pairwise(did_infos['agent-86'], replace_meta=True)
-        records = await noman.get_pairwise(did_infos['agent-86'].did)
-        print('\n\n== 6 == Replaced metadata and got {} record{} for agent-86: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'secrecy'}
-
-        # Update metadata with ~tags, exercise equivalence; get by DID
-        did_infos['agent-86'].metadata = {'~clearance': 'galactic'}
-        await san.store_pairwise(did_infos['agent-86'])  # update metadata should overwrite prior attr on ~
-        records = await noman.get_pairwise(did_infos['agent-86'].did)
-        print('\n\n== 7 == Updated metadata on ~tags and got {} record{} for agent-86: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'secrecy', 'clearance'}
-
-        # Replace metadata on ~tags, exercise equivalence; get by DID
-        did_infos['agent-86'].metadata = {'~secrecy': 'hover cover'}
-        await san.store_pairwise(did_infos['agent-86'], replace_meta=True)
-        records = await noman.get_pairwise(did_infos['agent-86'].did)
-        print('\n\n== 8 == Replaced metadata on ~tags and got {} record{} for agent-86: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'secrecy'}
-
-        # Vacuous storage changing nothing: show intact metadata; get by DID
-        await san.store_pairwise(did_infos['agent-86'])
-        records = await noman.get_pairwise(did_infos['agent-86'].did)
-        print('\n\n== 9 == Wrote non-delta and got {} record{} for agent-86: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'secrecy'}
-
-        # Clear metadata, show retention of did and verkey base line; get by DID
-        did_infos['agent-86'].metadata = None
-        await san.store_pairwise(did_infos['agent-86'], replace_meta=True)
-        records = await noman.get_pairwise(did_infos['agent-86'].did)
-        print('\n\n== 10 == Cleared metadata and got {} record{} for agent-86: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did'}
-
-        # Restore epoch to metadata; get all
-        did_infos['agent-86'].metadata = {'epoch': int(time())}
-        await san.store_pairwise(did_infos['agent-86'], replace_meta=True)
-        records = await noman.get_pairwise()
-        print('\n\n== 11 == Got {} record{} from get-all: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert len(records) == 2
-        assert all({k for k in records[did_infos[name].did]} == {'verkey', 'did', 'epoch'} for name in did_infos)
-
-        # Get by WQL $not
-        records = await noman.get_pairwise(json.dumps({
-            'verkey': {
-                '$neq': did_infos['agent-99'].verkey
-            }
-        }))
-        print('\n\n== 12 == Got {} record{} from by WQL on $not: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert len(records) == 1
-        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'epoch'}
-
-        # Get by WQL $in
-        records = await noman.get_pairwise(json.dumps({
-            'verkey': {
-                '$in': [did_infos[name].verkey for name in did_infos]
-            }
-        }))
-        print('\n\n== 13 == Got {} record{} from by WQL on $not: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert len(records) == 2
-        assert all({k for k in records[did_infos[name].did]} == {'verkey', 'did', 'epoch'} for name in did_infos)
-
-        # Get by WQL $or
-        records = await noman.get_pairwise(json.dumps({
-            '$or': [
-                {
-                    'verkey': did_infos['agent-86'].verkey,
-                },
-                {
-                    'did': did_infos['agent-99'].did,
-                }
-            ]
-        }))
-        print('\n\n== 14 == Got {} record{} from by WQL on $or: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert len(records) == 2
-        assert all({k for k in records[did_infos[name].did]} == {'verkey', 'did', 'epoch'} for name in did_infos)
-
-        # Get by WQL $neq
-        records = await noman.get_pairwise(json.dumps({
-            'verkey': {
-                '$neq': did_infos['agent-99'].verkey
-            }
-        }))
-        print('\n\n== 15 == Got {} record{} from by WQL on $neq: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert len(records) == 1
-        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'epoch'}
-
-        # Get by WQL $lte
-        records = await noman.get_pairwise(json.dumps({
-            'epoch': {
-                '$lte': int(time())
-            }
-        }))
-        print('\n\n== 16 == Got {} record{} from by WQL on $lte: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert len(records) == 2
-        assert all({k for k in records[did_infos[name].did]} == {'verkey', 'did', 'epoch'} for name in did_infos)
-
-        # Get by WQL $like
-        records = await noman.get_pairwise(json.dumps({
-            'did': {
-                '$like': '{}%'.format(did_infos['agent-86'].did)
-            }
-        }))
-        print('\n\n== 17 == Got {} record{} from by WQL on $like: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert len(records) == 1
-        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'epoch'}
-
-        # Get by WQL equality
-        records = await noman.get_pairwise(json.dumps({
-            'did': did_infos['agent-86'].did
-        }))
-        print('\n\n== 18 == Got {} record{} from by WQL on equality: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert len(records) == 1
-        assert {k for k in records[did_infos['agent-86'].did]} == {'verkey', 'did', 'epoch'}
-
-        # Get by nested WQL $or-$like
-        records = await noman.get_pairwise(json.dumps({
-            '$or': [
-                {
-                    'verkey': {
-                        '$like': '{}%'.format(did_infos['agent-86'].verkey)
-                    }
-                },
-                {
-                    'verkey': {
-                        '$like': '{}%'.format(did_infos['agent-99'].verkey)
-                    }
-                }
-            ]
-        }))
-        print('\n\n== 19 == Got {} record{} from by nested $or-$like WQL: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert len(records) == 2
-        assert all({k for k in records[did_infos[name].did]} == {'verkey', 'did', 'epoch'} for name in did_infos)
-
-        # Get by nested WQL
-        records = await noman.get_pairwise(json.dumps({
-            '$not': {
-                'did': None
-            },
-            'epoch': {
-                '$not': {
-                    '$in': [1, 2, 3, 4, 5]
-                }
-            },
-            'epoch': {
-                '$gt': 0,
-            },
-            '$or': [
-                {
-                    'verkey': {
-                        '$like': '{}%'.format(did_infos['agent-86'].verkey)
-                    }
-                },
-                {
-                    'verkey': {
-                        '$like': '{}%'.format(did_infos['agent-99'].verkey)
-                    }
-                }
-            ]
-        }))
-        print('\n\n== 20 == Got {} record{} from by nested WQL: {}'.format(
-            len(records or {}),
-            '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert len(records) == 2
-        assert all({k for k in records[did_infos[name].did]} == {'verkey', 'did', 'epoch'} for name in did_infos)
-
-        # Delete
-        await san.delete_pairwise(did_infos['agent-86'].did)
-        records = await noman.get_pairwise(did_infos['agent-86'].did)
-        print('\n\n== 21 == Deleted agent-86 record and checked its absence')
-        assert not records
+        print('\n\n== 2 == SRI, Nominal anchor share common wallet OK')

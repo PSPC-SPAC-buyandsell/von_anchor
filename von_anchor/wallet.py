@@ -21,12 +21,28 @@ import logging
 from ctypes import CDLL
 from hashlib import sha256
 from time import time
+from typing import List, Sequence
 
-from indy import did, wallet
+from indy import crypto, did, non_secrets, wallet
 from indy.error import IndyError, ErrorCode
 
-from von_anchor.a2a.didinfo import DIDInfo
-from von_anchor.error import AbsentMetadata, AbsentWallet, ExtantWallet, WalletState
+from von_anchor.a2a.didinfo import (
+    canon_pairwise_wql,
+    DIDInfo,
+    PairwiseInfo,
+    pairwise_info2tags,
+    record2pairwise_info,
+    TYPE_PAIRWISE)
+from von_anchor.error import (
+    AbsentRecord,
+    AbsentMessage,
+    AbsentWallet,
+    BadKey,
+    BadIdentifier,
+    ExtantWallet,
+    ExtantRecord,
+    WalletState)
+from von_anchor.util import ok_did
 from von_anchor.validcfg import validate_config
 
 
@@ -179,54 +195,143 @@ class Wallet:
 
         self._verkey = value
 
-    async def did_info(self) -> DIDInfo:
+    async def create_local_did(self, seed: str = None, loc_did: str = None, metadata: dict = None) -> DIDInfo:
         """
-        Accessor for DID, verkey, and metadata all together.
+        Create and store a new local DID for use in pairwise DID relations.
+
+        :param seed: seed from which to create (default random)
+        :param loc_did: local DID value (default None to let indy-sdk generate)
+        :param metadata: metadata to associate with the local DID (operation always sets 'since' epoch timestamp)
+        :return: DIDInfo for new local DID
         """
 
-        metadata_json = await did.get_did_metadata(self.handle, self.did)
-        return DIDInfo(self.did, self.verkey, json.loads(metadata_json) if metadata_json else None)
+        LOGGER.debug('Wallet.create_local_did >>> seed: [SEED] loc_did: %s metadata: %s', loc_did, metadata)
 
-    async def find_did(self, seed: str = None) -> str:
+        cfg = {}
+        if seed:
+            cfg['seed'] = seed
+        if loc_did:
+            cfg['did'] = loc_did
+
+        if not self.handle:
+            LOGGER.debug('Wallet.create_local_did <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+
+        try:
+            (created_did, verkey) = await did.create_and_store_my_did(self.handle, json.dumps(cfg))
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.DidAlreadyExistsError:
+                LOGGER.debug('Wallet.create_local_did <!< DID %s already present in wallet %s', loc_did, self.name)
+                raise ExtantRecord('Local DID {} already present in wallet {}'.format(loc_did, self.name))
+            else:
+                LOGGER.debug('Wallet.create_local_did <!< indy-sdk raised error %s', x_indy.error_code)
+                raise
+
+        loc_did_metadata = {**(metadata or {}), 'since': int(time())}
+        await did.set_did_metadata(self.handle, created_did, json.dumps(loc_did_metadata))
+
+        rv = DIDInfo(created_did, verkey, loc_did_metadata)
+
+        LOGGER.debug('Wallet.create_local_did <<< %s', rv)
+        return rv
+
+    async def get_local_did_infos(self) -> List[DIDInfo]:
         """
-        Derive DID from metadata (default most recent). Raise AbsentMetadata for no match.
+        Get list of DIDInfos for local DIDs.
 
-        :param seed: seed to resolve (default most recent)
+        :return: list of local DIDInfos
+        """
+
+        LOGGER.debug('Wallet.get_local_did_infos >>>')
+
+        dids_with_meta = json.loads(did.list_my_dids_with_meta(self.handle))  # list
+
+        rv = []
+        for did_with_meta in dids_with_meta:
+            meta = json.loads(did_with_meta['metadata']) if did_with_meta['metadata'] else {}
+            if meta.get('anchor', False):
+                continue  # exclude anchor DIDs past and present
+            rv.append(DIDInfo(did_with_meta['did'], did_with_meta['verkey'], meta))
+
+        LOGGER.debug('Wallet.get_local_did_infos <<< %s', rv)
+        return rv
+
+    async def get_local_did_info(self, loc: str) -> DIDInfo:
+        """
+        Get local DID info by local DID or verification key. Raise AbsentRecord for no such local DID.
+
+        :param loc: DID or verification key of interest
+        :return: DIDInfo for local DID
+        """
+
+        LOGGER.debug('Wallet.get_local_did_info >>> loc: %s', loc)
+
+        if not self.handle:
+            LOGGER.debug('Wallet.get_local_did_info <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+
+        if ok_did(loc):  # it's a DID
+            try:
+                did_with_meta = json.loads(await did.get_my_did_with_meta(self.handle, loc))
+                rv = DIDInfo(
+                    did_with_meta['did'],
+                    did_with_meta['verkey'],
+                    json.loads(did_with_meta['metadata']) if did_with_meta['metadata'] else {})  # nudge None to empty
+            except IndyError as x_indy:
+                if x_indy.error_code == ErrorCode.WalletItemNotFound:
+                    LOGGER.debug('Wallet.get_local_did_info <!< DID %s not present in wallet %s', loc, self.name)
+                    raise AbsentRecord('Local DID {} not present in wallet {}'.format(loc, self.name))
+                else:
+                    LOGGER.debug('Wallet.get_local_did_info <!< indy-sdk raised error %s', x_indy.error_code)
+                    raise
+        else:  # it's a verkey
+            dids_with_meta = json.loads(await did.list_my_dids_with_meta(self.handle))  # list
+            for did_with_meta in dids_with_meta:
+                if did_with_meta['verkey'] == loc:
+                    rv = DIDInfo(
+                        did_with_meta['did'],
+                        did_with_meta['verkey'],
+                        json.loads(did_with_meta['metadata']) if did_with_meta['metadata'] else {})
+                    break
+            else:
+                LOGGER.debug('Wallet.get_local_did_info <!< Wallet %s has no local DID for verkey %s', self.name, loc)
+                raise AbsentRecord('Wallet {} has no local DID for verkey {}'.format(self.name, loc))
+
+        LOGGER.debug('Wallet.get_local_did_info <<< %s', rv)
+        return rv
+
+    async def get_anchor_did(self) -> str:
+        """
+        Get current anchor DID by metadata. Raise AbsentRecord for no match.
+
         :return: DID
         """
 
-        LOGGER.debug('Wallet.find_did >>> seed [SEED]')
+        LOGGER.debug('Wallet.get_anchor_did >>>')
+
+        if not self.handle:
+            LOGGER.debug('Wallet.get_anchor_did <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         rv = None
         dids_with_meta = json.loads(await did.list_my_dids_with_meta(self.handle))  # list
 
-        if dids_with_meta:
-            if seed:
-                seed_hash = sha256(seed.encode()).hexdigest()
-                for did_with_meta in dids_with_meta:  # dict
-                    try:
-                        meta = json.loads(did_with_meta['metadata'])
-                        if isinstance(meta, dict) and meta.get('seed_hash', None) == seed_hash:
-                            rv = did_with_meta.get('did')
-                            break
-                    except json.decoder.JSONDecodeError:
-                        continue  # it's not one of ours, carry on
-
-            else:
-                latest = 0
-                for did_with_meta in dids_with_meta:
-                    try:
-                        meta = json.loads(did_with_meta['metadata'])
-                        if isinstance(meta, dict) and meta.get('since', -1) > latest:
-                            rv = did_with_meta.get('did')
-                    except json.decoder.JSONDecodeError:
-                        continue  # it's not one of ours, carry on
+        latest = 0
+        for did_with_meta in dids_with_meta:
+            try:
+                meta = json.loads(did_with_meta['metadata']) if did_with_meta['metadata'] else {}
+                if not meta.get('anchor', False):
+                    continue
+                if isinstance(meta, dict) and meta.get('since', -1) > latest:
+                    rv = did_with_meta.get('did')
+            except json.decoder.JSONDecodeError:
+                continue  # it's not an anchor DID, carry on
 
         if not rv:  # no match in metadata
-            LOGGER.debug('Wallet._seed2did <!< no did match in wallet %s by metadata', self.name)
-            raise AbsentMetadata('No did match in wallet {} by metadata'.format(self.name))
+            LOGGER.debug('Wallet.get_anchor_did <!< no anchor DID in wallet %s by metadata', self.name)
+            raise AbsentRecord('No anchor DID in wallet {} by metadata'.format(self.name))
 
-        LOGGER.debug('Wallet.find_did <<< %s', rv)
+        LOGGER.debug('Wallet.get_anchor_did <<< %s', rv)
         return rv
 
     async def create(self, seed: str) -> 'Wallet':
@@ -239,7 +344,7 @@ class Wallet:
         :return: current object
         """
 
-        LOGGER.debug('Wallet.create >>> seed [SEED]')
+        LOGGER.debug('Wallet.create >>> seed: [SEED]')
 
         try:
             await wallet.create_wallet(
@@ -257,7 +362,6 @@ class Wallet:
                     self.name)
                 raise
 
-        LOGGER.debug('Attempting to open wallet %s', self.name)
         self._handle = await wallet.open_wallet(
             json.dumps(self.config),
             json.dumps(self.access_creds or Wallet.DEFAULT_ACCESS_CREDS))
@@ -273,6 +377,7 @@ class Wallet:
                 self.did,
                 json.dumps({
                     'seed_hash': sha256(seed.encode()).hexdigest(),
+                    'anchor': True,
                     'since': int(time())
                 }))
             LOGGER.info('Wallet %s set seed hash metadata for DID %s', self.name, self.did)
@@ -289,8 +394,7 @@ class Wallet:
         For use in monolithic call opening, using, and closing wallet.
 
         Raise any IndyError causing failure to open wallet, or AbsentWallet on attempt to enter wallet
-        not yet created. Raise AbsentMetadata on attempt to open wallet without DID having metadata
-        identifying any current seed.
+        not yet created.
 
         :return: current object
         """
@@ -307,8 +411,7 @@ class Wallet:
         For use when keeping wallet open across multiple calls.
 
         Raise any IndyError causing failure to open wallet, WalletState if wallet already open,
-        or AbsentWallet on attempt to enter wallet not yet created. Raise AbsentMetadata on
-        attempt to open wallet without DID having metadata identifying any current seed.
+        or AbsentWallet on attempt to enter wallet not yet created.
 
         :return: current object
         """
@@ -325,12 +428,12 @@ class Wallet:
                 LOGGER.info('Wallet %s does not exist', self.name)
                 raise AbsentWallet('Wallet {} does not exist'.format(self.name))
             elif x_indy.error_code == ErrorCode.WalletAlreadyOpenedError:
-                LOGGER.info('Wallet %s is alreadly open', self.name)
+                LOGGER.info('Wallet %s is already open', self.name)
                 raise WalletState('Wallet {} is already open'.format(self.name))
             else:
                 raise
 
-        self._did = await self.find_did()
+        self._did = await self.get_anchor_did()
         self.verkey = await did.key_for_local_did(self.handle, self.did)
         LOGGER.info('Wallet %s got verkey %s for existing DID %s', self.name, self.verkey, self.did)
 
@@ -374,6 +477,376 @@ class Wallet:
 
         LOGGER.debug('Wallet.close <<<')
 
+    async def write_pairwise(
+            self,
+            their_did: str,
+            their_verkey: str,
+            my_did: str = None,
+            metadata: dict = None,
+            replace_meta: bool = False) -> PairwiseInfo:
+        """
+        Store a pairwise DID for a secure connection.
+
+        :param their_did: remote DID
+        :param their_verkey: remote verification key
+        :param my_did: local DID
+        :param metadata: metadata for pairwise connection
+        :param replace_meta: whether to (True) replace or (False) augment/overwrite existing metadata
+        :return: resulting PairwiseInfo
+        """
+
+        LOGGER.debug(
+            'Wallet.write_pairwise >>> their_did: %s, their_verkey: %s, my_did: %s, metadata: %s, replace_meta: %s',
+            their_did,
+            their_verkey,
+            my_did,
+            metadata,
+            replace_meta)
+
+        try:
+            await did.store_their_did(self.handle, json.dumps({'did': their_did, 'verkey': their_verkey}))
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletItemAlreadyExists:
+                pass  # exists already, carry on
+            else:
+                LOGGER.debug(
+                    'Wallet.write_pairwise <!< Wallet %s write of their_did %s raised indy error code %s',
+                    self.name,
+                    their_did,
+                    x_indy.error_code)
+                raise
+
+        if my_did:
+            my_did_info = await self.get_local_did_info(my_did)
+        else:
+            my_did_info = await self.create_local_did(None, None, {'pairwise_for': their_did})
+
+        pairwise = PairwiseInfo(their_did, their_verkey, my_did_info.did, my_did_info.verkey, metadata)
+        try:
+            record = json.loads(await non_secrets.get_wallet_record(
+                self.handle,
+                TYPE_PAIRWISE,
+                pairwise.their_did,
+                json.dumps({
+                    'retrieveType': False,
+                    'retrieveValue': True,
+                    'retrieveTags': True
+                })))
+            if record['value'] != pairwise.their_verkey:
+                await non_secrets.update_wallet_record_value(
+                    self.handle,
+                    TYPE_PAIRWISE,
+                    pairwise.their_did,
+                    pairwise.their_verkey)
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletItemNotFound:
+                await non_secrets.add_wallet_record(
+                    self.handle,
+                    TYPE_PAIRWISE,
+                    pairwise.their_did,
+                    pairwise.their_verkey,
+                    pairwise_info2tags(pairwise))
+            else:
+                LOGGER.debug(
+                    'Wallet.write_pairwise <!< Wallet lookup raised indy error code %s',
+                    x_indy.error_code)
+                raise
+        else:
+            ex_pairwise = record2pairwise_info(record)
+            if pairwise_info2tags(ex_pairwise) != pairwise_info2tags(pairwise):
+                new_pairwise = PairwiseInfo(
+                    pairwise.their_did,
+                    pairwise.their_verkey,
+                    pairwise.my_did,
+                    pairwise.my_verkey,
+                    pairwise.metadata if replace_meta else {**ex_pairwise.metadata, **(pairwise.metadata or {})})
+                await non_secrets.update_wallet_record_tags(
+                    self.handle,
+                    TYPE_PAIRWISE,
+                    pairwise.their_did,
+                    pairwise_info2tags(new_pairwise))
+
+        rv = record2pairwise_info(json.loads(await non_secrets.get_wallet_record(
+            self.handle,
+            TYPE_PAIRWISE,
+            pairwise.their_did,
+            json.dumps({
+                'retrieveType': False,
+                'retrieveValue': True,
+                'retrieveTags': True
+            }))))  # get from source and touch up tags
+
+        LOGGER.debug('Wallet.write_pairwise <<< %s', rv)
+        return rv
+
+    async def delete_pairwise(self, their_did: str) -> None:
+        """
+        Remove a pairwise DID record by its remote DID. Silently return if no such record is present.
+        Raise WalletState for closed wallet, or BadIdentifier for invalid pairwise DID.
+
+        :param their_did: remote DID marking pairwise DID to remove
+        """
+
+        LOGGER.debug('Wallet.delete_pairwise >>> their_did: %s', their_did)
+
+        if not ok_did(their_did):
+            LOGGER.debug('Wallet.delete_pairwise <!< Bad DID %s', their_did)
+            raise BadIdentifier('Bad DID {}'.format(their_did))
+
+        if not self.handle:
+            LOGGER.debug('Wallet.delete_pairwise <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+
+        try:
+            await non_secrets.delete_wallet_record(self.handle, TYPE_PAIRWISE, their_did)
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletItemNotFound:
+                LOGGER.info('Wallet.delete_pairwise <!< no record for pairwise DID on %s', their_did)
+            else:
+                LOGGER.debug(
+                    'Wallet.delete_pairwise <!< deletion of pairwise DID record on %s raised indy error code %s',
+                    their_did,
+                    x_indy.error_code)
+                raise
+
+        LOGGER.debug('Wallet.delete_pairwise <<<')
+
+    async def get_pairwise(self, pairwise_filt: str = None) -> dict:
+        """
+        Return dict mapping each pairwise DID of interest in wallet to its pairwise info, or,
+        for no filter specified, mapping them all. If wallet has no such item, return None.
+
+        :param pairwise_filt: pairwise DID of interest, or WQL json (default all)
+        :return: dict mapping pairwise DID, or all pairwise DIDs, to verkey(s) and metadata, None for no such record
+        """
+
+        LOGGER.debug('Wallet.get_pairwise >>> pairwise_filt: %s', pairwise_filt)
+
+        if not self.handle:
+            LOGGER.debug('Wallet.get_pairwise <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+
+        records = []
+        if pairwise_filt and ok_did(pairwise_filt):  # ordinary their-DID match
+            try:
+                records = [json.loads(await non_secrets.get_wallet_record(
+                    self.handle,
+                    TYPE_PAIRWISE,
+                    pairwise_filt,
+                    json.dumps({
+                        'retrieveType': False,
+                        'retrieveValue': True,
+                        'retrieveTags': True
+                    })))]
+            except IndyError as x_indy:
+                if x_indy.error_code == ErrorCode.WalletItemNotFound:
+                    pass
+                else:
+                    LOGGER.debug(
+                        'Wallet.get_pairwise <!< Wallet %s lookup raised indy exception %s',
+                        self.name,
+                        x_indy.error_code)
+                    raise
+        else:
+            s_handle = await non_secrets.open_wallet_search(
+                self.handle,
+                TYPE_PAIRWISE,
+                json.dumps(canon_pairwise_wql(json.loads(pairwise_filt or '{}'))),
+                json.dumps({
+                    'retrieveRecords': True,
+                    'retrieveTotalCount': True,
+                    'retrieveType': False,
+                    'retrieveValue': True,
+                    'retrieveTags': True
+                }))
+
+            count = int(json.loads(
+                await non_secrets.fetch_wallet_search_next_records(self.handle, s_handle, 0))['totalCount'])
+            if count > 0:
+                records = json.loads(
+                    await non_secrets.fetch_wallet_search_next_records(self.handle, s_handle, count))['records']
+
+        rv = {
+            record['id']: record2pairwise_info(record).metadata for record in records
+        } if records else None
+
+        LOGGER.debug('Wallet.get_pairwise <<< %s', rv)
+        return rv
+
+    async def encrypt(self, message: bytes, authn: bool = False, verkey: str = None) -> bytes:
+        """
+        Encrypt plaintext for owner of DID, anonymously or via authenticated encryption scheme.
+        Raise AbsentMessage for missing message, or WalletState if wallet is closed.
+
+        :param message: plaintext, as bytes
+        :param authn: whether to use authenticated encryption scheme
+        :param verkey: verification of recipient, None for anchor's own
+        :return: ciphertext, as bytes
+        """
+
+        LOGGER.debug('Wallet.encrypt >>> message: %s, authn: %s, verkey: %s', message, authn, verkey)
+
+        if not message:
+            LOGGER.debug('Wallet.encrypt <!< No message to encrypt')
+            raise AbsentMessage('No message to encrypt')
+
+        if not self.handle:
+            LOGGER.debug('Wallet.encrypt <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+
+        if authn:
+            rv = await crypto.auth_crypt(self.handle, self.verkey, verkey or self.verkey, message)
+        else:
+            rv = await crypto.anon_crypt(verkey or self.verkey, message)
+
+        LOGGER.debug('Wallet.auth_encrypt <<< %s', rv)
+        return rv
+
+    async def decrypt(self, ciphertext: bytes, verkey: str = None) -> bytes:
+        """
+        Decrypt ciphertext and optionally authenticate sender.
+
+        Raise BadKey if authentication operation reveals sender key distinct from input
+        verification key.  Raise AbsentMessage for missing ciphertext, or WalletState if
+        wallet is closed.
+
+        :param ciphertext: ciphertext, as bytes
+        :param verkey: sender's verification, or None for anonymously encrypted ciphertext
+        :return: decrypted bytes
+        """
+
+        LOGGER.debug('Wallet.decrypt >>> ciphertext: %s, verkey: %s', ciphertext, verkey)
+
+        if not ciphertext:
+            LOGGER.debug('Wallet.decrypt <!< No ciphertext to decrypt')
+            raise AbsentMessage('No ciphertext to decrypt')
+
+        if not self.handle:
+            LOGGER.debug('Wallet.decrypt <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+
+        if verkey:
+            (sender_verkey, rv) = await crypto.auth_decrypt(self.handle, self.verkey, ciphertext)
+            if sender_verkey != verkey:
+                LOGGER.debug('Wallet.decrypt <!< Authentication revealed unexpected sender key on decryption')
+                raise BadKey('Authentication revealed unexpected sender key on decryption')
+        else:
+            rv = await crypto.anon_decrypt(self.handle, self.verkey, ciphertext)
+
+        LOGGER.debug('Wallet.decrypt <<< %s', rv)
+        return rv
+
+    async def sign(self, message: bytes, verkey: str = None) -> bytes:
+        """
+        Derive signing key and Sign message; return signature. Raise WalletState if wallet is closed.
+        Raise AbsentMessage for missing message, or WalletState if wallet is closed.
+
+        :param message: Content to sign, as bytes
+        :param verkey: verification key corresponding to private signing key (default anchor's own)
+        :return: signature, as bytes
+        """
+
+        LOGGER.debug('Wallet.sign >>> message: %s, verkey: %s', message, verkey)
+
+        if not message:
+            LOGGER.debug('Wallet.sign <!< No message to sign')
+            raise AbsentMessage('No message to sign')
+
+        if not self.handle:
+            LOGGER.debug('Wallet.sign <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+
+        rv = await crypto.crypto_sign(self.handle, verkey or self.verkey, message)
+
+        LOGGER.debug('Wallet.sign <<< %s', rv)
+        return rv
+
+    async def verify(self, message: bytes, signature: bytes, verkey: str = None) -> bool:
+        """
+        Verify signature against input signer verification key (default anchor's own).
+        Raise AbsentMessage for missing message, or WalletState if wallet is closed.
+
+        :param message: Content to sign, as bytes
+        :param signature: signature, as bytes
+        :param verkey: signer verification key (default for anchor's own)
+        :return: whether signature is valid
+        """
+
+        LOGGER.debug('Wallet.verify >>> message: %s, signature: %s, verkey: %s', message, signature, verkey)
+
+        if not message:
+            LOGGER.debug('Wallet.verify <!< No message to verify')
+            raise AbsentMessage('No message to verify')
+
+        if not self.handle:
+            LOGGER.debug('Wallet.verify <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+
+        rv = await crypto.crypto_verify(verkey or self.verkey, message, signature)
+
+        LOGGER.debug('Wallet.verify <<< %s', rv)
+        return rv
+
+    async def pack(self, message: str, recip_verkeys: Sequence[str] = None, sender_verkey: str = None) -> bytes:
+        """
+        Pack a message for one or more recipients (default anchor only).
+        Raise AbsentMessage for missing message, or WalletState if wallet is closed.
+
+        :param message: message to pack
+        :param recip_verkeys: verification keys of recipients (default anchor's own, only)
+        :param sender_verkey: sender verification key (default anonymous encryption)
+        :return: packed message
+        """
+
+        LOGGER.debug(
+            'Wallet.pack >>> message: %s, recip_verkeys: %s, sender_verkey: %s',
+            message,
+            recip_verkeys,
+            sender_verkey)
+
+        if not message:
+            LOGGER.debug('Wallet.pack <!< No message to pack')
+            raise AbsentMessage('No message to pack')
+
+        rv = await crypto.pack_message(
+            self.handle,
+            message,
+            [recip_verkeys] if isinstance(recip_verkeys, str) else list(recip_verkeys or [self.verkey]),
+            sender_verkey)
+
+        LOGGER.debug('Wallet.pack <<< %s', rv)
+        return rv
+
+    async def unpack(self, ciphertext: bytes) -> (str, str, str):
+        """
+        Unpack a message. Return triple with cleartext, sender verification key, and recipient verification key.
+        Raise AbsentMessage for missing ciphertext, or WalletState if wallet is closed. Raise AbsentRecord
+        if wallet has no key to unpack ciphertext.
+
+        :param ciphertext: JWE-like formatted message as pack() produces
+        :return: cleartext, sender verification key, recipient verification key
+        """
+
+        LOGGER.debug('Wallet.unpack >>> ciphertext: %s', ciphertext)
+
+        if not ciphertext:
+            LOGGER.debug('Wallet.pack <!< No ciphertext to unpack')
+            raise AbsentMessage('No ciphertext to unpack')
+
+        try:
+            unpacked = json.loads(await crypto.unpack_message(self.handle, ciphertext))
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletItemNotFound:
+                LOGGER.debug('Wallet.unpack <!< Wallet %s has no local key to unpack ciphertext', self.name)
+                raise AbsentRecord('Wallet {} has no local key to unpack ciphertext'.format(self.name))
+            else:
+                LOGGER.debug('Wallet.unpack <!< Wallet %s unpack() raised indy error code {}', x_indy.error_code)
+                raise
+        rv = (unpacked['message'], unpacked.get('recipient_verkey', None), unpacked.get('sender_verkey', None))
+
+        LOGGER.debug('Wallet.unpack <<< %s', rv)
+        return rv
+
     async def reseed_init(self, next_seed) -> str:
         """
         Begin reseed operation: generate new key. Raise WalletState if wallet is closed.
@@ -382,7 +855,7 @@ class Wallet:
         :return: new verification key
         """
 
-        LOGGER.debug('Wallet.reseed_init >>> next_seed [SEED]')
+        LOGGER.debug('Wallet.reseed_init >>> next_seed: [SEED]')
 
         if not self.handle:
             LOGGER.debug('Wallet.reseed_init <!< Wallet %s is closed', self.name)
@@ -413,8 +886,10 @@ class Wallet:
             self.did,
             json.dumps({
                 'seed_hash': sha256(self._next_seed.encode()).hexdigest(),
+                'anchor': True,
                 'since': int(time())
             }))
+
         LOGGER.info('Wallet %s set seed hash metadata for DID %s', self.name, self.did)
         self._next_seed = None
 

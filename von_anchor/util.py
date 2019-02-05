@@ -19,9 +19,10 @@ import json
 import re
 
 from collections import namedtuple
-from collections.abc import Iterable
 from copy import deepcopy
-from typing import Union
+from typing import Sequence, Union
+
+from base58 import alphabet
 
 from von_anchor.error import BadIdentifier
 from von_anchor.nodepool import Protocol
@@ -32,7 +33,7 @@ NodePoolData = namedtuple('NodePoolData', 'name genesis_txn_path')  # for op con
 AnchorData = namedtuple('AnchorData', 'role seed wallet_name wallet_type wallet_key')
 
 
-B58 = '1-9A-HJ-NP-Za-km-z'
+B58 = alphabet if isinstance(alphabet, str) else alphabet.decode('ascii')
 
 
 def schema_id(origin_did: str, name: str, version: str) -> str:
@@ -223,13 +224,13 @@ def rev_reg_id2cred_def_id_tag(rr_id: str) -> (str, str):
     raise BadIdentifier('Bad revocation registry identifier {}'.format(rr_id))
 
 
-def iter_briefs(briefs: Union[Iterable, dict]) -> tuple:
+def iter_briefs(briefs: Union[dict, Sequence[dict]]) -> tuple:
     """
-    Given a cred-brief/cred-info, an iterable collection thereof, or cred-brief-dict
+    Given a cred-brief/cred-info, an sequence thereof, or cred-brief-dict
     (as HolderProver.get_cred_briefs_by_proof_req_q() returns), return tuple with
     all contained cred-briefs.
 
-    :param briefs: cred-brief/cred-info, iterable collection thereof, or cred-brief-dict
+    :param briefs: cred-brief/cred-info, sequence thereof, or cred-brief-dict
     :return: tuple of cred-briefs
     """
 
@@ -240,16 +241,16 @@ def iter_briefs(briefs: Union[Iterable, dict]) -> tuple:
     return tuple(briefs)
 
 
-def box_ids(briefs: Union[Iterable, dict], cred_ids: Union[Iterable, str] = None) -> dict:
+def box_ids(briefs: Union[dict, Sequence[dict]], cred_ids: Union[Sequence[str], str] = None) -> dict:
     """
-    Given one or more cred-briefs/cred-infos, and an optional iterable collection of credential identifiers
+    Given one or more cred-briefs/cred-infos, and an optional sequence of credential identifiers
     (aka wallet cred ids, referents; specify None to include all), return dict mapping each
     credential identifier to a box ids structure (i.e., a dict specifying its corresponding
     schema identifier, credential definition identifier, and revocation registry identifier,
     the latter being None if cred def does not support revocation).
 
-    :param briefs: cred-brief/cred-info, iterable thereof, or cred-brief-dict
-    :param cred_ids: credential identifier or iterable thereof for which to find corresponding
+    :param briefs: cred-brief/cred-info, sequence thereof, or cred-brief-dict
+    :param cred_ids: credential identifier or sequence thereof for which to find corresponding
         schema identifiers, None for all
     :return: dict mapping each credential identifier to its corresponding box ids (empty dict if
         no matching credential identifiers present)
@@ -290,7 +291,7 @@ def prune_creds_json(creds: dict, cred_ids: set) -> str:
     return json.dumps(rv)
 
 
-def proof_req_infos2briefs(proof_req: dict, infos: Union[Iterable, dict]) -> list:
+def proof_req_infos2briefs(proof_req: dict, infos: Union[dict, Sequence[dict]]) -> list:
     """
     Given a proof request and corresponding cred-info(s), return a list of cred-briefs
     (i.e., cred-info plus interval).
@@ -298,7 +299,7 @@ def proof_req_infos2briefs(proof_req: dict, infos: Union[Iterable, dict]) -> lis
     The proof request must have cred def id restrictions on all requested attribute specifications.
 
     :param proof_req: proof request
-    :param infos: cred-info or iterable collection thereof; e.g.,
+    :param infos: cred-info or sequence thereof; e.g.,
 
     ::
 
@@ -350,14 +351,14 @@ def proof_req_infos2briefs(proof_req: dict, infos: Union[Iterable, dict]) -> lis
 
     return rv
 
-def proof_req_briefs2req_creds(proof_req: dict, briefs: Union[Iterable, dict]) -> dict:
+def proof_req_briefs2req_creds(proof_req: dict, briefs: Union[dict, Sequence[dict]]) -> dict:
     """
     Given a proof request and cred-brief(s), return a requested-creds structure.
 
     The proof request must have cred def id restrictions on all requested attribute specifications.
 
     :param proof_req: proof request
-    :param briefs: credential brief, iterable collection thereof (as indy-sdk wallet credential search returns),
+    :param briefs: credential brief, sequence thereof (as indy-sdk wallet credential search returns),
         or cred-brief-dict (as HolderProver.get_cred_briefs_for_proof_req_q() returns); e.g.,
 
     ::
@@ -474,12 +475,12 @@ def proof_req_briefs2req_creds(proof_req: dict, briefs: Union[Iterable, dict]) -
     return rv
 
 
-def creds_display(creds: Union[Iterable, dict], filt: dict = None, filt_dflt_incl: bool = False) -> dict:
+def creds_display(creds: Union[dict, Sequence[dict]], filt: dict = None, filt_dflt_incl: bool = False) -> dict:
     """
-    Find indy-sdk creds matching input filter from within input creds structure, iterable
-    collection of cred-briefs/cred-infos, or cred-brief-dict.  Return human-legible summary.
+    Find indy-sdk creds matching input filter from within input creds structure,
+    sequence of cred-briefs/cred-infos, or cred-brief-dict.  Return human-legible summary.
 
-    :param creds: creds structure, cred-brief/cred-info or iterable collection thereof,
+    :param creds: creds structure, cred-brief/cred-info or sequence thereof,
         or cred-brief-dict; e.g., creds
 
     ::
@@ -604,7 +605,7 @@ def creds_display(creds: Union[Iterable, dict], filt: dict = None, filt_dflt_inc
     return rv
 
 
-def proof_req2wql_all(proof_req: dict, x_cd_ids: Union[Iterable, str] = None) -> dict:
+def proof_req2wql_all(proof_req: dict, x_cd_ids: Union[str, Sequence[str]] = None) -> dict:
     """
     Given a proof request and a list of cred def ids to omit, return an extra WQL query dict
     that will find all corresponding credentials in search.
@@ -613,7 +614,7 @@ def proof_req2wql_all(proof_req: dict, x_cd_ids: Union[Iterable, str] = None) ->
     At present, the utility does not support predicates.
 
     :param proof_req: proof request
-    :param x_cd_ids: cred def identifier or iterable collection thereof to omit
+    :param x_cd_ids: cred def identifier or sequence thereof to omit
     :return: extra WQL dict to fetch all corresponding credentials in search.
     """
 
@@ -836,15 +837,15 @@ def proof_req_pred_referents(proof_req: dict) -> dict:
     return rv
 
 
-def revoc_info(briefs: Union[Iterable, dict], filt: dict = None) -> dict:
+def revoc_info(briefs: Union[dict, Sequence[dict]], filt: dict = None) -> dict:
     """
-    Given a cred-brief, cred-info or iterable collection of either, return a dict mapping pairs
+    Given a cred-brief, cred-info or sequence of either, return a dict mapping pairs
     (revocation registry identifier, credential revocation identifier)
     to attribute name: (raw) value dicts.
 
     If the caller includes a filter of attribute:value pairs, retain only matching attributes.
 
-    :param briefs: cred-brief/cred-info, or iterable thereof
+    :param briefs: cred-brief/cred-info, or sequence thereof
     :param filt: dict mapping attributes to values of interest; e.g.,
 
     ::

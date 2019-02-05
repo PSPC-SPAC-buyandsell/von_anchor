@@ -20,7 +20,7 @@ import logging
 from os import sys
 from os.path import dirname, realpath
 from sys import exit as sys_exit, path as sys_path
-from typing import Iterable
+from typing import Sequence
 
 DIR_VON_ANCHOR = dirname(dirname(dirname(realpath(__file__))))
 if DIR_VON_ANCHOR not in sys_path:
@@ -142,7 +142,7 @@ async def setnym(ini_path: str) -> int:
     return 0
 
 
-def main(args: Iterable = None) -> int:
+def main(args: Sequence[str] = None) -> int:
     """
     Main line for script: check arguments and dispatch operation to set nym.
 

@@ -18,11 +18,10 @@ limitations under the License.
 import json
 import logging
 
-from collections.abc import Iterable
 from os import listdir, makedirs
 from os.path import basename, expanduser, isdir, isfile, join
 from time import time
-from typing import Union
+from typing import Sequence, Union
 
 from indy import anoncreds, ledger
 from indy.error import IndyError, ErrorCode
@@ -332,7 +331,7 @@ class HolderProver(BaseAnchor):
         LOGGER.debug('HolderProver.rev_regs <<< %s', rv)
         return rv
 
-    async def offline_intervals(self, cd_ids: Union[Iterable, str]) -> dict:
+    async def offline_intervals(self, cd_ids: Union[str, Sequence[str]]) -> dict:
         """
         Return default non-revocation intervals for input cred def ids, based on content of revocation cache,
         for augmentation into specification for Verifier.build_proof_req_json. Note that the close() call
@@ -342,7 +341,7 @@ class HolderProver(BaseAnchor):
         Raise CacheIndex if proof request cites credential definition without corresponding
         content in cred def cache or revocation cache.
 
-        :param cd_ids: credential definition identifier or iterable collection thereof
+        :param cd_ids: credential definition identifier or sequence thereof
         :return: dict mapping revocable cred def ids to interval specifications to augment into cd_id2spec
             parameter for Verifier.build_proof_req_json(), and non-revocable cred def ids to empty dict; e.g.,
 
@@ -983,7 +982,7 @@ class HolderProver(BaseAnchor):
         return rv_json
 
 
-    async def create_proof(self, proof_req: dict, briefs: Union[Iterable, dict], requested_creds: dict) -> str:
+    async def create_proof(self, proof_req: dict, briefs: Union[dict, Sequence[dict]], requested_creds: dict) -> str:
         """
         Create proof as HolderProver.
 
@@ -998,7 +997,7 @@ class HolderProver(BaseAnchor):
             * WalletState if the wallet is closed.
 
         :param proof_req: proof request as per Verifier.build_proof_req_json()
-        :param briefs: cred-brief, iterable collection thereof, or mapping from wallet cred-id to briefs, to prove
+        :param briefs: cred-brief, sequence thereof, or mapping from wallet cred-id to briefs, to prove
         :param requested_creds: requested credentials data structure; i.e.,
 
         ::

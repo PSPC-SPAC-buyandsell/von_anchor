@@ -44,7 +44,8 @@ class Protocol(Enum):
     V_15 = ProtocolMap('1.5', 2)
     V_16 = ProtocolMap('1.6', 2)
     V_17 = ProtocolMap('1.7', 2)
-    DEFAULT = ProtocolMap('1.7', 2)
+    V_18 = ProtocolMap('1.8', 2)
+    DEFAULT = ProtocolMap('1.8', 2)
 
     @staticmethod
     def get(version: str) -> 'Protocol':

@@ -86,6 +86,25 @@ class DIDInfo:
 
         self._metadata = value
 
+    def __eq__(self, other: 'DIDInfo') -> bool:
+        """
+        Equivalence operator. Two DIDInfos are equivalent when their attributes are.
+
+        :param other: DIDInfo to test for equivalence
+        :return: whether DIDInfos are equivalent
+        """
+
+        return self.did == other.did and self.verkey == other.verkey and self.metadata == self.metadata
+
+    def __repr__(self) -> str:
+        """
+        Return representation.
+
+        :return: string representation evaluating to construction call
+        """
+
+        return 'DIDInfo({}, {}, {})'.format(self.did, self.verkey, self.metadata)
+
 
 class PairwiseInfo:
     """
@@ -169,36 +188,69 @@ class PairwiseInfo:
 
         self._metadata = value
 
+    def __eq__(self, other: 'PairwiseInfo') -> bool:
+        """
+        Equivalence operator. Two PairwiseInfos are equivalent when their attributes are.
 
-def did_info2tags(did_info: DIDInfo) -> str:
+        :param other: PairwiseInfo to test for equivalence
+        :return: whether PairwiseInfos are equivalent
+        """
+
+        return (
+            self.their_did == other.their_did and
+            self.their_verkey == other.their_verkey and
+            self.my_did == other.my_did and
+            self.my_verkey == other.my_verkey and
+            self.metadata == self.metadata)
+
+    def __repr__(self) -> str:
+        """
+        Return representation.
+
+        :return: string representation evaluating to construction call
+        """
+
+        return 'PairwiseInfo({}, {}, {}, {}, {})'.format(
+            self.their_did,
+            self.their_verkey,
+            self.my_did,
+            self.my_verkey,
+            self.metadata)
+
+
+def pairwise_info2tags(pairwise: PairwiseInfo) -> str:
     """
-    Given DID info with metadata mapping tags to values, return corresponding
+    Given pairwise info with metadata mapping tags to values, return corresponding
     indy-sdk json to store same in wallet (via non_secrets) unencrypted (for WQL search options).
     Canonicalize metadata values to strings via raw() for WQL fitness.
 
-    :param did_info: DID info with metadata dict mapping tags to values
+    :param pairwise: pairwise info with metadata dict mapping tags to values
     :return: corresponding non_secrets tags json marked for unencrypted storage
     """
 
     rv = {
-        canon_pairwise_tag(tag): raw(did_info.metadata[tag]) for tag in did_info.metadata or {}
+        canon_pairwise_tag(tag): raw(pairwise.metadata[tag]) for tag in pairwise.metadata or {}
     }
-    rv['~did'] = did_info.did
-    rv['~verkey'] = did_info.verkey
+    rv['~their_did'] = pairwise.their_did
+    rv['~their_verkey'] = pairwise.their_verkey
+    rv['~my_did'] = pairwise.my_did
+    rv['~my_verkey'] = pairwise.my_verkey
     return json.dumps(rv)
 
 
-def record2did_info(record: dict) -> DIDInfo:
+def record2pairwise_info(record: dict) -> PairwiseInfo:
     """
-    Given indy-sdk non_secrets record dict, return corresponding DIDInfo.
+    Given indy-sdk non_secrets pairwise record dict, return corresponding PairwiseInfo.
 
-    :param record: non_secrets record dict
-    :return: DIDInfo on non_secrets record DID, verkey, metadata
+    :param record: non_secrets pairwise record dict
+    :return: PairwiseInfo on non_secrets pairwise record DIDs, verkeys, metadata
     """
 
-    return DIDInfo(
-        record['id'],
-        record['value'],
+    return PairwiseInfo(
+        record['id'],  # = their did
+        record['value'],  # = their verkey
+        record['tags']['~my_did'],
+        record['tags']['~my_verkey'],
         {
             tag[tag.startswith('~'):]: record['tags'][tag] for tag in record.get('tags', {})  # strip any leading '~'
         })
@@ -228,7 +280,7 @@ def canon_pairwise_wql(query: dict = None) -> dict:
 
     if not query:
         return {
-            '~did': {
+            '~their_did': {
                 '$neq': ''
             }
         }

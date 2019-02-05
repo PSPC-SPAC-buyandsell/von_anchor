@@ -24,7 +24,7 @@ from enum import IntEnum
 from os.path import expandvars, isfile
 from pprint import pformat
 from time import time
-from typing import Any, Callable, Iterable, Union
+from typing import Any, Callable, Sequence, Union
 
 
 def ppjson(dumpit: Any, elide_to: int = None) -> str:
@@ -62,7 +62,7 @@ def do_wait(coro: Callable) -> Any:
     return event_loop.run_until_complete(coro)
 
 
-def inis2dict(ini_paths: Union[str, Iterable]) -> dict:
+def inis2dict(ini_paths: Union[str, Sequence[str]]) -> dict:
     """
     Take one or more ini files and return a dict with configuration from all,
     interpolating bash-style variables ${VAR} or ${VAR:-DEFAULT}.

@@ -49,9 +49,11 @@ class ErrorCode(IntEnum):
     AbsentWallet = 3000
     BadWalletQuery = 3001
     AbsentCred = 3002
-    AbsentMetadata = 3003
     ExtantWallet = 3004
     WalletState = 3005
+    ExtantRecord = 3006
+    AbsentRecord = 3007
+    AbsentMessage = 3008
 
     # Errors to do with node pool operation
     ClosedPool = 4000
@@ -414,21 +416,6 @@ class AbsentCred(VonAnchorError):
         super().__init__(ErrorCode.AbsentCred, message)
 
 
-class AbsentMetadata(VonAnchorError):
-    """
-    No such metadata.
-    """
-
-    def __init__(self, message: str):
-        """
-        Initialize on message.
-
-        :param message: error message
-        """
-
-        super().__init__(ErrorCode.AbsentMetadata, message)
-
-
 class ExtantWallet(VonAnchorError):
     """
     Wallet already exists.
@@ -457,6 +444,51 @@ class WalletState(VonAnchorError):
         """
 
         super().__init__(ErrorCode.WalletState, message)
+
+
+class ExtantRecord(VonAnchorError):
+    """
+    Wallet record already exists.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.ExtantRecord, message)
+
+
+class AbsentRecord(VonAnchorError):
+    """
+    Wallet record does not exist.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.AbsentRecord, message)
+
+
+class AbsentMessage(VonAnchorError):
+    """
+    Absent target for cryptographic operation.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.AbsentMessage, message)
 
 
 class ClosedPool(VonAnchorError):
