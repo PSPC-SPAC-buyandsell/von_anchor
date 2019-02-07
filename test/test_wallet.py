@@ -24,7 +24,7 @@ import pytest
 from indy import IndyError
 from indy.error import ErrorCode
 
-from von_anchor.a2a.didinfo import PairwiseInfo
+from von_anchor.a2a import PairwiseInfo
 from von_anchor.error import AbsentRecord, ExtantWallet, JSONValidation, WalletState
 from von_anchor.frill import Ink, ppjson
 from von_anchor.wallet import Wallet
@@ -200,7 +200,8 @@ async def test_pairwise():
         print('\n\n== 1 == Pairwise DIDs: {}'.format(ppjson(pairwises)))
 
         await w.delete_pairwise(pairwises['agent-86'].their_did)  # not present: silently carries on
-        assert await w.get_pairwise(pairwises['agent-86'].their_did) == None
+        await w.delete_pairwise(pairwises['agent-99'].their_did)  # not present: silently carries on
+        assert await w.get_pairwise(pairwises['agent-86'].their_did) == {}
 
         # Store record for agent 86, 99; get by DID
         metadata = {'epoch': int(time())}  # preparing to exercise metadata int to str

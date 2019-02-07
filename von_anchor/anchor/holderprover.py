@@ -34,6 +34,7 @@ from von_anchor.error import (
     AbsentCredDef,
     AbsentInterval,
     AbsentLinkSecret,
+    AbsentPool,
     AbsentRevReg,
     AbsentSchema,
     AbsentTails,
@@ -68,7 +69,7 @@ class HolderProver(BaseAnchor):
     the holder-prover anchor to manage tails files.
     """
 
-    def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool = None, **kwargs) -> None:
         """
         Initializer for HolderProver anchor. Retain input parameters; do not open wallet nor tails writer.
 
@@ -542,6 +543,12 @@ class HolderProver(BaseAnchor):
                             'HolderProver %s is offline from pool %s, cannot update revo cache reg delta for %s to %s',
                             self.wallet.name,
                             self.pool.name,
+                            rr_id,
+                            rv)
+                    except AbsentPool:
+                        LOGGER.warning(
+                            'HolderProver %s has no pool, cannot update revo cache reg delta for %s to %s',
+                            self.wallet.name,
                             rr_id,
                             rv)
 

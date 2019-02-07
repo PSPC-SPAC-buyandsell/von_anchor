@@ -27,6 +27,7 @@ from indy.error import IndyError, ErrorCode
 from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, ENDPOINT_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.error import (
     AbsentCredDef,
+    AbsentPool,
     AbsentRevReg,
     AbsentNym,
     AbsentSchema,
@@ -51,12 +52,12 @@ class BaseAnchor:
     with the distributed ledger that its node pool operates.
     """
 
-    def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool = None, **kwargs) -> None:
         """
         Initializer for anchor. Retain wallet and node pool.
 
         :param wallet: wallet for anchor use
-        :param pool: node pool for anchor use
+        :param pool: optional node pool for anchor use
         :param kwargs: place holders for super(); implementation ignores
         """
 
@@ -76,6 +77,16 @@ class BaseAnchor:
         """
 
         return self._pool
+
+    @pool.setter
+    def pool(self, value: NodePool) -> None:
+        """
+        Set pool.
+
+        :param value: pool
+        """
+
+        self._pool = value
 
     @property
     def wallet(self) -> Wallet:
@@ -144,7 +155,6 @@ class BaseAnchor:
 
         # Do not open pool independently: let relying party decide when to go on-line and off-line
         # Do not open wallet independently: allow for sharing open wallet over many anchor lifetimes
-        # await self.wallet.open() #1.7.8
 
         LOGGER.debug('BaseAnchor.open <<<')
         return self
@@ -174,7 +184,6 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor.close >>>')
 
         # Do not close wallet independently: allow for sharing open wallet over many anchor lifetimes
-        # await self.wallet.close() #1.7.8
         # Do not close pool independently: let relying party decide when to go on-line and off-line
 
         LOGGER.debug('BaseAnchor.close <<<')
@@ -370,13 +379,17 @@ class BaseAnchor:
         """
         Submit (json) request to ledger; return (json) result.
 
-        Raise ClosedPool if pool is not yet open, or BadLedgerTxn on failure.
+        Raise AbsentPool for no pool, ClosedPool if pool is not yet open, or BadLedgerTxn on failure.
 
         :param req_json: json of request to sign and submit
         :return: json response
         """
 
         LOGGER.debug('BaseAnchor._submit >>> req_json: %s', req_json)
+
+        if not self.pool:
+            LOGGER.debug('BaseAnchor._submit <!< absent pool')
+            raise AbsentPool('Cannot submit request: absent pool')
 
         if not self.pool.handle:
             LOGGER.debug('BaseAnchor._submit <!< closed pool %s', self.pool.name)
@@ -397,9 +410,12 @@ class BaseAnchor:
         """
         Sign and submit (json) request to ledger; return (json) result.
 
-        Raise ClosedPool if pool is not yet open, CorruptWallet if existing wallet's
-        pool is no longer extant, WalletState if wallet is closed, or BadLedgerTxn
-        on any other failure.
+        Raise:
+        * AbsentPool for no pool
+        * ClosedPool if pool is not yet open
+        * CorruptWallet if existing wallet appears not to pertain to the anchor's pool
+        * WalletState if wallet is closed
+        * BadLedgerTxn on ledger rejection of transaction.
 
         :param req_json: json of request to sign and submit
         :return: json response
@@ -407,9 +423,13 @@ class BaseAnchor:
 
         LOGGER.debug('BaseAnchor._sign_submit >>> req_json: %s', req_json)
 
+        if not self.pool:
+            LOGGER.debug('BaseAnchor._sign_submit <!< absent pool')
+            raise AbsentPool('Cannot sign and submit request: absent pool')
+
         if not self.pool.handle:
             LOGGER.debug('BaseAnchor._submit <!< closed pool %s', self.pool.name)
-            raise ClosedPool('Cannot submit request to closed pool {}'.format(self.pool.name))
+            raise ClosedPool('Cannot sign and submit request to closed pool {}'.format(self.pool.name))
 
         if not self.wallet.handle:
             LOGGER.debug('BaseAnchor._sign_submit <!< Wallet %s is closed', self.wallet.name)
@@ -441,6 +461,54 @@ class BaseAnchor:
 
         LOGGER.debug('BaseAnchor._sign_submit <<< %s', rv_json)
         return rv_json
+
+    async def _verkey_for(self, target: str) -> str:
+        """
+        Given a DID, retrieve its verification key, looking in wallet, then pool.
+        Given a verification key or None, return input.
+
+        Raise WalletState if the wallet is closed. Given a recipient DID not in the wallet,
+        raise AbsentPool if the instance has no pool or ClosedPool if its pool is closed.
+        If no such verification key is on the ledger, raise AbsentNym.
+
+        :param target: verification key, or DID to resolve to such
+        :return: verification key
+        """
+
+        LOGGER.debug('BaseAnchor._verkey_for >>> target: %s', target)
+
+        rv = target
+        if rv is None or not ok_did(rv):  # it's None or already a verification key
+            LOGGER.debug('BaseAnchor._verkey_for <<< %s', rv)
+            return rv
+
+        if self.wallet.handle:
+            try:
+                rv = await did.key_for_local_did(self.wallet.handle, target)
+                LOGGER.info('Anchor %s got verkey for DID %s from wallet', self.wallet.name, target)
+                LOGGER.debug('BaseAnchor._verkey_for <<< %s', rv)
+                return rv
+            except IndyError as x_indy:
+                if x_indy.error_code != ErrorCode.WalletItemNotFound:  # on not found, try the pool
+                    LOGGER.debug(
+                        'BaseAnchor._verkey_for <!< key lookup for local DID %s raised indy error code %s',
+                        target,
+                        x_indy.error_code)
+                    raise
+
+        nym = json.loads(await self.get_nym(target))
+        if not nym:
+            LOGGER.debug(
+                'BaseAnchor._verkey_for <!< Wallet %s closed and ledger has no cryptonym for DID %s',
+                self.wallet.name,
+                target)
+            raise AbsentNym('Wallet {} closed, and ledger has no cryptonym for DID {}'.format(self.wallet.name, target))
+
+        rv = json.loads(await self.get_nym(target))['verkey']
+        LOGGER.info('Anchor %s got verkey for DID %s from pool %s', self.wallet.name, target, self.pool.name)
+
+        LOGGER.debug('BaseAnchor._verkey_for <<< %s', rv)
+        return rv
 
     async def get_rev_reg_def(self, rr_id: str) -> str:
         """
@@ -578,7 +646,7 @@ class BaseAnchor:
                 LOGGER.info('BaseAnchor.get_schema: got schema %s from ledger', index)
 
             elif isinstance(index, (int, str)):  # index is not a schema id: it's a stringified int txn# if it's a str
-                txn_json = await self.get_txn(int(index))
+                txn_json = await self.get_txn(int(index))  # raises AbsentPool if anchor has no pool
                 txn = json.loads(txn_json)
                 if txn.get('type', None) == '101':  # {} for no such txn; 101 marks indy-sdk schema txn type
                     rv_json = await self.get_schema(self.pool.protocol.txn_data2schema_key(txn))
@@ -596,12 +664,16 @@ class BaseAnchor:
 
     async def encrypt(self, message: bytes, authn: bool = False, recip: str = None) -> bytes:
         """
-        Encrypt plaintext for owner of DID, anonymously or via authenticated encryption scheme.
-        Raise WalletState if wallet is closed.
+        Encrypt plaintext for owner of DID or verification key, anonymously or via
+        authenticated encryption scheme. If given DID, first check wallet and then pool
+        for corresponding verification key.
+
+        Raise WalletState if the wallet is closed. Given a recipient DID not in the wallet,
+        raise AbsentPool if the instance has no pool or ClosedPool if its pool is closed.
 
         :param message: plaintext, as bytes
         :param authn: whether to use authenticated encryption scheme
-        :param recip_did: DID or verification key of recipient, None for anchor's own
+        :param recip: DID or verification key of recipient, None for anchor's own
         :return: ciphertext, as bytes
         """
 
@@ -611,10 +683,7 @@ class BaseAnchor:
             LOGGER.debug('BaseAnchor.encrypt <!< Wallet %s is closed', self.wallet.name)
             raise WalletState('Wallet {} is closed'.format(self.wallet.name))
 
-        verkey = None
-        if recip:
-            verkey = await did.key_for_did(self.pool.handle, self.wallet.handle, recip) if ok_did(recip) else recip
-        rv = await self.wallet.encrypt(message, authn, verkey)
+        rv = await self.wallet.encrypt(message, authn, await self._verkey_for(recip))
 
         LOGGER.debug('BaseAnchor.auth_encrypt <<< %s', rv)
         return rv
@@ -639,7 +708,7 @@ class BaseAnchor:
 
         verkey = None
         if sender:
-            verkey = await did.key_for_did(self.pool.handle, self.wallet.handle, sender) if ok_did(sender) else sender
+            verkey = await self._verkey_for(sender)
         rv = await self.wallet.decrypt(ciphertext, verkey)
 
         LOGGER.debug('BaseAnchor.decrypt <<< %s', rv)
@@ -683,7 +752,7 @@ class BaseAnchor:
 
         verkey = None
         if signer:
-            verkey = await did.key_for_did(self.pool.handle, self.wallet.handle, signer) if ok_did(signer) else signer
+            verkey = await self._verkey_for(signer)
         rv = await self.wallet.verify(message, signature, verkey)
 
         LOGGER.debug('BaseAnchor.verify <<< %s', rv)

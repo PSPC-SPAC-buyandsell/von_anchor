@@ -18,7 +18,7 @@ limitations under the License.
 from collections import namedtuple
 from enum import Enum
 
-from von_anchor.a2a.didinfo import canon_did, canon_ref
+from von_anchor.a2a.docutil import canon_did, canon_ref
 
 
 LinkedDataKeySpec = namedtuple('LinkedDataKeySpec', 'ver_type authn_type specifier')

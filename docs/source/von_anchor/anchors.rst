@@ -9,13 +9,17 @@ This section outlines the design of the classes implementing anchor functionalit
 BaseAnchor
 ****************************************************
 
-The ``BaseAnchor`` class implements essential functionality that defines an anchor: it holds references to a wallet and the node pool for use within indy-sdk; it implements calls common to all anchors of all kinds.
+The ``BaseAnchor`` class implements essential functionality that defines an anchor: it holds references to a wallet and an optional node pool for use within indy-sdk. The code implements calls common to all anchors of all kinds.
 
 Its property methods make an instance's pool and wallet available; convenience methods delegate to the wallet to make its DID and verification keys available.
 
-Its context manager methods engage the underlying counterparts of the Wallet class.
+Its context manager methods are placeholders for descendants to perform setup and teardown operations.
 
 The class's ``_submit()`` and ``_sign_submit()`` methods encapsulate boilerplate to submit requests and return responses against the indy-sdk ledger. Both methods raise ``ClosedPool`` if operating off-line (holder-prover and verifier anchors off-line must operate entirely from caches) or ``BadLedgerTxn`` on a request that the indy-sdk cannot process; ``_sign_submit()`` raises ``CorruptWallet`` on a signed request that appears to use a wallet for node pool distinct from the anchor's current one.
+
+The ``_verkey_for()`` method takes a DID and retrieves a corresponding verification key. It checks the wallet first, then the node pool if the anchor has one.
+
+The ``reseed()`` method updates the private signing and public verification key in anchor's the wallet and its corresponding nym on the ledger as per the following illustration.
 
 Its ``get_nym()`` method fetches and return the anchor's cryptonym from the distributed ledger via the indy-sdk.
 
@@ -29,13 +33,11 @@ Its (static) ``least_role()`` method returns the ``TRUST_ANCHOR`` role, sufficin
 
 Its ``get_schema()`` and ``get_cred_def()`` methods retrieve schema and credential definitions the ledger. Typically the result comes from its cache; if it goes to the ledger, the implementation populates the applicable cache before returning.
 
-Its ``sign()`` and ``verify()`` methods delegate to indy-sdk to sign and verify content.
+Its ``sign()`` and ``verify()`` methods delegate to indy-sdk to sign and verify content. The operation performs any required DID resolution to verification keys, then delegates to the wallet.
 
-Its ``encrypt()`` and ``decrypt()`` methods delegate to indy-sdk to encrypt, anonymously or with (proof-of-origin) authentication, content for itself or another anchor owning an input DID. The actuator packs encrypted values into JWTs for agent-to-agent communications.
+Its ``encrypt()`` and ``decrypt()`` methods delegate to indy-sdk to encrypt, anonymously or with (proof-of-origin) authentication, content for itself or another anchor owning an input DID or verification key. The operation performs any required DID resolution to verification keys, then delegates to the wallet.
 
 The ``get_txn()`` method returns a distributed ledger transaction's content by sequence number.
-
-The ``reseed()`` method updates the private signing and public verification key in anchor's the wallet and its corresponding nym on the ledger as per the following illustration.
 
 .. image:: https://raw.githubusercontent.com/PSPC-SPAC-buyandsell/von_anchor/master/docs/source/pic/reseed.png
     :align: center

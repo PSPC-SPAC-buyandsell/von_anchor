@@ -13,3 +13,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+
+
+from .diddoc import DIDDoc
+from .didinfo import DIDInfo
+from .pairwise import canon_pairwise_wql, PairwiseInfo, pairwise_info2tags, record2pairwise_info, TYPE_PAIRWISE
+from .publickey import LinkedDataKeySpec, PublicKey, PublicKeyType
+from .service import Service

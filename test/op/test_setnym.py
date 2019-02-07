@@ -23,7 +23,7 @@ from time import time
 import pytest
 
 from von_anchor import NominalAnchor, TrusteeAnchor, SRIAnchor
-from von_anchor.error import ExtantWallet
+from von_anchor.error import AbsentPool, ExtantWallet
 from von_anchor.frill import Ink, inis2dict, ppjson
 from von_anchor.indytween import Role
 from von_anchor.nodepool import NodePool
@@ -64,9 +64,17 @@ async def test_setnym(
 
     seeds = {
         'trustee-anchor': seed_trustee1,
-        cfg['VON Anchor']['wallet.name']: cfg['VON Anchor']['seed']
+        cfg['VON Anchor']['wallet.name']: cfg['VON Anchor']['seed'],
+        'x-anchor': 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
     }
     wallets = await get_wallets(seeds, True)
+
+    try:
+        async with NominalAnchor(wallets['x-anchor']) as xan:
+            await xan.get_nym()
+    except AbsentPool:
+        pass
+    wallets.pop('x-anchor')
 
     # Open pool, check if nym already present
     p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})

@@ -129,15 +129,17 @@ async def setnym(ini_path: str) -> int:
             TrusteeAnchor(w_tan, pool)) as tan, (
             NominalAnchor(w_van, pool)) as van:
 
+        send_verkey = van.verkey
         try:
             nym_role = await tan.get_nym_role(van.did)
             if an_data['van'].role == nym_role:
                 return 0  # ledger is as per configuration
-            await tan.send_nym(van.did, van.verkey, van.wallet.name, Role.ROLE_REMOVE)
+            send_verkey = None  # only owner can touch verkey
+            await tan.send_nym(van.did, send_verkey, van.wallet.name, Role.ROLE_REMOVE)
         except AbsentNym:
             pass  # cryptonym not there yet, fall through
 
-        await tan.send_nym(van.did, van.verkey, van.wallet.name, an_data['van'].role)
+        await tan.send_nym(van.did, send_verkey, van.wallet.name, an_data['van'].role)
 
     return 0
 

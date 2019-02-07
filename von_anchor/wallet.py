@@ -19,14 +19,14 @@ import json
 import logging
 
 from ctypes import CDLL
-from hashlib import sha256
+# from hashlib import sha256
 from time import time
 from typing import List, Sequence
 
 from indy import crypto, did, non_secrets, wallet
 from indy.error import IndyError, ErrorCode
 
-from von_anchor.a2a.didinfo import (
+from von_anchor.a2a import (
     canon_pairwise_wql,
     DIDInfo,
     PairwiseInfo,
@@ -168,9 +168,9 @@ class Wallet:
     @property
     def did(self) -> str:
         """
-        Accessor for wallet DID.
+        Accessor for anchor DID in wallet.
 
-        :return: wallet DID
+        :return: anchor DID in wallet
         """
 
         return self._did
@@ -258,7 +258,8 @@ class Wallet:
 
     async def get_local_did_info(self, loc: str) -> DIDInfo:
         """
-        Get local DID info by local DID or verification key. Raise AbsentRecord for no such local DID.
+        Get local DID info by local DID or verification key.
+        Raise AbsentRecord for no such local DID.
 
         :param loc: DID or verification key of interest
         :return: DIDInfo for local DID
@@ -376,7 +377,7 @@ class Wallet:
                 self.handle,
                 self.did,
                 json.dumps({
-                    'seed_hash': sha256(seed.encode()).hexdigest(),
+                    # 'seed_hash': sha256(seed.encode()).hexdigest(),
                     'anchor': True,
                     'since': int(time())
                 }))
@@ -485,13 +486,18 @@ class Wallet:
             metadata: dict = None,
             replace_meta: bool = False) -> PairwiseInfo:
         """
-        Store a pairwise DID for a secure connection.
+        Store a pairwise DID for a secure connection. Use verification key for local DID in wallet if
+        supplied; otherwise, create one first. If local DID specified but not present, raise AbsentRecord.
+
+        With supplied metadata, replace or augment and overwrite any existing metadata for the pairwise
+        relation if one already exists in the wallet. Always include local and remote DIDs and keys in
+        metadata to allow for WQL search.
 
         :param their_did: remote DID
         :param their_verkey: remote verification key
         :param my_did: local DID
         :param metadata: metadata for pairwise connection
-        :param replace_meta: whether to (True) replace or (False) augment/overwrite existing metadata
+        :param replace_meta: whether to (True) replace or (False) augment and overwrite existing metadata
         :return: resulting PairwiseInfo
         """
 
@@ -614,10 +620,10 @@ class Wallet:
     async def get_pairwise(self, pairwise_filt: str = None) -> dict:
         """
         Return dict mapping each pairwise DID of interest in wallet to its pairwise info, or,
-        for no filter specified, mapping them all. If wallet has no such item, return None.
+        for no filter specified, mapping them all. If wallet has no such item, return empty dict.
 
-        :param pairwise_filt: pairwise DID of interest, or WQL json (default all)
-        :return: dict mapping pairwise DID, or all pairwise DIDs, to verkey(s) and metadata, None for no such record
+        :param pairwise_filt: remote DID of interest, or WQL json (default all)
+        :return: dict mapping remote DIDs to PairwiseInfo
         """
 
         LOGGER.debug('Wallet.get_pairwise >>> pairwise_filt: %s', pairwise_filt)
@@ -668,7 +674,7 @@ class Wallet:
 
         rv = {
             record['id']: record2pairwise_info(record).metadata for record in records
-        } if records else None
+        }
 
         LOGGER.debug('Wallet.get_pairwise <<< %s', rv)
         return rv
@@ -680,7 +686,7 @@ class Wallet:
 
         :param message: plaintext, as bytes
         :param authn: whether to use authenticated encryption scheme
-        :param verkey: verification of recipient, None for anchor's own
+        :param verkey: verification key of recipient, None for anchor's own
         :return: ciphertext, as bytes
         """
 
@@ -885,7 +891,7 @@ class Wallet:
             self.handle,
             self.did,
             json.dumps({
-                'seed_hash': sha256(self._next_seed.encode()).hexdigest(),
+                # 'seed_hash': sha256(self._next_seed.encode()).hexdigest(),
                 'anchor': True,
                 'since': int(time())
             }))

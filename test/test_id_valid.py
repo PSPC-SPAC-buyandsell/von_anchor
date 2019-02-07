@@ -24,7 +24,7 @@ from von_anchor.util import ok_cred_def_id, ok_did, ok_rev_reg_id, ok_role, ok_s
 
 @pytest.mark.asyncio
 async def test_box_ids():
-    print(Ink.YELLOW('\n\n== Testing Box Identifier Checks =='))
+    print(Ink.YELLOW('\n\n== Testing Identifier Checks =='))
 
     assert ok_wallet_reft('49ad0727-8663-45ae-a115-12b09860f9c6')
     assert not ok_wallet_reft('Q4zqM7aXqm7gDQkUVLng9I')

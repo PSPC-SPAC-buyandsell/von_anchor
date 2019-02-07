@@ -58,6 +58,7 @@ class ErrorCode(IntEnum):
     # Errors to do with node pool operation
     ClosedPool = 4000
     AbsentGenesis = 4001
+    AbsentPool = 4002
 
     # Errors to do with caching
     CacheIndex = 5000
@@ -519,6 +520,21 @@ class AbsentGenesis(VonAnchorError):
         """
 
         super().__init__(ErrorCode.AbsentGenesis, message)
+
+
+class AbsentPool(VonAnchorError):
+    """
+    Pool required for operation but none is present.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.AbsentPool, message)
 
 
 class CacheIndex(VonAnchorError):

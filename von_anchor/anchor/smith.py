@@ -48,7 +48,7 @@ class AnchorSmith(BaseAnchor):
         LOGGER.debug('AnchorSmith.least_role <<< %s', rv)
         return rv
 
-    async def send_nym(self, did: str, verkey: str, alias: str = None, role: Role = None) -> None:
+    async def send_nym(self, did: str, verkey: str = None, alias: str = None, role: Role = None) -> None:
         """
         Send input anchor's cryptonym (including DID, verification key, plus optional alias and role)
         to the distributed ledger.
@@ -56,7 +56,7 @@ class AnchorSmith(BaseAnchor):
         Raise BadLedgerTxn on failure, BadIdentifier for bad DID, or BadRole for bad role.
 
         :param did: anchor DID to send to ledger
-        :param verkey: anchor verification key
+        :param verkey: optional anchor verification key
         :param alias: optional alias
         :param role: anchor role on the ledger (default value of USER)
         """

@@ -30,6 +30,7 @@ from von_anchor.anchor.rrbuilder import RevRegBuilder
 from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE
 from von_anchor.error import (
     AbsentCredDef,
+    AbsentPool,
     AbsentSchema,
     AbsentRevReg,
     AbsentTails,
@@ -268,6 +269,10 @@ class Issuer(RevRegBuilder):
             LOGGER.debug('Issuer.send_cred_def <!< Wallet %s is closed', self.wallet.name)
             raise WalletState('Wallet {} is closed'.format(self.wallet.name))
 
+        if not self.pool:
+            LOGGER.debug('Issuer.send_cred_def <!< issuer %s has no pool', self.wallet.name)
+            raise AbsentPool('Issuer {} has no pool: cannot send cred def'.format(self.wallet.name))
+
         rv_json = json.dumps({})
         schema_json = await self.get_schema(schema_key(s_id))
         schema = json.loads(schema_json)
@@ -374,6 +379,10 @@ class Issuer(RevRegBuilder):
         if not self.wallet.handle:
             LOGGER.debug('Issuer.create_cred_offer <!< Wallet %s is closed', self.wallet.name)
             raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+
+        if not self.pool:
+            LOGGER.debug('Issuer.create_cred_offer <!< issuer %s has no pool', self.wallet.name)
+            raise AbsentPool('Issuer {} has no pool: cannot create cred offer'.format(self.wallet.name))
 
         rv = None
         cd_id = cred_def_id(self.did, schema_seq_no, self.pool.protocol)
@@ -517,7 +526,7 @@ class Issuer(RevRegBuilder):
         """
 
         LOGGER.debug('Issuer.revoke_cred >>> rr_id: %s, cr_id: %s', rr_id, cr_id)
- 
+
         if not self.wallet.handle:
             LOGGER.debug('Issuer.revoke_cred <!< Wallet %s is closed', self.wallet.name)
             raise WalletState('Wallet {} is closed'.format(self.wallet.name))
@@ -548,7 +557,7 @@ class Issuer(RevRegBuilder):
                     x_indy.error_code))
 
         rr_ent_req_json = await ledger.build_revoc_reg_entry_request(self.did, rr_id, 'CL_ACCUM', rrdelta_json)
-        resp_json = await self._sign_submit(rr_ent_req_json)
+        resp_json = await self._sign_submit(rr_ent_req_json)  # raises AbsentPool or ClosedPool if applicable
         resp = json.loads(resp_json)
 
         rv = self.pool.protocol.txn2epoch(resp)

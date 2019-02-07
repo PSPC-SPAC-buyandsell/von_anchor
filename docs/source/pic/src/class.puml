@@ -15,6 +15,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 '/
 
+scale max 2000 width
+
 title Class Diagram
 
 class ErrorCode {
@@ -25,10 +27,7 @@ class VonAnchorError {
     +message
 }
 
-class SchemaKey << namedtuple >> {
-    +origin_did
-    +name
-    +version
+class SchemaKey {
 }
 
 class SchemaCache {
@@ -45,7 +44,7 @@ class SchemaCache {
     +clear()
 }
 
-class ClaimDefCache{
+class CredDefCache{
     +lock
 }
 
@@ -86,6 +85,10 @@ class RevocationCache {
     +lock
 }
 
+class EndpointCache {
+    +lock
+}
+
 class ArchivableCaches {
     {static} +clear()
     {static} +archive()
@@ -97,19 +100,30 @@ class Wallet {
     -_seed
     -_next_seed
     +name
-    +storage_type
     +handle
-    +did
-    +verkey
     +config
     +auto_remove
     +access_creds
-    +created
+    +storage_type
+    +did
+    +verkey
+    +create_local_did()
+    +get_local_did_infos()
+    +get_local_did_info()
+    +get_anchor_did()
     +create()
-    +find_did()
     +open()
     +close()
-    +reseed()
+    +write_pairwise()
+    +delete_pairwise()
+    +get_pairwise()
+    +encrypt()
+    +decrypt()
+    +sign()
+    +verify()
+    +pack()
+    +unpack()
+    +reseed_init()
     +reseed_apply()
     +remove()
 }
@@ -119,6 +133,8 @@ enum Protocol {
     {static} +V_14
     {static} +V_15
     {static} +V_16
+    {static} +V_17
+    {static} +V_18
     {static} +DEFAULT
 }
 
@@ -128,9 +144,10 @@ class NodePool {
     +handle
     +config
     +auto_remove
-    +remove()
+    +protocol
     +open()
     +close()
+    +remove()
 }
 
 enum Predicate {
@@ -145,6 +162,7 @@ enum Role {
     {static} +TRUSTEE
     {static} +TRUST_ANCHOR
     {static} +USER
+    {static} +ROLE_REMOVE
 }
 
 class BaseAnchor {
@@ -154,21 +172,23 @@ class BaseAnchor {
     +verkey
     -_submit()
     -_sign_submit()
-    {static} +role()
+    -_verkey_for()
+    {static} +least_role()
     +open()
     +close()
+    +reseed()
     +get_endpoint()
     +send_endpoint()
     +get_nym()
+    +get_nym_role()
     +get_cred_def()
     +get_rev_reg_def()
     +get_schema()
-    +get_txn()
-    +sign()
-    +verify()
     +encrypt()
     +decrypt()
-    +reseed()
+    +sign()
+    +verify()
+    +get_txn()
 }
 
 class AnchorSmith {
@@ -242,7 +262,7 @@ class Verifier {
     +config
     +dir_cache
     -_build_rr_state_json()
-    {static} +role()
+    {static} +least_role()
     +build_proof_req_json()
     +load_cache_for_verification()
     +open()
@@ -253,11 +273,11 @@ class TrusteeAnchor {
 }
 
 class NominalAnchor {
-    {static} +role()
+    {static} +least_role()
 }
 
 class SRIAnchor {
-    {static} +role()
+    {static} +least_role()
 }
 
 class BCRegistrarAnchor {
@@ -267,8 +287,41 @@ class OrgBookAnchor {
 }
 
 class OrgHubAnchor {
-    {static} +role()
+    {static} +least_role()
     +close()
+}
+
+enum PublicKeyType {
+    {static} +RSA_SIG_2018
+    {static} +ED25519_SIG_2018
+    {static} +EDDSA_SA_SIG_SECP256K1
+}
+
+class PublicKey {
+    +did
+    +id
+    +type
+    +value
+    +controller
+    +authn
+    +to_dict()
+}
+
+class Service {
+    +did
+    +id
+    +type
+    +endpoint
+    +to_dict()
+}
+
+class DIDDoc {
+    +did
+    +verkeys
+    +authnkeys
+    +services
+    +to_json()
+    {static} +from_json()
 }
 
 VonAnchorError "1" *-up- "1" ErrorCode
@@ -289,7 +342,7 @@ RevocationCache -> RevoCacheEntry
 
 BaseAnchor -up-> RevoCache
 
-BaseAnchor -up-> ClaimDefCache
+BaseAnchor -up-> CredDefCache
 BaseAnchor <|-down- AnchorSmith
 BaseAnchor <|-down- Origin
 BaseAnchor <|-down- HolderProver
@@ -328,4 +381,7 @@ NominalAnchor ..> Role
 OrgHubAnchor ..> Role
 SRIAnchor ..> Role
 
+PublicKey "1" *-- "1" PublicKeyType
+DIDDoc "1" *-- "n" PublicKey
+DIDDoc "1" *-- "n" Service
 @enduml

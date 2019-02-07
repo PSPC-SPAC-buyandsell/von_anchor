@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 
-from von_anchor.a2a.didinfo import canon_did, canon_ref
+from von_anchor.a2a.docutil import canon_did, canon_ref
 
 
 class Service:

@@ -56,7 +56,7 @@ class RevRegBuilder(BaseAnchor):
     whatever process creates an Issuer must create its corresponding RevRegBuilder separately.
     """
 
-    def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool = None, **kwargs) -> None:
         """
         Initializer for RevRegBuilder anchor. Retain input parameters; do not open wallet nor tails writer.
 
@@ -392,11 +392,11 @@ async def main(pool_name: str, pool_genesis_txn_path: str, wallet_name: str) -> 
         logging.getLogger(__name__).addHandler(logging.FileHandler(path_log))
 
     async with Wallet(
-                wallet_name,
-                start_data['wallet']['storage_type'],
-                start_data['wallet']['config'],
-                start_data['wallet']['access_creds']) as wallet, (
-            RevRegBuilder(wallet, pool, rrbx=True)) as rrban:
+            wallet_name,
+            start_data['wallet']['storage_type'],
+            start_data['wallet']['config'],
+            start_data['wallet']['access_creds']) as wallet, (
+                RevRegBuilder(wallet, pool, rrbx=True)) as rrban:
         await rrban.serve()
 
 

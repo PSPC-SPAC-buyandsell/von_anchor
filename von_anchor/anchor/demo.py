@@ -82,7 +82,7 @@ class OrgHubAnchor(Verifier, Origin, Issuer, OrgBookAnchor):
     (principally metadata), and as a holder-prover for its own and any of its registrars' credentials.
     """
 
-    def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool = None, **kwargs) -> None:
         """
         Initializer for org hub anchor. Retain input parameters; do not open wallet.
 
@@ -188,7 +188,7 @@ class SRIAnchor(Verifier, Origin, Issuer):
     of any holder-prover's.
     """
 
-    def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool = None, **kwargs) -> None:
         """
         Initializer for SRI anchor. Retain input parameters; do not open wallet.
 

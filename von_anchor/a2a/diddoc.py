@@ -19,7 +19,7 @@ import json
 
 from typing import Iterable, List, Union
 
-from von_anchor.a2a.didinfo import canon_did, canon_ref
+from von_anchor.a2a.docutil import canon_did, canon_ref
 from von_anchor.a2a.publickey import PublicKey, PublicKeyType
 from von_anchor.a2a.service import Service
 
