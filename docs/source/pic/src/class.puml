@@ -138,16 +138,22 @@ enum Protocol {
     {static} +DEFAULT
 }
 
+class NodePoolManager {
+    +protocol
+    +add_config()
+    +list()
+    +get()
+    +remove()
+}
+
 class NodePool {
     +name
-    +genesis_txn_path
     +handle
     +config
-    +auto_remove
     +protocol
     +open()
     +close()
-    +remove()
+    +refresh()
 }
 
 enum Predicate {
@@ -309,7 +315,7 @@ class PublicKey {
 
 class Service {
     +did
-    +id
+    +idp
     +type
     +endpoint
     +to_dict()
@@ -328,7 +334,9 @@ VonAnchorError "1" *-up- "1" ErrorCode
 SchemaCache -left-> SchemaKey
 BaseAnchor -left-> SchemaKey
 
-NodePool "1" *-- "1" Protocol
+NodePoolManager "1" *-- "1" Protocol
+NodePoolManager ..> NodePool
+NodePool *-- Protocol
 
 RevRegBuilder *-- State
 

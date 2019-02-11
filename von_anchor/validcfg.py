@@ -35,15 +35,21 @@ CONFIG_JSON_SCHEMA = {
         '$schema': 'http://json-schema.org/draft-04/schema',
         'type': 'object',
         'properties': {
-            'auto-remove': {
-                'type': 'boolean'
+            'timeout': {
+                'type': 'integer'
             },
-            'protocol': {
-                'type': 'string',
-                'enum': ['1.3', '1.4', '1.5', '1.6']
+            'extended_timeout': {
+                'type': 'integer'
+            },
+            'preordered_nodes': {
+                'type': 'array',
+                'items': {
+                    'type': 'string',
+                    'uniqueItems': True
+                }
             }
         },
-        'additionalProperties': True
+        'additionalProperties': False
     },
     'holder-prover': {
         '$schema': 'http://json-schema.org/draft-04/schema',

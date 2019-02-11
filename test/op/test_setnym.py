@@ -26,7 +26,7 @@ from von_anchor import NominalAnchor, TrusteeAnchor, SRIAnchor
 from von_anchor.error import AbsentPool, ExtantWallet
 from von_anchor.frill import Ink, inis2dict, ppjson
 from von_anchor.indytween import Role
-from von_anchor.nodepool import NodePool
+from von_anchor.nodepool import NodePool, NodePoolManager
 from von_anchor.wallet import Wallet
 
 
@@ -50,8 +50,7 @@ async def get_wallets(wallet_data, open_all, auto_remove=False):
 async def test_setnym(
         pool_ip,
         pool_name,
-        pool_genesis_txn_file,
-        pool_genesis_txn_path,
+        pool_genesis_txn_data,
         seed_trustee1,
         path_setnym_ini,
         setnym_ini_file):
@@ -61,6 +60,11 @@ async def test_setnym(
     with open(path_setnym_ini, 'r') as cfg_fh:
         print('\n\n== 1 == Initial configuration:\n{}'.format(cfg_fh.read()))
     cfg = inis2dict(str(path_setnym_ini))
+
+    # Set up node pool ledger config and wallets, open pool, init anchors
+    manager = NodePoolManager()
+    if pool_name not in await manager.list():
+        await manager.add_config(pool_name, pool_genesis_txn_data)
 
     seeds = {
         'trustee-anchor': seed_trustee1,
@@ -77,14 +81,14 @@ async def test_setnym(
     wallets.pop('x-anchor')
 
     # Open pool, check if nym already present
-    p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
-    await p.open()
-    assert p.handle
+    pool = manager.get(pool_name)
+    await pool.open()
+    assert pool.handle
 
-    tan = TrusteeAnchor(wallets['trustee-anchor'], p)
+    tan = TrusteeAnchor(wallets['trustee-anchor'], pool)
     await tan.open()
 
-    noman = NominalAnchor(wallets[cfg['VON Anchor']['wallet.name']], p)
+    noman = NominalAnchor(wallets[cfg['VON Anchor']['wallet.name']], pool)
 
     nym = json.loads(await noman.get_nym(noman.did))
     print('\n\n== 2 == Nym {} on ledger for anchor {} on DID {}'.format(
@@ -93,7 +97,7 @@ async def test_setnym(
         noman.did))
 
     await tan.close()
-    await p.close()
+    await pool.close()
 
     sub_proc = subprocess.run(
         [
@@ -106,7 +110,7 @@ async def test_setnym(
     assert not sub_proc.returncode
     print('\n\n== 3 == Set nym with TRUST_ANCHOR role on {} for {}'.format(noman.did, noman.wallet.name))
 
-    await p.open()
+    await pool.open()
     await noman.open()
     nym = json.loads(await noman.get_nym(noman.did))
     assert nym and Role.get(nym['role']) == Role.TRUST_ANCHOR
@@ -115,7 +119,7 @@ async def test_setnym(
         noman.wallet.name,
         ppjson(nym)))
     await noman.close()
-    await p.close()
+    await pool.close()
 
     with open(path_setnym_ini, 'w+') as ini_fh:
         for section in cfg:
@@ -139,7 +143,7 @@ async def test_setnym(
     assert not sub_proc.returncode
     print('\n\n== 6 == Set nym with default role on {} for {}'.format(noman.did, noman.wallet.name))
 
-    await p.open()
+    await pool.open()
     await noman.open()
     nym = json.loads(await noman.get_nym(noman.did))
     assert nym and Role.get(nym['role']) == Role.USER
@@ -149,7 +153,7 @@ async def test_setnym(
         noman.wallet.name,
         ppjson(nym)))
     await noman.close()
-    await p.close()
+    await pool.close()
 
     sub_proc = subprocess.run(  #  do it again
         [
@@ -162,7 +166,7 @@ async def test_setnym(
     assert not sub_proc.returncode
     print('\n\n== 8 == Set nym again with default role on {} for {}'.format(noman.did, noman.wallet.name))
 
-    await p.open()
+    await pool.open()
     await noman.open()
     nym = json.loads(await noman.get_nym(noman.did))
     last_nym_seqno = nym['seqNo']
@@ -171,7 +175,7 @@ async def test_setnym(
         noman.wallet.name,
         ppjson(nym)))
     await noman.close()
-    await p.close()
+    await pool.close()
 
     with open(path_setnym_ini, 'w+') as ini_fh:
         for section in cfg:
@@ -197,21 +201,21 @@ async def test_setnym(
         noman.wallet.name,
         sub_proc.stdout.decode()))
 
-    await p.open()
+    await pool.open()
     await noman.open()
     nym = json.loads(await noman.get_nym(noman.did))
     noman_role = await noman.get_nym_role()
     assert nym and nym['seqNo'] == last_nym_seqno
     await noman.close()
-    await p.close()
+    await pool.close()
 
     print('\n\n== 12 == Got nym transaction from ledger for DID {} ({}): {}'.format(
         noman.did,
         noman.wallet.name,
         ppjson(nym)))
 
-    await p.open()
-    san = SRIAnchor(wallets[cfg['VON Anchor']['wallet.name']], p)
+    await pool.open()
+    san = SRIAnchor(wallets[cfg['VON Anchor']['wallet.name']], pool)
     await san.open()
     next_seed = "{}000000000000VonAnchor1".format(int(time()) + 1)
     await san.reseed(next_seed)
@@ -226,6 +230,6 @@ async def test_setnym(
         ppjson(nym)))
 
     await san.close()
-    await p.close()
+    await pool.close()
     for name in wallets:
         await wallets[name].close()

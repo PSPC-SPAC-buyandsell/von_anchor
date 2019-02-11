@@ -55,10 +55,10 @@ class ErrorCode(IntEnum):
     AbsentRecord = 3007
     AbsentMessage = 3008
 
-    # Errors to do with node pool operation
+    # Errors to do with node pool management and operation
     ClosedPool = 4000
-    AbsentGenesis = 4001
     AbsentPool = 4002
+    ExtantPool = 4003
 
     # Errors to do with caching
     CacheIndex = 5000
@@ -535,6 +535,21 @@ class AbsentPool(VonAnchorError):
         """
 
         super().__init__(ErrorCode.AbsentPool, message)
+
+
+class ExtantPool(VonAnchorError):
+    """
+    Pool already exists.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.ExtantPool, message)
 
 
 class CacheIndex(VonAnchorError):

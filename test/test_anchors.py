@@ -68,7 +68,7 @@ from von_anchor.error import (
     WalletState)
 from von_anchor.frill import Ink, ppjson
 from von_anchor.indytween import raw
-from von_anchor.nodepool import NodePool
+from von_anchor.nodepool import NodePool, NodePoolManager
 from von_anchor.tails import Tails
 from von_anchor.util import (
     box_ids,
@@ -174,8 +174,11 @@ async def test_anchors_api(
 
     EPOCH_START = 1234567890  # guaranteed to be before any revocation registry creation
 
-    # Open pool, init anchors
-    p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
+    # Set up node pool ledger config and wallets, open pool, init anchors
+    manager = NodePoolManager()
+    if pool_name not in await manager.list():
+        await manager.add_config(pool_name, pool_genesis_txn_path)
+    p = manager.get(pool_name)
 
     try:  # exercise creation on nonexistent wallet
         SRIAnchor(Wallet('xxx', None, {'auto-remove': True}), p)
@@ -1751,6 +1754,11 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
 
     print(Ink.YELLOW('\n\n== Testing offline anchor operation =='))
 
+    # Set up node pool leder config, wallets
+    manager = NodePoolManager()
+    if pool_name not in await manager.list():
+        await manager.add_config(pool_name, pool_genesis_txn_path)
+
     wallets = await get_wallets(
         {
             'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000',
@@ -1759,8 +1767,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
         open_all=False)
 
     # Open PSPC Org Book anchor and create proof without opening node pool
-    path = Path(path_home, 'pool', pool_name)
-    p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
+    p = manager.get(pool_name)
     pspcoban = OrgBookAnchor(
         wallets['pspc-org-book'],
         p,
@@ -1858,13 +1865,10 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
 
     print(Ink.YELLOW('\n\n== Testing anchor survival on node pool restart =='))
 
-    # Open pool, close and auto-remove it
-    path = Path(path_home, 'pool', pool_name)
-    p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True})
-    await p.open()
-    assert p.handle is not None
-    await p.close()
-    assert not path.exists(), 'Pool path {} still present'.format(path)
+    # Set node pool ledger config, wallets
+    manager = NodePoolManager()
+    if pool_name not in await manager.list():
+        await manager.add_config(pool_name, pool_genesis_txn_path)
 
     wallets = await get_wallets(
         {
@@ -1876,7 +1880,7 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
     # Open pool, SRI + PSPC Org Book anchors (the tests above should obviate its need for trustee-anchor)
     async with wallets['sri'] as w_sri, (
         wallets['pspc-org-book']) as w_pspc, (
-        NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})) as p, (
+        manager.get(pool_name)) as p, (
         SRIAnchor(w_sri, p)) as san, (
         OrgBookAnchor(
             w_pspc,
@@ -1921,6 +1925,11 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
 
     print(Ink.YELLOW('\n\n== Testing anchor revocation cache reg update maintenance =='))
 
+    # Set up node pool ledger config, wallets
+    manager = NodePoolManager()
+    if pool_name not in await manager.list():
+        await manager.add_config(pool_name, pool_genesis_txn_path)
+
     SRI_NAME = 'sri-0'
     wallets = await get_wallets(
         {
@@ -1931,7 +1940,7 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
 
     async with wallets['pspc-org-book'] as w_pspc, (
             wallets[SRI_NAME]) as w_sri, (
-            NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})) as p, (
+            manager.get(pool_name)) as p, (
             OrgBookAnchor(w_pspc, p)) as pspcoban, (
             SRIAnchor(w_sri, p, rrbx=True)) as san:  # exercise external rev reg builder
 
@@ -2109,6 +2118,11 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
 
     print(Ink.YELLOW('\n\n== Testing anchor cache locking =='))
 
+    # Set up node pool ledger config, wallets
+    manager = NodePoolManager()
+    if pool_name not in await manager.list():
+        await manager.add_config(pool_name, pool_genesis_txn_path)
+
     wallets = await get_wallets(
         {
             'sri-0': 'SRI-Anchor-000000000000000000000',
@@ -2121,7 +2135,7 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
     async with wallets['sri-0'] as w_sri0, (
             wallets['sri-1']) as w_sri1, (
             wallets['sri-2']) as w_sri2, (
-            NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})) as p, (
+            manager.get(pool_name)) as p, (
             SRIAnchor(w_sri0, p)) as san0, (
             SRIAnchor(w_sri1, p)) as san1, (
             SRIAnchor(w_sri2, p)) as san2:
@@ -2177,6 +2191,11 @@ async def test_anchor_reseed(
 
     print(Ink.YELLOW('\n\n== Testing anchor reseed'))
 
+    # Set up node pool ledger config, wallets
+    manager = NodePoolManager()
+    if pool_name not in await manager.list():
+        await manager.add_config(pool_name, pool_genesis_txn_path)
+
     now = int(time())  # ten digits, unique and disposable each run
     rsoban_seeds = ['Reseed-Org-Book-Anchor{}'.format(now + i) for i in range(3)]  # makes 32 characters
     # Generate seeds (in case of re-run on existing ledger, use fresh disposable identity every time)
@@ -2191,7 +2210,7 @@ async def test_anchor_reseed(
     # Open pool, init anchors
     async with wallets['trustee-anchor'] as w_trustee, (
             wallets['reseed-org-book']) as w_reseed, (
-            NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})) as p, (
+            manager.get(pool_name)) as p, (
             TrusteeAnchor(w_trustee, p)) as tan, (
             OrgBookAnchor(w_reseed, p)) as rsan, (
             NominalAnchor(w_reseed, p)) as noman:
@@ -2261,8 +2280,7 @@ async def test_anchor_reseed(
     # Re-open
     w_rsob = Wallet('reseed-org-book', None, {'auto-remove': True})
     await w_rsob.open()  # avoid context manager open for wallet, since resetting closes it and switches it
-    async with NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False}) as p, (
-            OrgBookAnchor(w_rsob, p)) as rsan:
+    async with NodePool(pool_name) as p, OrgBookAnchor(w_rsob, p) as rsan:
         assert p.handle
 
         print('\n\n== 8 == Re-opened anchor wallet with new seed: using verkey {}'.format(rsan.verkey))
@@ -2284,14 +2302,19 @@ async def test_anchors_cache_only(
 
     _set_cache_state(False)
 
+    # Set up node pool ledger config, wallets
+    manager = NodePoolManager()
+    if pool_name not in await manager.list():
+        await manager.add_config(pool_name, pool_genesis_txn_path)
+
     seeds = {
         'sri': 'SRI-Anchor-000000000000000000000',
         'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000'
     }
     wallets = await get_wallets(seeds, open_all=True)
 
-    # Open pool, init anchors
-    p = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
+    # Create pool, init anchors, then open pool afterward
+    p = manager.get(pool_name)
 
     san = SRIAnchor(wallets['sri'], p)
     pspcoban = OrgBookAnchor(
@@ -2688,6 +2711,11 @@ async def test_util_wranglers(
 
     print(Ink.YELLOW('\n\n== Testing utility wranglers =='))
 
+    # Set up node pool ledger config, wallets
+    manager = NodePoolManager()
+    if pool_name not in await manager.list():
+        await manager.add_config(pool_name, pool_genesis_txn_path)
+
     wallets = await get_wallets(
         {
             'sri': 'SRI-Anchor-000000000000000000000',
@@ -2698,7 +2726,7 @@ async def test_util_wranglers(
     # Open pool, init anchors
     async with wallets['sri'] as w_sri, (
             wallets['pspc-org-book']) as w_pspc, (
-            NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})) as p, (
+            manager.get(pool_name)) as p, (
             SRIAnchor(w_sri, p)) as san, (
             OrgBookAnchor(w_pspc, p)) as pspcoban:
 
@@ -3032,6 +3060,11 @@ async def test_crypto(
 
     print(Ink.YELLOW('\n\n== Testing encryption/decryption =='))
 
+    # Set up node pool ledger config, wallets
+    manager = NodePoolManager()
+    if pool_name not in await manager.list():
+        await manager.add_config(pool_name, pool_genesis_txn_path)
+
     wallets = await get_wallets(
         {
             'sri': 'SRI-Anchor-000000000000000000000',
@@ -3042,7 +3075,7 @@ async def test_crypto(
     # Open pool, init anchors
     async with wallets['sri'] as w_sri, (
             wallets['pspc-org-book']) as w_pspc, (
-            NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})) as p, (
+            manager.get(pool_name)) as p, (
             SRIAnchor(w_sri, p)) as san, (
             OrgBookAnchor(w_pspc, p)) as pspcoban:
 
@@ -3311,6 +3344,11 @@ async def test_share_wallet(
 
     print(Ink.YELLOW('\n\n== Testing multiple anchors sharing a wallet =='))
 
+    # Set up node pool ledger config, wallets
+    manager = NodePoolManager()
+    if pool_name not in await manager.list():
+        await manager.add_config(pool_name, pool_genesis_txn_path)
+
     wallets = await get_wallets(
         {
             'multipass': 'Multi-Pass-000000000000000000000',
@@ -3320,7 +3358,7 @@ async def test_share_wallet(
 
     # Open pool, init anchors
     async with wallets['multipass'] as w_multi, (
-            NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})) as p, (
+            manager.get(pool_name)) as p, (
             SRIAnchor(w_multi, p)) as san, (
             NominalAnchor(w_multi, p)) as noman:
 

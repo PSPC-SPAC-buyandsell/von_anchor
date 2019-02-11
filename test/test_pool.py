@@ -17,69 +17,116 @@ limitations under the License.
 
 import pytest
 
-from pathlib import Path
+from tempfile import NamedTemporaryFile
+from time import sleep, time
 
-from von_anchor.error import AbsentGenesis, JSONValidation
+from von_anchor.error import AbsentGenesis, AbsentPool, ExtantPool, JSONValidation
 from von_anchor.frill import Ink
-from von_anchor.nodepool import NodePool, Protocol
+from von_anchor.nodepool import NodePool, NodePoolManager, Protocol
 
 
-
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
-async def test_pool_open(
-        path_home,
-        pool_name,
-        pool_ip,
-        pool_genesis_txn_path,
-        pool_genesis_txn_file):
+async def test_protocol():
 
-    print(Ink.YELLOW('\n\n== Testing Pool Config vs. IP {} =='.format(pool_ip)))
+    print(Ink.YELLOW('\n\n== Testing Node Pool Protocols =='))
 
-    assert Protocol.V_13.indy() != Protocol.V_14.indy()
+    assert Protocol.V_13.indy() != Protocol.V_14.indy()  # all the same except indy-node 1.3
     assert Protocol.V_14.indy() == Protocol.V_15.indy()
     assert Protocol.V_15.indy() == Protocol.V_16.indy()
-    assert Protocol.V_16.indy() == Protocol.DEFAULT.indy()
+    assert Protocol.V_16.indy() == Protocol.V_17.indy()
+    assert Protocol.V_17.indy() == Protocol.V_18.indy()
+    assert Protocol.V_18.indy() == Protocol.DEFAULT.indy()
 
-    path = Path(path_home, 'pool', pool_name)
+    print('\n\n== 1 == Protocols OK')
+
+@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.asyncio
+async def test_manager(path_home, pool_genesis_txn_data, pool_ip):
+
+    print(Ink.YELLOW('\n\n== Testing Node Pool Manager vs. IP {} =='.format(pool_ip)))
+
+    # Create node pool manager
+    manager = NodePoolManager()
+    assert manager.protocol == Protocol.DEFAULT
+
+    # Create new pool on raw data
+    name = 'pool-{}'.format(int(time()))
+    assert name not in await manager.list()
+    print('\n\n== 1 == Pool {} not initially configured'.format(name))
+
+    await manager.add_config(name, pool_genesis_txn_data)
+    assert name in await manager.list()
+    print('\n\n== 2 == Added pool {} configuration on genesis transaction data'.format(name))
 
     try:
-        NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': 'non-boolean'})
+        await manager.add_config(name, pool_genesis_txn_data)
+        assert False
+    except ExtantPool:
+        pass
+
+    try:
+        pool = manager.get('no-such-pool.{}'.format(int(time())))
+        await pool.open()
+        assert False
+    except AbsentPool:
+        pass
+
+    pool = manager.get(name)
+    await pool.open()
+    await pool.refresh()
+    assert pool.handle is not None
+    await pool.close()
+    print('\n\n== 3 == Opened, refreshed, and closed pool {} on default configuration'.format(name))
+
+    pool = manager.get(name, {'timeout': 3600, 'extended_timeout': 7200})
+    await pool.open()
+    await pool.refresh()
+    assert pool.handle is not None
+    await pool.close()
+    print('\n\n== 4 == Opened, refreshed, and closed pool {} on explicit configuration'.format(name))
+
+    await manager.remove(name)
+    assert name not in await manager.list()
+    print('\n\n== 5 == Removed pool {} configuration'.format(name))
+
+    with NamedTemporaryFile(mode='w+b', buffering=0) as fh_gen:
+        fh_gen.write(pool_genesis_txn_data.encode())
+        await manager.add_config(name, fh_gen.name)
+    assert name in await manager.list()
+    print('\n\n== 6 == Added pool {} configuration on genesis transaction file'.format(name))
+
+    pool = manager.get(name, {'timeout': 3600, 'extended_timeout': 7200})
+    await pool.open()
+    await pool.refresh()
+    assert pool.handle is not None
+    await pool.close()
+    print('\n\n== 7 == Opened, refreshed, and closed pool {} on explicit configuration'.format(name))
+
+    await manager.remove(name)
+    assert name not in await manager.list()
+    print('\n\n== 8 == Removed pool {} configuration'.format(name))
+
+
+@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.asyncio
+async def test_pool_open(path_home, pool_name, pool_genesis_txn_data, pool_ip):
+
+    print(Ink.YELLOW('\n\n== Testing Node Pool Config vs. IP {} =='.format(pool_ip)))
+
+    try:
+        NodePool(pool_name, config={'extra': 'not allowed'})
         assert False
     except JSONValidation:
         pass
 
-    try:
-        NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True, 'protocol': '0.0a'})
-        assert False
-    except JSONValidation:
-        pass
-
-    try:
-        pool = NodePool(pool_name)
-    except AbsentGenesis:
-        assert False
-
-    try:
-        pool = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True, 'extra-property': True})
-        await pool.remove()
-        assert not path.exists(), 'Pool path {} still present'.format(path)
-    except JSONValidation:
-        assert False
-
-    pool = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': True, 'protocol': '1.6'})
+    # Set up node pool ledger config and wallets, open pool, init anchors
+    manager = NodePoolManager()
+    if pool_name not in await manager.list():
+        await manager.add_config(pool_name, pool_genesis_txn_data)
+    pool = manager.get(pool_name)
     await pool.open()
     assert pool.handle is not None
     await pool.close()
-    assert not path.exists(), 'Pool path {} still present'.format(path)
 
-    pool = NodePool(pool_name, pool_genesis_txn_path)  # auto-remove default: False, protocol default: latest
-    await pool.open()
-    assert pool.handle is not None
-    await pool.close()
-    assert path.exists(), 'Pool path {} not present'.format(path)
-
-    pool = NodePool(pool_name, None, {'auto-remove': True})  # check pool reopen, optionability of genesis txn path
-    await pool.open()
-    assert pool.handle is not None
-    await pool.close()
-    assert not path.exists(), 'Pool path {} still present'.format(path)
+    print('\n\n== 1 == Pool {} opens and closes OK from existing ledger configuration'.format(pool_name))

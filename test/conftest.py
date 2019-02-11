@@ -69,7 +69,7 @@ def path_temp():
 
     if path.exists():
         logger.debug("path_temp: Cleanup tmp path: %s", path)
-        rmtree(str(path))
+        # rmtree(str(path))
 
     logger.debug("path_temp: <<<")
 
@@ -191,40 +191,6 @@ def pool_genesis_txn_file(pool_genesis_txn_path, pool_genesis_txn_data):
 
 
 @pytest.fixture
-def pool_ledger_config_cleanup():
-    return True
-
-
-# noinspection PyUnusedLocal
-@pytest.fixture
-def pool_ledger_config(event_loop, pool_name, pool_genesis_txn_path, pool_genesis_txn_file,
-                       pool_ledger_config_cleanup, path_home):
-    logger = logging.getLogger(__name__)
-    logger.debug("pool_ledger_config: >>> pool_name: %r, pool_genesis_txn_path: %r, pool_genesis_txn_file: %r,"
-                 " pool_ledger_config_cleanup: %r, path_home: %r",
-                 pool_name,
-                 pool_genesis_txn_path,
-                 pool_genesis_txn_file,
-                 pool_ledger_config_cleanup,
-                 path_home)
-
-    logger.debug("pool_ledger_config: Creating pool ledger config")
-    event_loop.run_until_complete(pool.create_pool_ledger_config(
-        pool_name,
-        json.dumps({
-            "genesis_txn": str(pool_genesis_txn_path)
-        })))
-
-    logger.debug("pool_ledger_config: yield")
-    yield
-
-    logger.debug("pool_ledger_config: Deleting pool ledger config")
-    event_loop.run_until_complete(pool.delete_pool_ledger_config(pool_name)) if pool_ledger_config_cleanup else None
-
-    logger.debug("pool_ledger_config: <<<")
-
-
-@pytest.fixture
 def pool_handle_cleanup():
     logger = logging.getLogger(__name__)
     logger.debug("pool_handle_cleanup: >>>")
@@ -248,11 +214,10 @@ def pool_config():
 
 # noinspection PyUnusedLocal
 @pytest.fixture
-def pool_handle(event_loop, pool_name, pool_ledger_config, pool_config, pool_handle_cleanup):
+def pool_handle(event_loop, pool_name, pool_config, pool_handle_cleanup):
     logger = logging.getLogger(__name__)
-    logger.debug("pool_handle: >>> pool_name: %r, pool_ledger_config: %r, pool_config: %r, pool_handle_cleanup: %r",
+    logger.debug("pool_handle: >>> pool_name: %r, pool_config: %r, pool_handle_cleanup: %r",
                  pool_name,
-                 pool_ledger_config,
                  pool_config,
                  pool_handle_cleanup)
 

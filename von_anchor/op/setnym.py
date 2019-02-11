@@ -27,10 +27,10 @@ if DIR_VON_ANCHOR not in sys_path:
     sys_path.append(DIR_VON_ANCHOR)
 
 from von_anchor import NominalAnchor, TrusteeAnchor
-from von_anchor.error import AbsentNym, BadRole, ExtantWallet, VonAnchorError
+from von_anchor.error import AbsentNym, AbsentPool, BadRole, ExtantWallet, VonAnchorError
 from von_anchor.frill import do_wait, inis2dict
 from von_anchor.indytween import Role
-from von_anchor.nodepool import NodePool
+from von_anchor.nodepool import NodePool, NodePoolManager
 from von_anchor.util import AnchorData, NodePoolData, ok_role
 from von_anchor.wallet import Wallet
 
@@ -123,9 +123,18 @@ async def setnym(ini_path: str) -> int:
             except ExtantWallet:
                 pass
 
+    manager = NodePoolManager()
+    if pool_data.name not in await manager.list():
+        if pool_data.genesis_txn_path:
+            await manager.add_config(pool_data.name, pool_data.genesis_txn_path)
+        else:
+            raise AbsentPool('Node pool {} has no ledger configuration, but {} specifies no genesis txn path'.format(
+                pool_data.name,
+                ini_path))
+
     async with an_wallet['tan'] as w_tan, (
             an_wallet['van']) as w_van, (
-            NodePool(pool_data.name, pool_data.genesis_txn_path)) as pool, (
+            manager.get(pool_data.name)) as pool, (
             TrusteeAnchor(w_tan, pool)) as tan, (
             NominalAnchor(w_van, pool)) as van:
 

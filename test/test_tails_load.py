@@ -26,7 +26,7 @@ import pytest
 from von_anchor import OrgHubAnchor, RevRegBuilder, TrusteeAnchor
 from von_anchor.error import AbsentSchema, ExtantWallet
 from von_anchor.frill import Ink, Stopwatch, ppjson
-from von_anchor.nodepool import NodePool
+from von_anchor.nodepool import NodePool, NodePoolManager
 from von_anchor.tails import Tails
 from von_anchor.util import (
     cred_def_id,
@@ -51,8 +51,7 @@ async def beep(msg, n):
 async def test_anchors_tails_load(
         pool_ip,
         pool_name,
-        pool_genesis_txn_file,
-        pool_genesis_txn_path,
+        pool_genesis_txn_data,
         seed_trustee1):
 
     rrbx = True
@@ -61,8 +60,11 @@ async def test_anchors_tails_load(
     WALLET_NAME = 'superstar'
     await RevRegBuilder.stop(WALLET_NAME)  # in case of re-run
 
-    # Open pool, init anchors
-    pool = NodePool(pool_name, pool_genesis_txn_path, {'auto-remove': False})
+    # Set up node pool ledger config and wallets, open pool, init anchors
+    manager = NodePoolManager()
+    if pool_name not in await manager.list():
+        await manager.add_config(pool_name, pool_genesis_txn_data)
+    pool = manager.get(pool_name)
     await pool.open()
 
     wallets = {

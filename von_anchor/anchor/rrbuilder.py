@@ -56,7 +56,7 @@ class RevRegBuilder(BaseAnchor):
     whatever process creates an Issuer must create its corresponding RevRegBuilder separately.
     """
 
-    def __init__(self, wallet: Wallet, pool: NodePool = None, **kwargs) -> None:
+    def __init__(self, wallet: Wallet, pool: NodePool, **kwargs) -> None:
         """
         Initializer for RevRegBuilder anchor. Retain input parameters; do not open wallet nor tails writer.
 
@@ -96,8 +96,6 @@ class RevRegBuilder(BaseAnchor):
                     realpath(__file__),
                     '-p',
                     pool.name,
-                    '-g',
-                    pool.genesis_txn_path,
                     '-n',
                     wallet.name])
                 if rrb_proc and rrb_proc.pid:
@@ -368,19 +366,18 @@ class RevRegBuilder(BaseAnchor):
         LOGGER.debug('RevRegBuilder._create_rev_reg <<<')
 
 
-async def main(pool_name: str, pool_genesis_txn_path: str, wallet_name: str) -> None:
+async def main(pool_name: str, wallet_name: str) -> None:
     """
     Main line for revocation registry builder operating in external process on behalf of issuer agent.
 
     :param pool_name: name of (running) node pool
-    :param genesis_txn_path: path to genesis transaction file
     :param wallet_name: wallet name - must match that of issuer with existing wallet
     """
 
     logging.basicConfig(level=logging.WARN, format='%(levelname)-8s | %(name)-12s | %(message)s')
     logging.getLogger('indy').setLevel(logging.ERROR)
 
-    pool = NodePool(pool_name, pool_genesis_txn_path)
+    pool = NodePool(pool_name)
     path_start = join(RevRegBuilder.dir_tails_sentinel(wallet_name), '.start')
 
     with open(path_start, 'r') as fh_start:
@@ -403,9 +400,8 @@ async def main(pool_name: str, pool_genesis_txn_path: str, wallet_name: str) -> 
 if __name__ == '__main__':
     PARSER = argparse.ArgumentParser()
     PARSER.add_argument('-p', '--pool', help='pool name', required=True)
-    PARSER.add_argument('-g', '--genesis', help='genesis transaction path', required=True)
     PARSER.add_argument('-n', '--name', help='wallet name', required=True)
     ARGS = PARSER.parse_args()
 
     LOOP = asyncio.get_event_loop()
-    LOOP.run_until_complete(main(ARGS.pool, ARGS.genesis, ARGS.name))
+    LOOP.run_until_complete(main(ARGS.pool, ARGS.name))
