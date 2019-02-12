@@ -113,14 +113,14 @@ class DIDDoc:
         else:
             self._services = []
 
-    def to_json(self) -> str:
+    def serialize(self) -> str:
         """
-        Dump current object as json (JSON-LD).
+        Dump current object to a JSON-compatible dictionary
 
-        :return: json representation of current DIDDoc
+        :return: dict representation of current DIDDoc
         """
 
-        return json.dumps({
+        return {
             '@context': DIDDoc.CONTEXT,
             'id': canon_ref(self.did, self.did),
             'publicKey': [verkey.to_dict() for verkey in self.verkeys],
@@ -129,18 +129,26 @@ class DIDDoc:
                 'publicKey': canon_ref(self.did, verkey.id)
             } for verkey in self.verkeys if verkey.authn],
             'service': [service.to_dict() for service in self.services]
-        })
+        }
+
+    def to_json(self) -> str:
+        """
+        Dump current object as json (JSON-LD).
+
+        :return: json representation of current DIDDoc
+        """
+
+        return json.dumps(self.serialize())
 
     @staticmethod
-    def from_json(did_doc_json: str) -> 'DIDDoc':
+    def deserialize(did_doc: dict) -> 'DIDDoc':
         """
-        Construct DIDDoc object from json representation.
+        Construct DIDDoc object from dict representation.
 
-        :param did_doc_json: DIDDoc json reprentation.
-        :return: DIDDoc from input json.
+        :param did_doc: DIDDoc dict reprentation.
+        :return: DIDDoc from input.
         """
 
-        did_doc = json.loads(did_doc_json)
         rv = DIDDoc(did_doc['id'])
 
         verkeys = []
@@ -171,6 +179,18 @@ class DIDDoc:
             service['serviceEndpoint']) for service in did_doc['service']]
 
         return rv
+
+    @classmethod
+    def from_json(cls, did_doc_json: str) -> 'DIDDoc':
+        """
+        Construct DIDDoc object from json representation.
+
+        :param did_doc_json: DIDDoc json reprentation.
+        :return: DIDDoc from input json.
+        """
+
+        did_doc = json.loads(did_doc_json)
+        return cls.deserialize(did_doc)
 
     def __str__(self) -> str:
         """
