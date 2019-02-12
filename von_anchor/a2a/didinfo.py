@@ -81,7 +81,7 @@ class DIDInfo:
         :return: whether DIDInfos are equivalent
         """
 
-        return self.did == other.did and self.verkey == other.verkey and self.metadata == self.metadata
+        return self.did == other.did and self.verkey == other.verkey and self.metadata == other.metadata
 
     def __repr__(self) -> str:
         """
