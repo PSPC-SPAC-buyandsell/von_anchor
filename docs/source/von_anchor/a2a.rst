@@ -19,7 +19,7 @@ The initializer takes only the DID that is the subject for the DID document. Not
 
 The caller must use the accessor methods to populate (public) verification keys and endpoints.
 
-The ``to_json()`` method outputs the DID document in its current state as JSON-LD. The static ``from_json()`` method returns a ``DIDDoc`` object from an input JSON-LD DID document.
+The ``serialize()`` and ``to_json()`` methods output the DID document in its current state as a dict or as JSON-LD respectively. The class ``deserialize()`` and ``from_json()`` methods return a ``DIDDoc`` object from an input dict or JSON-LD DID document respectively.
 
 Public Keys
 +++++++++++++++++++++++++++++++++++

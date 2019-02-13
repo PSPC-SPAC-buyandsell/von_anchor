@@ -144,7 +144,7 @@ class PairwiseInfo {
 
 class EndpointInfo {
     +endpoint
-    +host
+    +ip_addr
     +port
     +verkey
 }
@@ -351,7 +351,9 @@ class DIDDoc {
     +authnkeys
     +services
     +to_json()
+    +serialize()
     {static} +from_json()
+    {static} +deserialize()
 }
 
 VonAnchorError "1" *-up- "1" ErrorCode

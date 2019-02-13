@@ -120,7 +120,7 @@ class PairwiseInfo:
             self.their_verkey == other.their_verkey and
             self.my_did == other.my_did and
             self.my_verkey == other.my_verkey and
-            self.metadata == self.metadata)
+            self.metadata == other.metadata)
 
     def __repr__(self) -> str:
         """

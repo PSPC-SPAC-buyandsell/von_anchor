@@ -65,14 +65,13 @@ async def test_a2a():
             }
         ]
     }
-    dd_json = json.dumps(dd_in)
 
-    dd_out = DIDDoc.from_json(dd_json)
-    assert len(dd_out.verkeys) == len(dd_in['publicKey'])
-    assert len(dd_out.authnkeys) == len(dd_in['authentication'])
+    dd = DIDDoc.deserialize(dd_in)
+    assert len(dd.verkeys) == len(dd_in['publicKey'])
+    assert len(dd.authnkeys) == len(dd_in['authentication'])
 
-    dd_out_json = dd_out.to_json()
-    print('\n\n== 1 == DID Doc on referenced authn keys from JSON and back again: {}'.format(ppjson(dd_out_json)))
+    dd_out = dd.serialize()
+    print('\n\n== 1 == DID Doc on referenced authn keys from dict and back again: {}'.format(ppjson(dd_out)))
 
     # One authn key embedded
     dd_in = {
@@ -112,15 +111,14 @@ async def test_a2a():
             }
         ]
     }
-    dd_in_json = json.dumps(dd_in)
 
-    dd_out = DIDDoc.from_json(dd_in_json)
-    assert len(dd_out.verkeys) == len(dd_in['publicKey']) + 1
-    assert len(dd_out.authnkeys) == len(dd_in['authentication'])
+    dd = DIDDoc.deserialize(dd_in)
+    assert len(dd.verkeys) == len(dd_in['publicKey']) + 1
+    assert len(dd.authnkeys) == len(dd_in['authentication'])
 
-    dd_out_json = dd_out.to_json()
-    print('\n\n== 2 == DID Doc on 1 referenced and 1 embedded authn key from JSON and back again: {}'.format(
-        ppjson(dd_out_json)))
+    dd_out = dd.serialize()
+    print('\n\n== 2 == DID Doc on 1 referenced and 1 embedded authn key from dict and back again: {}'.format(
+        ppjson(dd_out)))
 
     # One authn key embedded, all possible refs canonical
     dd_in = {
@@ -160,12 +158,10 @@ async def test_a2a():
             }
         ]
     }
-    dd_in_json = json.dumps(dd_in)
 
-    dd_out = DIDDoc.from_json(dd_in_json)
-    assert len(dd_out.verkeys) == len(dd_in['publicKey']) + 1
-    assert len(dd_out.authnkeys) == len(dd_in['authentication'])
+    dd = DIDDoc.deserialize(dd_in)
+    assert len(dd.verkeys) == len(dd_in['publicKey']) + 1
+    assert len(dd.authnkeys) == len(dd_in['authentication'])
 
-    dd_out_json = dd_out.to_json()
-    print('\n\n== 3 == DID Doc on refs canonical where possible from JSON and back again: {}'.format(
-        ppjson(dd_out_json)))
+    dd_out = dd.serialize()
+    print('\n\n== 3 == DID Doc on refs canonical where possible from dict and back again: {}'.format(ppjson(dd_out)))
