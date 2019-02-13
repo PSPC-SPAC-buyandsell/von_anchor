@@ -24,10 +24,12 @@ from typing import Union
 from indy import did, ledger
 from indy.error import IndyError, ErrorCode
 
+from von_anchor.a2a import EndpointInfo
 from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, ENDPOINT_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.error import (
     AbsentCredDef,
     AbsentPool,
+    AbsentRecord,
     AbsentRevReg,
     AbsentNym,
     AbsentSchema,
@@ -38,7 +40,7 @@ from von_anchor.error import (
     WalletState)
 from von_anchor.indytween import Role, SchemaKey
 from von_anchor.nodepool import NodePool
-from von_anchor.util import ok_cred_def_id, ok_did, ok_rev_reg_id, ok_schema_id, schema_id, schema_key
+from von_anchor.util import ok_cred_def_id, ok_did, ok_endpoint, ok_rev_reg_id, ok_schema_id, schema_id, schema_key
 from von_anchor.wallet import Wallet
 
 
@@ -282,6 +284,115 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor.least_role <<< %s', rv)
         return rv
 
+    async def set_did_endpoint(self, remote_did: str, did_endpoint: str) ->  EndpointInfo:
+        """
+        Set endpoint as metadata for pairwise remote DID in wallet. Pick up (transport)
+        verification key from pairwise relation and return with endpoint in EndpointInfo.
+
+
+        Raise BadIdentifier on bad DID. Raise WalletState if wallet is closed.
+        Raise AbsentRecord if pairwise relation not present in wallet.
+
+        :param remote_did: pairwise remote DID
+        :param endpoint: value to set as endpoint in wallet and cache
+        :return: endpoint and (transport) verification key
+        """
+
+        LOGGER.debug('BaseAnchor.set_did_endpoint >>> remote_did: %s, did_endpoint: %s', remote_did, did_endpoint)
+
+        if not ok_did(remote_did):
+            LOGGER.debug('BaseAnchor.set_did_endpoint <!< Bad DID %s', remote_did)
+            raise BadIdentifier('Bad DID {}'.format(remote_did))
+
+        pairwise_info = (await self.wallet.get_pairwise(remote_did)).get(remote_did, None)
+        if not pairwise_info:
+            LOGGER.debug(
+                'BaseAnchor.set_did_endpoint <!< Anchor %s has no pairwise relation for remote DID %s',
+                self.wallet.name,
+                remote_did)
+            raise AbsentRecord('Anchor {} has no pairwise relation for remote DID {}'.format(
+                self.wallet.name,
+                remote_did))
+
+        await self.wallet.write_pairwise(
+            pairwise_info.their_did,
+            pairwise_info.their_verkey,
+            pairwise_info.my_did,
+            {'did_endpoint': did_endpoint})
+
+        rv = EndpointInfo(did_endpoint, pairwise_info.their_verkey)
+
+        LOGGER.debug('BaseAnchor.set_did_endpoint <<< %s', rv)
+        return rv
+
+    async def get_did_endpoint(self, remote_did: str) -> EndpointInfo:
+        """
+        Return endpoint info for remote DID.
+        Raise BadIdentifier for bad remote DID. Raise WalletState if bypassing cache but wallet is closed.
+        Raise AbsentRecord for no such endpoint.
+
+        :param remote_did: pairwise remote DID
+        :return: endpoint and (transport) verification key as EndpointInfo
+        """
+
+        LOGGER.debug('BaseAnchor.get_did_endpoint >>> remote_did: %s', remote_did)
+
+        if not ok_did(remote_did):
+            LOGGER.debug('BaseAnchor.get_did_endpoint <!< Bad DID %s', remote_did)
+            raise BadIdentifier('Bad DID {}'.format(remote_did))
+
+        if not self.wallet.handle:
+            LOGGER.debug('BaseAnchor.get_did_endpoint <!< Wallet %s is closed', self.wallet.name)
+            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+
+        pairwise_info = (await self.wallet.get_pairwise(remote_did)).get(remote_did, None)
+        if not (pairwise_info and 'did_endpoint' in pairwise_info.metadata):
+            LOGGER.debug('BaseAnchor.get_did_endpoint <!< No endpoint for remote DID %s', remote_did)
+            raise AbsentRecord('No endpoint for remote DID {}'.format(remote_did))
+        rv = EndpointInfo(pairwise_info.metadata['did_endpoint'], pairwise_info.their_verkey)
+
+        LOGGER.debug('BaseAnchor.get_did_endpoint <<< %s', rv)
+        return rv
+
+    async def send_endpoint(self, endpoint: str) -> None:
+        """
+        Send anchor's own endpoint attribute to ledger (and endpoint cache),
+        if ledger does not yet have input value. Specify None to clear.
+
+        Raise BadIdentifier on endpoint not formatted as '<ip-address>:<port>',
+        BadLedgerTxn on failure, WalletState if wallet is closed.
+
+        :param endpoint: value to set as endpoint attribute on ledger and cache:
+            specify URL or None to clear.
+        """
+
+        LOGGER.debug('BaseAnchor.send_endpoint >>> endpoint: %s', endpoint)
+
+        ledger_endpoint = await self.get_endpoint()
+        if ledger_endpoint == endpoint:
+            LOGGER.info('%s endpoint already set as %s', self.wallet.name, endpoint)
+            LOGGER.debug('BaseAnchor.send_endpoint <<< (%s already set for %s )')
+            return
+
+        attr_json = json.dumps({
+            'endpoint': {
+                'endpoint': endpoint  # indy-sdk likes 'ha' here but won't map 'ha' to a URL, only ip:port
+            }
+        })
+        req_json = await ledger.build_attrib_request(self.did, self.did, None, attr_json, None)
+        await self._sign_submit(req_json)
+
+        for _ in range(16):  # reasonable timeout
+            if await self.get_endpoint(None, False) == endpoint:
+                break
+            await asyncio.sleep(1)
+            LOGGER.info('Sent endpoint %s to ledger, waiting 1s for its confirmation', endpoint)
+        else:
+            LOGGER.debug('BaseAnchor.send_endpoint <!< timed out waiting on send endpoint %s', endpoint)
+            raise BadLedgerTxn('Timed out waiting on sent endpoint {}'.format(endpoint))
+
+        LOGGER.debug('BaseAnchor.send_endpoint <<<')
+
     async def get_endpoint(self, target_did: str = None, from_cache: bool = True) -> str:
         """
         Get endpoint attribute for anchor having input DID (default own DID).
@@ -337,43 +448,6 @@ class BaseAnchor:
 
         LOGGER.debug('BaseAnchor.get_endpoint <<< %s', rv)
         return rv
-
-    async def send_endpoint(self, endpoint: str) -> None:
-        """
-        Send anchor's own endpoint attribute to ledger (and endpoint cache),
-        if ledger does not yet have input value. Specify None to clear.
-
-        Raise BadLedgerTxn on failure. Raise WalletState if wallet is closed.
-
-        :param endpoint: value to set as endpoint attribute on ledger and cache; specify None to clear.
-        """
-
-        LOGGER.debug('BaseAnchor.send_endpoint >>> endpoint: %s', endpoint)
-
-        ledger_endpoint = await self.get_endpoint()
-        if ledger_endpoint == endpoint:
-            LOGGER.info('%s endpoint already set as %s', self.wallet.name, endpoint)
-            LOGGER.debug('BaseAnchor.send_endpoint <<< (%s already set for %s )')
-            return
-
-        attr_json = json.dumps({
-            'endpoint': {
-                'endpoint': endpoint
-            }  # indy-sdk needs value itself at least to implement get(); {'endpoint': '...'} is no good
-        })
-        req_json = await ledger.build_attrib_request(self.did, self.did, None, attr_json, None)
-        await self._sign_submit(req_json)
-
-        for _ in range(16):  # reasonable timeout
-            if await self.get_endpoint(None, False) == endpoint:
-                break
-            await asyncio.sleep(1)
-            LOGGER.info('Sent endpoint %s to ledger, waiting 1s for its confirmation', endpoint)
-        else:
-            LOGGER.debug('BaseAnchor.send_endpoint <!< timed out waiting on send endpoint %s', endpoint)
-            raise BadLedgerTxn('Timed out waiting on sent endpoint {}'.format(endpoint))
-
-        LOGGER.debug('BaseAnchor.send_endpoint <<<')
 
     async def _submit(self, req_json: str) -> str:
         """

@@ -102,3 +102,9 @@ The ``canon_pairwise_tag()`` free function canonicalizes a metadata attribute na
 
 The ``canon_pairwise_wql()`` free function canonicalizes WQL for use in the indy-sdk non-secrets API to search pairwise DIDs by metadata.
 
+.. _endpoint-info:
+
+EndpointInfo
+###################################
+
+The ``von_anchor/a2a/endpointinfo.py`` source file contains the ``EndpointInfo`` class, which bundles information for a remote DID endpoint. It aggregates an endpoint and a (transport) verification key. It exposes ``ip_addr``, ``port``, ``endpoint``, and ``verkey`` properties; an indy endpoint comprises colon-delimited IP address and port.

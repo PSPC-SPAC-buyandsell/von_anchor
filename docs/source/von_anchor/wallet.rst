@@ -64,7 +64,7 @@ A **pairwise DID** groups a DID and verification key from both local ('my') and 
 Anchor DID Operations
 +++++++++++++++++++++
 
-The ``create()`` method (:ref:`wallet-create`) creates the anchor DID from seed. The ``reseed_apply()`` method (:ref:`wallet-reseed``) creates a new anchor DID in its operation.
+The ``create()`` method (:ref:`wallet-create`) creates the anchor DID from seed. The ``reseed_apply()`` method (:ref:`wallet-reseed`) creates a new anchor DID in its operation.
 
 The ``get_anchor_did()`` method returns the current anchor DID.
 

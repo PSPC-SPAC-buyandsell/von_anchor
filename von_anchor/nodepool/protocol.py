@@ -111,7 +111,7 @@ class Protocol(Enum):
         """
         Given ledger transaction, return its data json.
 
-        :param txn: transaction by sequence number
+        :param txn: transaction as dict
         :return: transaction data json
         """
 
@@ -127,7 +127,7 @@ class Protocol(Enum):
         """
         Given ledger transaction, return its epoch time.
 
-        :param txn: transaction by sequence number
+        :param txn: transaction as dict
         :return: transaction time
         """
 
@@ -138,3 +138,14 @@ class Protocol(Enum):
             rv = txn['result']['txnMetadata']['txnTime']
 
         return rv
+
+    def genesis_host_port(self, genesis_txn: dict) -> tuple:
+        """
+        Given a genesis transaction, return its node host and port.
+
+        :param genesis_txn: genesis transaction as dict
+        :return: node host and port
+        """
+
+        txn_data = genesis_txn['data'] if self == Protocol.V_13 else genesis_txn['txn']['data']['data']
+        return (txn_data['node_ip'], txn_data['node_port'])

@@ -79,33 +79,42 @@ async def test_manager(path_home, pool_genesis_txn_data, pool_ip):
     await pool.close()
     print('\n\n== 3 == Opened, refreshed, and closed pool {} on default configuration'.format(name))
 
+    cache_id = pool.cache_id
+    sleep(1)
+    x_name = 'pool-{}'.format(int(time()))
+    await manager.add_config('pool-{}'.format(int(time())), '\n'.join(pool_genesis_txn_data.split('\n')[::-1]))
+    x_pool = manager.get(x_name)
+    assert x_pool.cache_id == cache_id
+    await manager.remove(x_name)
+    print('\n\n== 4 == Confirmed cache id consistency: {}'.format(cache_id))
+
     pool = manager.get(name, {'timeout': 3600, 'extended_timeout': 7200})
     await pool.open()
     await pool.refresh()
     assert pool.handle is not None
     await pool.close()
-    print('\n\n== 4 == Opened, refreshed, and closed pool {} on explicit configuration'.format(name))
+    print('\n\n== 5 == Opened, refreshed, and closed pool {} on explicit configuration'.format(name))
 
     await manager.remove(name)
     assert name not in await manager.list()
-    print('\n\n== 5 == Removed pool {} configuration'.format(name))
+    print('\n\n== 6 == Removed pool {} configuration'.format(name))
 
     with NamedTemporaryFile(mode='w+b', buffering=0) as fh_gen:
         fh_gen.write(pool_genesis_txn_data.encode())
         await manager.add_config(name, fh_gen.name)
     assert name in await manager.list()
-    print('\n\n== 6 == Added pool {} configuration on genesis transaction file'.format(name))
+    print('\n\n== 7 == Added pool {} configuration on genesis transaction file'.format(name))
 
     pool = manager.get(name, {'timeout': 3600, 'extended_timeout': 7200})
     await pool.open()
     await pool.refresh()
     assert pool.handle is not None
     await pool.close()
-    print('\n\n== 7 == Opened, refreshed, and closed pool {} on explicit configuration'.format(name))
+    print('\n\n== 8 == Opened, refreshed, and closed pool {} on explicit configuration'.format(name))
 
     await manager.remove(name)
     assert name not in await manager.list()
-    print('\n\n== 8 == Removed pool {} configuration'.format(name))
+    print('\n\n== 9 == Removed pool {} configuration'.format(name))
 
 
 @pytest.mark.skipif(False, reason='short-circuiting')

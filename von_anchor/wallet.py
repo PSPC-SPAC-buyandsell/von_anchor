@@ -673,7 +673,7 @@ class Wallet:
                     await non_secrets.fetch_wallet_search_next_records(self.handle, s_handle, count))['records']
 
         rv = {
-            record['id']: record2pairwise_info(record).metadata for record in records
+            record['id']: record2pairwise_info(record) for record in records
         }
 
         LOGGER.debug('Wallet.get_pairwise <<< %s', rv)

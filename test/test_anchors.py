@@ -36,7 +36,7 @@ import pytest
 
 from indy import did
 
-from von_anchor.a2a.didinfo import DIDInfo
+from von_anchor.a2a import DIDInfo, EndpointInfo
 from von_anchor import (
     BCRegistrarAnchor,
     OrgBookAnchor,
@@ -52,6 +52,7 @@ from von_anchor.error import (
     AbsentCredDef,
     AbsentInterval,
     AbsentPool,
+    AbsentRecord,
     AbsentSchema,
     AbsentTails,
     AbsentWallet,
@@ -3065,12 +3066,11 @@ async def test_crypto(
     if pool_name not in await manager.list():
         await manager.add_config(pool_name, pool_genesis_txn_path)
 
-    wallets = await get_wallets(
-        {
-            'sri': 'SRI-Anchor-000000000000000000000',
-            'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000'
-        },
-        open_all=False)
+    seeds = {
+        'sri': 'SRI-Anchor-000000000000000000000',
+        'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000'
+    }
+    wallets = await get_wallets(seeds, open_all=False)
 
     # Open pool, init anchors
     async with wallets['sri'] as w_sri, (
@@ -3197,17 +3197,23 @@ async def test_crypto(
             plain))
 
         assert not await pspcoban.verify(plain, signature)
-        print('\n\n== 10 == PSPC Org Book anchor faild auto-verification of SRI anchor signature, as expected')
+        print('\n\n== 10 == PSPC Org Book anchor failed auto-verification of SRI anchor signature, as expected')
 
-    # Repeat with anchors on wallet only
+    # Reset wallet for PSPC Org Book Anchor
+    await wallets['pspc-org-book'].open()
+    pspcoban = OrgBookAnchor(wallets['pspc-org-book'])
+    await pspcoban.open()
+    await pspcoban.create_link_secret('SecretLink')
+    await pspcoban.reset_wallet(seeds[pspcoban.wallet.name])
+    wallets['pspc-org-book'] = pspcoban.wallet  # hot-swap: reset already closed and deleted old one
+    await wallets['pspc-org-book'].close()
+    await pspcoban.close()
+
+    # Repeat crypto tests with anchors on wallet only
     async with wallets['sri'] as w_sri, (
             wallets['pspc-org-book']) as w_pspc, (
             SRIAnchor(w_sri)) as san, (
             OrgBookAnchor(w_pspc)) as pspcoban:
-
-        await pspcoban.create_link_secret('SecretLink')
-        await pspcoban.reset_wallet('PSPC-Org-Book-Anchor-00000000000')  # wipe out any pairwises from prior tests
-        wallets['pspc-org-book'] = pspcoban.wallet  # hot-swap: reset already closed and deleted old one
 
         dids = {
             'san': san.did,
@@ -3332,7 +3338,7 @@ async def test_crypto(
             plain))
 
         assert not await pspcoban.verify(plain, signature)
-        print('\n\n== 20 == PSPC Org Book anchor faild auto-verification of SRI anchor signature, as expected')
+        print('\n\n== 20 == PSPC Org Book anchor failed auto-verification of SRI anchor signature, as expected')
 
 
 @pytest.mark.skipif(False, reason='short-circuiting')
@@ -3367,3 +3373,94 @@ async def test_share_wallet(
         print('\n\n== 1 == DIDs: {}'.format(ppjson({'SRI anchor: ': san.did, 'Nominal anchor: ': noman.did})))
         assert san.did == noman.did and san.did
         print('\n\n== 2 == SRI, Nominal anchor share common wallet OK')
+
+
+@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.asyncio
+async def test_did_endpoints():
+
+    print(Ink.YELLOW('\n\n== Testing DID endpoints =='))
+
+    ENDPOINT_CACHE.clear()
+    seeds = {
+        'sri': 'SRI-Anchor-000000000000000000000',
+        'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000'
+    }
+    wallets = await get_wallets(
+        {
+            'sri': 'SRI-Anchor-000000000000000000000',
+            'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000'
+        },
+        open_all=False)
+
+    # Reset wallet for PSPC Org Book Anchor
+    await wallets['pspc-org-book'].open()
+    pspcoban = OrgBookAnchor(wallets['pspc-org-book'])
+    await pspcoban.open()
+    await pspcoban.create_link_secret('SecretLink')
+    await pspcoban.reset_wallet(seeds[pspcoban.wallet.name])
+    wallets['pspc-org-book'] = pspcoban.wallet  # hot-swap: reset already closed and deleted old one
+    await wallets['pspc-org-book'].close()
+    await pspcoban.close()
+
+    # Set up wallets, anchors
+    async with wallets['sri'] as w_sri, (
+            wallets['pspc-org-book']) as w_pspc, (
+            SRIAnchor(w_sri)) as san, (
+            OrgBookAnchor(w_pspc)) as pspcoban:
+
+        dids = {
+            'san': san.did,
+            'pspcoban': pspcoban.did
+        }
+
+        print('\n\n== 1 == DIDs: {}'.format(ppjson(dids)))
+
+        # Fail to get endpoint on no such pairwise
+        try:
+            await pspcoban.get_did_endpoint(san.did)
+            assert False
+        except AbsentRecord:
+            pass
+        print('\n\n== 2 == PSPC Org Book Anchor correctly fails to get DID endpoint for no such pairwise')
+
+        # Fail to set endpoint on no such pairwise
+        try:
+            await pspcoban.set_did_endpoint(san.did, '1.2.3.4:56')
+            assert False
+        except AbsentRecord:
+            pass
+        print('\n\n== 3 == PSPC Org Book Anchor correctly fails to set DID endpoint for no such pairwise')
+
+        await pspcoban.wallet.write_pairwise(san.did, san.verkey)
+
+        # Fail to get endpoint on pairwise with no endpoint
+        try:
+            await pspcoban.get_did_endpoint(san.did)
+            assert False
+        except AbsentRecord:
+            pass
+        print('\n\n== 4 == PSPC Org Book Anchor correctly fails to get DID endpoint for pairwise with no endpoint set')
+
+        # Set endpoint
+        endpoint_info = await pspcoban.set_did_endpoint(san.did, '1.2.3.4:56')
+        assert await pspcoban.get_did_endpoint(san.did) == endpoint_info
+        print('\n\n== 5 == PSPC Org Book Anchor set and got DID endpoint info for SRI Anchor: {}'.format(endpoint_info))
+
+        # Overwrite endpoint
+        endpoint_info = await pspcoban.set_did_endpoint(san.did, '7.8.9.10:1112')
+        assert await pspcoban.get_did_endpoint(san.did) == endpoint_info
+        print('\n\n== 6 == PSPC Org Book Anchor set and got DID endpoint info for SRI Anchor: {}'.format(endpoint_info))
+
+        # Get by WQL $like
+        records = await pspcoban.wallet.get_pairwise(json.dumps({
+            'did_endpoint': {
+                '$like': '7.8.9.10:%'
+            }
+        }))
+        print('\n\n== 7 == Got {} record{} from by WQL on $like: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson({k: vars(records[k]) for k in records})))
+        assert len(records) == 1
+        assert records[san.did].metadata['did_endpoint'] == '7.8.9.10:1112'

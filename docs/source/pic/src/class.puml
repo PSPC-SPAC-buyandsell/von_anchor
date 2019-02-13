@@ -128,6 +128,27 @@ class Wallet {
     +remove()
 }
 
+class DIDInfo {
+    +did
+    +verkey
+    +metadata
+}
+
+class PairwiseInfo {
+    +their_did
+    +their_verkey
+    +my_did
+    +my_verkey
+    +metadata
+}
+
+class EndpointInfo {
+    +endpoint
+    +host
+    +port
+    +verkey
+}
+
 enum Protocol {
     {static} +V_13
     {static} +V_14
@@ -151,6 +172,7 @@ class NodePool {
     +handle
     +config
     +protocol
+    +cache_id
     +open()
     +close()
     +refresh()
@@ -183,8 +205,10 @@ class BaseAnchor {
     +open()
     +close()
     +reseed()
-    +get_endpoint()
+    +set_did_endpoint()
+    +get_did_endpoint()
     +send_endpoint()
+    +get_endpoint()
     +get_nym()
     +get_nym_role()
     +get_cred_def()
@@ -348,7 +372,13 @@ RevoCacheEntry -up-> Tails
 RevoCacheEntry "2" *-down- "n" RevRegUpdateFrame
 RevocationCache -> RevoCacheEntry
 
+Wallet --> DIDInfo
+Wallet --> PairwiseInfo
+
+BaseAnchor --> EndpointInfo
+
 BaseAnchor -up-> RevoCache
+BaseAnchor --> EndpointCache
 
 BaseAnchor -up-> CredDefCache
 BaseAnchor <|-down- AnchorSmith

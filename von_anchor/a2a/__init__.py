@@ -17,6 +17,7 @@ limitations under the License.
 
 from .diddoc import DIDDoc
 from .didinfo import DIDInfo
+from .endpointinfo import EndpointInfo
 from .pairwise import canon_pairwise_wql, PairwiseInfo, pairwise_info2tags, record2pairwise_info, TYPE_PAIRWISE
 from .publickey import LinkedDataKeySpec, PublicKey, PublicKeyType
 from .service import Service

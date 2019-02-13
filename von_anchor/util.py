@@ -72,6 +72,19 @@ def ok_role(token: str) -> bool:
     return Role.get(token) is not None
 
 
+def ok_endpoint(token: str) -> bool:
+    """
+    Whether input token looks like a valid indy endpoint (<ip-address>:<port>).
+
+    :param token: candidate string
+    :return: whether input token looks like a valid indy endpoint
+    """
+
+    return bool(re.match(
+        r'((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?):[0-9]+$',
+        token))
+
+
 def ok_did(token: str) -> bool:
     """
     Whether input token looks like a valid distributed identifier.

@@ -19,11 +19,12 @@ import json
 import logging
 
 from os import remove
-from os.path import isfile, realpath
+from os.path import expanduser, expandvars, isfile, realpath
 from tempfile import NamedTemporaryFile
 from typing import List
 
 from indy import pool
+from indy.error import IndyError
 
 from von_anchor.error import ExtantPool
 from von_anchor.nodepool.nodepool import NodePool
@@ -85,15 +86,16 @@ class NodePoolManager:
             raise ExtantPool('Node pool {} configuration already present'.format(name))
 
         genesis_tmp = None
+        path_gen = realpath(expanduser(expandvars(genesis)))
         try:
-            if not isfile(genesis):
+            if not isfile(path_gen):
                 genesis_tmp = NamedTemporaryFile(mode='w+b', buffering=0, delete=False)
                 with genesis_tmp:
                     genesis_tmp.write(genesis.encode())
             await pool.create_pool_ledger_config(
                 name,
                 json.dumps({
-                    'genesis_txn': realpath(genesis) if isfile(genesis) else genesis_tmp.name
+                    'genesis_txn': path_gen if isfile(path_gen) else genesis_tmp.name
                 }))
         finally:
             if genesis_tmp:
@@ -145,4 +147,3 @@ class NodePoolManager:
             LOGGER.info('Abstaining from node pool removal; indy-sdk error code %s', x_indy.error_code)
 
         LOGGER.debug('NodePool.remove <<<')
-

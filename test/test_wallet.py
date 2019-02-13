@@ -218,10 +218,10 @@ async def test_pairwise():
         print('\n\n== 2 == Stored and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta
-        assert records[pairwises['agent-86'].their_did]['my_did'] == wallets['multipass'].did
-        assert records[pairwises['agent-86'].their_did]['my_verkey'] == wallets['multipass'].verkey
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta
+        assert records[pairwises['agent-86'].their_did].my_did == wallets['multipass'].did
+        assert records[pairwises['agent-86'].their_did].my_verkey == wallets['multipass'].verkey
 
         # Set metadata; get by DID
         await w.write_pairwise(
@@ -233,8 +233,8 @@ async def test_pairwise():
         print('\n\n== 3 == Stored metadata and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'epoch'}
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'epoch'}
 
         # Augment metadata; get by DID
         metadata = {'clearance': 'galactic'}
@@ -247,8 +247,8 @@ async def test_pairwise():
         print('\n\n== 4 == Stored metadata and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'epoch', 'clearance'}
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'epoch', 'clearance'}
 
         # Replace metadata; get by DID
         metadata = {'secrecy': 'hover cover'}
@@ -262,8 +262,8 @@ async def test_pairwise():
         print('\n\n== 5 == Replaced metadata and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'secrecy'}
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'secrecy'}
 
         # Update metadata with ~tags, exercise equivalence; get by DID
         metadata = {'~clearance': 'cosmic'}
@@ -276,8 +276,9 @@ async def test_pairwise():
         print('\n\n== 6 == Updated metadata on ~tags and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'secrecy', 'clearance'}
+            ppjson({k: vars(records[k]) for k in records})))
+        assert ({k for k in records[pairwises['agent-86'].their_did].metadata} ==
+            baseline_meta | {'secrecy', 'clearance'})
 
         # Replace metadata on ~tags, exercise equivalence; get by DID
         metadata = {'~secrecy': 'hover cover'}
@@ -291,8 +292,8 @@ async def test_pairwise():
         print('\n\n== 7 == Replaced metadata on ~tags and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'secrecy'}
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'secrecy'}
 
         # Vacuous storage changing nothing: show intact metadata; get by DID
         await w.write_pairwise(
@@ -303,8 +304,8 @@ async def test_pairwise():
         print('\n\n== 8 == Wrote non-delta and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'secrecy'}
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'secrecy'}
 
         # Clear metadata, show retention of did and verkey base line; get by DID
         metadata = None
@@ -318,8 +319,8 @@ async def test_pairwise():
         print('\n\n== 9 == Cleared metadata and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta
 
         # Restore epoch to metadata; get all
         metadata = {'epoch': int(time())}
@@ -333,9 +334,10 @@ async def test_pairwise():
         print('\n\n== 10 == Got {} record{} from get-all: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
+            ppjson({k: vars(records[k]) for k in records})))
         assert len(records) == 2
-        assert all({k for k in records[pairwises[name].their_did]} == baseline_meta | {'epoch'} for name in pairwises)
+        assert all({k for k in records[pairwises[name].their_did].metadata} ==
+            baseline_meta | {'epoch'} for name in pairwises)
 
         # Get by WQL $not
         records = await w.get_pairwise(json.dumps({
@@ -346,9 +348,9 @@ async def test_pairwise():
         print('\n\n== 11 == Got {} record{} from by WQL on $not: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
+            ppjson({k: vars(records[k]) for k in records})))
         assert len(records) == 1
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'epoch'}
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'epoch'}
 
         # Get by WQL $in
         records = await w.get_pairwise(json.dumps({
@@ -359,9 +361,10 @@ async def test_pairwise():
         print('\n\n== 12 == Got {} record{} from by WQL on $not: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
+            ppjson({k: vars(records[k]) for k in records})))
         assert len(records) == 2
-        assert all({k for k in records[pairwises[name].their_did]} == baseline_meta | {'epoch'} for name in pairwises)
+        assert all({k for k in records[pairwises[name].their_did].metadata} ==
+            baseline_meta | {'epoch'} for name in pairwises)
 
         # Get by WQL $or
         records = await w.get_pairwise(json.dumps({
@@ -377,9 +380,10 @@ async def test_pairwise():
         print('\n\n== 13 == Got {} record{} from by WQL on $or: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
+            ppjson({k: vars(records[k]) for k in records})))
         assert len(records) == 2
-        assert all({k for k in records[pairwises[name].their_did]} == baseline_meta | {'epoch'} for name in pairwises)
+        assert all({k for k in records[pairwises[name].their_did].metadata} ==
+            baseline_meta | {'epoch'} for name in pairwises)
 
         # Get by WQL $neq
         records = await w.get_pairwise(json.dumps({
@@ -390,9 +394,9 @@ async def test_pairwise():
         print('\n\n== 14 == Got {} record{} from by WQL on $neq: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
+            ppjson({k: vars(records[k]) for k in records})))
         assert len(records) == 1
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'epoch'}
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'epoch'}
 
         # Get by WQL $lte
         records = await w.get_pairwise(json.dumps({
@@ -403,9 +407,10 @@ async def test_pairwise():
         print('\n\n== 15 == Got {} record{} from by WQL on $lte: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
+            ppjson({k: vars(records[k]) for k in records})))
         assert len(records) == 2
-        assert all({k for k in records[pairwises[name].their_did]} == baseline_meta | {'epoch'} for name in pairwises)
+        assert all({k for k in records[pairwises[name].their_did].metadata} ==
+            baseline_meta | {'epoch'} for name in pairwises)
 
         # Get by WQL $like
         records = await w.get_pairwise(json.dumps({
@@ -416,9 +421,9 @@ async def test_pairwise():
         print('\n\n== 16 == Got {} record{} from by WQL on $like: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
+            ppjson({k: vars(records[k]) for k in records})))
         assert len(records) == 1
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'epoch'}
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'epoch'}
 
         # Get by WQL equality
         records = await w.get_pairwise(json.dumps({
@@ -427,9 +432,9 @@ async def test_pairwise():
         print('\n\n== 17 == Got {} record{} from by WQL on equality: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
+            ppjson({k: vars(records[k]) for k in records})))
         assert len(records) == 1
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'epoch'}
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'epoch'}
 
         # Get by nested WQL $or-$like
         records = await w.get_pairwise(json.dumps({
@@ -449,9 +454,10 @@ async def test_pairwise():
         print('\n\n== 18 == Got {} record{} from by nested $or-$like WQL: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
+            ppjson({k: vars(records[k]) for k in records})))
         assert len(records) == 2
-        assert all({k for k in records[pairwises[name].their_did]} == baseline_meta | {'epoch'} for name in pairwises)
+        assert all({k for k in records[pairwises[name].their_did].metadata} ==
+            baseline_meta | {'epoch'} for name in pairwises)
 
         # Get by nested WQL
         records = await w.get_pairwise(json.dumps({
@@ -482,9 +488,10 @@ async def test_pairwise():
         print('\n\n== 19 == Got {} record{} from by nested WQL: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
+            ppjson({k: vars(records[k]) for k in records})))
         assert len(records) == 2
-        assert all({k for k in records[pairwises[name].their_did]} == baseline_meta | {'epoch'} for name in pairwises)
+        assert all({k for k in records[pairwises[name].their_did].metadata} ==
+            baseline_meta | {'epoch'} for name in pairwises)
 
         # Delete
         await w.delete_pairwise(pairwises['agent-86'].their_did)
@@ -507,10 +514,10 @@ async def test_pairwise():
         print('\n\n== 21 == Stored and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta
-        p86_my_did = records[pairwises['agent-86'].their_did]['my_did']
-        p86_my_verkey = records[pairwises['agent-86'].their_did]['my_verkey']
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta
+        p86_my_did = records[pairwises['agent-86'].their_did].my_did
+        p86_my_verkey = records[pairwises['agent-86'].their_did].my_verkey
         assert p86_my_did != wallets['multipass'].did
         assert p86_my_verkey != wallets['multipass'].verkey
 
@@ -524,12 +531,12 @@ async def test_pairwise():
         print('\n\n== 22 == Stored metadata and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'epoch'}
-        assert records[pairwises['agent-86'].their_did]['my_did'] != wallets['multipass'].did
-        assert records[pairwises['agent-86'].their_did]['my_verkey'] != wallets['multipass'].verkey
-        assert records[pairwises['agent-86'].their_did]['my_did'] != p86_my_did
-        assert records[pairwises['agent-86'].their_did]['my_verkey'] != p86_my_verkey
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'epoch'}
+        assert records[pairwises['agent-86'].their_did].my_did != wallets['multipass'].did
+        assert records[pairwises['agent-86'].their_did].my_verkey != wallets['multipass'].verkey
+        assert records[pairwises['agent-86'].their_did].my_did != p86_my_did
+        assert records[pairwises['agent-86'].their_did].my_verkey != p86_my_verkey
 
         # Augment metadata; get by DID
         metadata = {'clearance': 'galactic'}
@@ -542,8 +549,8 @@ async def test_pairwise():
         print('\n\n== 23 == Stored metadata and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'epoch', 'clearance'}
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'epoch', 'clearance'}
 
         # Replace metadata; get by DID
         metadata = {'secrecy': 'hover cover'}
@@ -557,8 +564,8 @@ async def test_pairwise():
         print('\n\n== 24 == Replaced metadata and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'secrecy'}
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'secrecy'}
 
         # Update metadata with ~tags, exercise equivalence; get by DID
         metadata = {'~clearance': 'cosmic'}
@@ -571,8 +578,9 @@ async def test_pairwise():
         print('\n\n== 25 == Updated metadata on ~tags and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'secrecy', 'clearance'}
+            ppjson({k: vars(records[k]) for k in records})))
+        assert ({k for k in records[pairwises['agent-86'].their_did].metadata} ==
+            baseline_meta | {'secrecy', 'clearance'})
 
         # Replace metadata on ~tags, exercise equivalence; get by DID
         metadata = {'~secrecy': 'hover cover'}
@@ -586,8 +594,8 @@ async def test_pairwise():
         print('\n\n== 26 == Replaced metadata on ~tags and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'secrecy'}
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'secrecy'}
 
         # Vacuous storage changing nothing: show intact metadata; get by DID
         await w.write_pairwise(
@@ -597,8 +605,8 @@ async def test_pairwise():
         print('\n\n== 27 == Wrote non-delta and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta | {'secrecy'}
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'secrecy'}
 
         # Clear metadata, show retention of did and verkey base line; get by DID
         metadata = None
@@ -612,8 +620,8 @@ async def test_pairwise():
         print('\n\n== 28 == Cleared metadata and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
-        assert {k for k in records[pairwises['agent-86'].their_did]} == baseline_meta
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta
 
         # Restore epoch to metadata; get all
         metadata = {'epoch': int(time())}
@@ -627,9 +635,10 @@ async def test_pairwise():
         print('\n\n== 29 == Got {} record{} from get-all: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
-            ppjson(records)))
+            ppjson({k: vars(records[k]) for k in records})))
         assert len(records) == 2
-        assert all({k for k in records[pairwises[name].their_did]} == baseline_meta | {'epoch'} for name in pairwises)
+        assert all({k for k in records[pairwises[name].their_did].metadata} ==
+            baseline_meta | {'epoch'} for name in pairwises)
 
         # Delete
         await w.delete_pairwise(pairwises['agent-86'].their_did)
