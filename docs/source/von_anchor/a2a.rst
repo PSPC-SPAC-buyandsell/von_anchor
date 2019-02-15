@@ -2,7 +2,7 @@
 Agent-to-Agent Utilities
 ******************************
 
-This section outlines the utilities of the ``von_anchor/a2a`` subpackage supporting and inter-agent communications with the ``DIDDoc`` class for DID documents, plus ``PairwiseInfo`` and ``DIDInfo`` classes for agent-to-agent communications.
+This section outlines the utilities of the ``von_anchor/a2a`` subpackage supporting and inter-agent communications with the ``DIDDoc`` class for DID documents.
 
 In this context, an agent comprises software built on top of ``von_anchor`` demonstrator classes or mixins, presenting an interface to the outside world - possibly only other agents. Such an agent or agents represent a service wrapper to VON anchor functionality.
 
@@ -79,32 +79,3 @@ The ``resource()`` free function takes a URI and returns its resource, stripping
 The ``canon_did()`` takes a URI that could be in URI fomrat and converts it to indy-sdk format if need be.
 
 The ``canon_ref()`` takes a reference in a DID document, which could be a fragment (implicitly building on the identity DID for the document) or a full URI, and returns it in canonical URI form.
-
-.. _did-info:
-
-DIDInfo
-###################################
-
-The ``von_anchor/a2a/didinfo.py`` source file contains the ``DIDInfo`` class, which bundles information for a local DID in a wallet. It aggregates a DID, verification key, and metadata.
-
-.. _pairwise-info:
-
-PairwiseInfo
-###################################
-
-This section outlines the content of the ``von_anchor/a2a/pairwise.py`` source file, containing the ``PairwiseInfo`` class and utility functions.
-
-The ``PairwiseInfo`` class bundles information for a pairwise DID to store via the indy-sdk non-secrets API in the wallet. It aggregates a remote DID and verification key, a local DID and verification key, and metadata.
-
-The ``record2pairwise_info()`` free function creates a ``PairwiseInfo`` instance from a record that a indy-sdk non-secrets wallet API search returns.
-
-The ``canon_pairwise_tag()`` free function canonicalizes a metadata attribute name into a tag for WQL use within the indy-sdk non-secrets API. Its operation prepends a tilde (``~``) for any attribute name not starting with one already; this nomenclature identifies the attribute for non-encrypted storage, allowing full WQL search.
-
-The ``canon_pairwise_wql()`` free function canonicalizes WQL for use in the indy-sdk non-secrets API to search pairwise DIDs by metadata.
-
-.. _endpoint-info:
-
-EndpointInfo
-###################################
-
-The ``von_anchor/a2a/endpointinfo.py`` source file contains the ``EndpointInfo`` class, which bundles information for a remote DID endpoint. It aggregates an endpoint and a (transport) verification key. It exposes ``ip_addr``, ``port``, ``endpoint``, and ``verkey`` properties; an indy endpoint comprises colon-delimited IP address and port.

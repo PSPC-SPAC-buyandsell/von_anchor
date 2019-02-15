@@ -24,10 +24,9 @@ import pytest
 from indy import IndyError
 from indy.error import ErrorCode
 
-from von_anchor.a2a import PairwiseInfo
-from von_anchor.error import AbsentRecord, ExtantWallet, JSONValidation, WalletState
+from von_anchor.error import AbsentRecord, BadRecord, ExtantWallet, JSONValidation, WalletState
 from von_anchor.frill import Ink, ppjson
-from von_anchor.wallet import Wallet
+from von_anchor.wallet import NonSecret, PairwiseInfo, Wallet
 
 
 async def get_wallets(wallet_data, open_all, auto_remove=False):
@@ -193,6 +192,7 @@ async def test_pairwise():
                     wallets['multipass'].verkey,
                     None)
 
+    assert pairwises['agent-86'] != pairwises['agent-99']
     baseline_meta = {'their_verkey', 'their_did', 'my_verkey', 'my_did'}
 
     # Open wallets and operate
@@ -339,13 +339,13 @@ async def test_pairwise():
         assert all({k for k in records[pairwises[name].their_did].metadata} ==
             baseline_meta | {'epoch'} for name in pairwises)
 
-        # Get by WQL $not
+        # Get by WQL $neq
         records = await w.get_pairwise(json.dumps({
             'their_verkey': {
                 '$neq': pairwises['agent-99'].their_verkey
             }
         }))
-        print('\n\n== 11 == Got {} record{} from by WQL on $not: {}'.format(
+        print('\n\n== 11 == Got {} record{} from by WQL on $neq: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -358,7 +358,7 @@ async def test_pairwise():
                 '$in': [pairwises[name].their_verkey for name in pairwises]
             }
         }))
-        print('\n\n== 12 == Got {} record{} from by WQL on $not: {}'.format(
+        print('\n\n== 12 == Got {} record{} from by WQL on $in: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -464,8 +464,8 @@ async def test_pairwise():
             '$not': {
                 'my_did': None
             },
-            'epoch': {
-                '$not': {
+            '$not': {
+                'epoch': {
                     '$in': [1, 2, 3, 4, 5]
                 }
             },
@@ -645,6 +645,219 @@ async def test_pairwise():
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
         print('\n\n== 30 == Deleted agent-86 record and checked its absence')
         assert not records
+
+
+@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.asyncio
+async def test_non_secrets():
+
+    print(Ink.YELLOW('\n\n== Testing non-secrets operations =='))
+
+    wallets = await get_wallets(
+        {
+            'multipass': 'Multi-Pass-000000000000000000000'
+        },
+        open_all=False,
+        auto_remove=True)
+
+    # Open wallet and operate
+    async with wallets['multipass'] as w:
+        await w.delete_non_secret('a-type', 'id0')  # not present: silently carries on
+        assert await w.get_non_secret('a-type', 'id0') == {}
+
+        try: # exercise tag value type checking
+            NonSecret('a-type', 'id0', 'value', {'a_tag': 123})
+            assert False
+        except BadRecord:
+            pass
+
+        # Store non-secret records
+        ns = [
+            NonSecret('a-type', '0', 'value 0'),
+            NonSecret('a-type', '1', 'value 1', {'epoch': str(int(time()))})
+        ]
+        assert ns[0] != ns[1]
+
+        await w.write_non_secret(ns[0])
+        await w.write_non_secret(ns[1])
+        recs = await w.get_non_secret(ns[1].type, ns[1].id)
+        print('\n\n== 1 == Stored and got {} record{} for id 1: {}'.format(
+            len(recs or {}),
+            '' if len(recs or {}) == 1 else 's',
+            ppjson({k: vars(recs[k]) for k in recs})))
+        assert {k for k in recs[ns[1].id].tags} == {'epoch'}
+
+        # Exercise tag type checking
+        for tags in [{'price': 4.95}, {'too': {'deep': ''}}, {(0,1): 'key-str'}]:
+            try:
+                ns[0].tags = tags
+                assert False
+            except BadRecord:
+                pass
+        ns[1].tags['score'] = 7
+        try:
+            await w.write_non_secret(ns[1])
+            assert False
+        except BadRecord:
+            pass
+        print('\n\n== 2 == Tags type validation enforces flat {str: str} dict')
+
+        # Augment/override vs. replace metadata
+        ns[1].tags = {'score': '7'}
+        await w.write_non_secret(ns[1])
+        recs = await w.get_non_secret(ns[1].type, ns[1].id)
+        assert {k for k in recs[ns[1].id].tags} == {'epoch', 'score'}
+        await w.write_non_secret(ns[1], replace_meta = True)
+        recs = await w.get_non_secret(ns[1].type, ns[1].id)
+        assert {k for k in recs[ns[1].id].tags} == {'score'}
+        print('\n\n== 3 == Metadata augment/override vs. replace metadata behaviour OK')
+
+        ns[1].tags['~clear'] = 'text'  # exercise clear/encr tags
+        assert {k for k in ns[1].clear_tags} == {'~clear'}
+        assert {k for k in ns[1].encr_tags} == {'score'}
+
+        ns[1].value = 'value 0'
+        ns[1].tags = None
+        await w.write_non_secret(ns[1], replace_meta=True)
+        recs = await w.get_non_secret(ns[1].type, ns[1].id)
+        assert recs[ns[1].id].tags == None and recs[ns[1].id].value == 'value 0'
+        print('\n\n== 4 == Record replacement OK')
+
+        nsb = NonSecret('b-type', ns[1].id, ns[1].value, ns[1].tags)
+        await w.write_non_secret(nsb)
+        recs = await w.get_non_secret(nsb.type, nsb.id)
+        assert recs[nsb.id].type == 'b-type' and recs[nsb.id].tags == None and recs[nsb.id].value == 'value 0'
+        recs = await w.get_non_secret('a-type', nsb.id)
+        assert recs[nsb.id].type == 'a-type' and recs[nsb.id].tags == None and recs[nsb.id].value == 'value 0'
+        print('\n\n== 5 == Check for record type respect passes OK')
+        await w.delete_non_secret('b-type', nsb.id)
+
+        ns = []
+        epoch = int(time())
+        for i in range(5):
+            await w.write_non_secret(NonSecret(
+                'searchable',
+                str(i),
+                str(i),
+                {
+                    '~epoch': str(epoch),
+                    'encr': str(i)
+                }))
+
+        # Get by WQL $neq
+        recs = await w.get_non_secret(
+            'searchable',
+            {
+                '~epoch': {
+                    '$neq': epoch + 1  # exercise to-str canonicalization
+                }
+            })
+        print('\n\n== 6 == Got {} record{} from by WQL on $neq: {}'.format(
+            len(recs or {}),
+            '' if len(recs or {}) == 1 else 's',
+            ppjson({k: vars(recs[k]) for k in recs})))
+        assert len(recs) == 5
+
+        # Get by WQL $not-$in
+        recs = await w.get_non_secret(
+            'searchable',
+            {
+                '$not': {
+                    '~epoch': {
+                        '$in': [epoch - 1, epoch + 1]
+                    }
+                }
+            })
+        print('\n\n== 7 == Got {} record{} from by WQL on $not-$in: {}'.format(
+            len(recs or {}),
+            '' if len(recs or {}) == 1 else 's',
+            ppjson({k: vars(recs[k]) for k in recs})))
+        assert len(recs) == 5
+
+        # Get by WQL $like
+        recs = await w.get_non_secret(
+            'searchable',
+            {
+                '~epoch': {
+                    '$like': '{}%'.format(epoch)
+                }
+            })
+        print('\n\n== 8 == Got {} record{} from by WQL on $not-$in: {}'.format(
+            len(recs or {}),
+            '' if len(recs or {}) == 1 else 's',
+            ppjson({k: vars(recs[k]) for k in recs})))
+        assert len(recs) == 5
+
+        # Get by WQL equality
+        recs = await w.get_non_secret(
+            'searchable',
+            {
+                '~epoch': epoch
+            })
+        print('\n\n== 9 == Got {} record{} from by WQL on equality: {}'.format(
+            len(recs or {}),
+            '' if len(recs or {}) == 1 else 's',
+            ppjson({k: vars(recs[k]) for k in recs})))
+        assert len(recs) == 5
+
+        # Get by WQL $or
+        recs = await w.get_non_secret(
+            'searchable',
+            {
+                '$or': [
+                    {
+                        '~epoch': epoch
+                    },
+                    {
+                        '~epoch': epoch + 1
+                    }
+                ]
+            })
+        print('\n\n== 10 == Got {} record{} from by WQL on equality: {}'.format(
+            len(recs or {}),
+            '' if len(recs or {}) == 1 else 's',
+            ppjson({k: vars(recs[k]) for k in recs})))
+        assert len(recs) == 5
+
+        # Get by WQL $lte
+        recs = await w.get_non_secret(
+            'searchable',
+            {
+                '~epoch': {
+                    '$lte': epoch
+                }
+            })
+        print('\n\n== 11 == Got {} record{} from by WQL on $lte: {}'.format(
+            len(recs or {}),
+            '' if len(recs or {}) == 1 else 's',
+            ppjson({k: vars(recs[k]) for k in recs})))
+        assert len(recs) == 5
+
+        # Get by WQL $not on encrypted tag values
+        recs = await w.get_non_secret(
+            'searchable',
+            {
+                '$not': {
+                    'encr': str(0)
+                }
+            })
+        print('\n\n== 12 == Got {} record{} from by WQL on $not for encrypted tag value: {}'.format(
+            len(recs or {}),
+            '' if len(recs or {}) == 1 else 's',
+            ppjson({k: vars(recs[k]) for k in recs})))
+        assert len(recs) == 4
+
+        # Get by WQL equality on encrypted tag values
+        recs = await w.get_non_secret(
+            'searchable',
+            {
+                'encr': str(0)
+            })
+        print('\n\n== 13 == Got {} record{} from by WQL on equality for encrypted tag value: {}'.format(
+            len(recs or {}),
+            '' if len(recs or {}) == 1 else 's',
+            ppjson({k: vars(recs[k]) for k in recs})))
+        assert len(recs) == 1
 
 
 @pytest.mark.skipif(False, reason='short-circuiting')

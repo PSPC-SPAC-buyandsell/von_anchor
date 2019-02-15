@@ -54,6 +54,7 @@ class ErrorCode(IntEnum):
     ExtantRecord = 3006
     AbsentRecord = 3007
     AbsentMessage = 3008
+    BadRecord = 3009
 
     # Errors to do with node pool management and operation
     ClosedPool = 4000
@@ -490,6 +491,21 @@ class AbsentMessage(VonAnchorError):
         """
 
         super().__init__(ErrorCode.AbsentMessage, message)
+
+
+class BadRecord(VonAnchorError):
+    """
+    Record as specified is not valid for wallet storage.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.BadRecord, message)
 
 
 class ClosedPool(VonAnchorError):

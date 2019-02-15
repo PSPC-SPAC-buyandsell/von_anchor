@@ -58,7 +58,7 @@ def ok_wallet_reft(token: str) -> bool:
     :return: whether input token looks like a valid wallet credential identifier
     """
 
-    return bool(re.match(r'[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$', token))
+    return bool(re.match(r'[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$', token or ''))
 
 
 def ok_role(token: str) -> bool:
@@ -82,7 +82,7 @@ def ok_endpoint(token: str) -> bool:
 
     return bool(re.match(
         r'((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?):[0-9]+$',
-        token))
+        token or ''))
 
 
 def ok_did(token: str) -> bool:
@@ -93,7 +93,7 @@ def ok_did(token: str) -> bool:
     :return: whether input token looks like a valid schema identifier
     """
 
-    return bool(re.match('[{}]{{21,22}}$'.format(B58), token))
+    return bool(re.match('[{}]{{21,22}}$'.format(B58), token or ''))
 
 
 def ok_schema_id(token: str) -> bool:
@@ -105,7 +105,7 @@ def ok_schema_id(token: str) -> bool:
     :return: whether input token looks like a valid schema identifier
     """
 
-    return bool(re.match('[{}]{{21,22}}:2:.+:[0-9.]+$'.format(B58), token))
+    return bool(re.match('[{}]{{21,22}}:2:.+:[0-9.]+$'.format(B58), token or ''))
 
 
 def schema_key(s_id: str) -> SchemaKey:
@@ -148,7 +148,7 @@ def ok_cred_def_id(token: str, issuer_did: str = None) -> bool:
     :return: whether input token looks like a valid credential definition identifier
     """
 
-    cd_id_m = re.match('([{}]{{21,22}}):3:CL:[1-9][0-9]*(:.+)?$'.format(B58), token)
+    cd_id_m = re.match('([{}]{{21,22}}):3:CL:[1-9][0-9]*(:.+)?$'.format(B58), token or '')
     return bool(cd_id_m) and ((not issuer_did) or cd_id_m.group(1) == issuer_did)
 
 
@@ -191,7 +191,9 @@ def ok_rev_reg_id(token: str, issuer_did: str = None) -> bool:
     :return: whether input token looks like a valid revocation registry identifier
     """
 
-    rr_id_m = re.match('([{0}]{{21,22}}):4:([{0}]{{21,22}}):3:CL:[1-9][0-9]*(:.+)?:CL_ACCUM:.+$'.format(B58), token)
+    rr_id_m = re.match(
+        '([{0}]{{21,22}}):4:([{0}]{{21,22}}):3:CL:[1-9][0-9]*(:.+)?:CL_ACCUM:.+$'.format(B58),
+        token or '')
     return bool(rr_id_m) and ((not issuer_did) or (rr_id_m.group(1) == issuer_did and rr_id_m.group(2) == issuer_did))
 
 

@@ -24,7 +24,6 @@ from typing import Union
 from indy import did, ledger
 from indy.error import IndyError, ErrorCode
 
-from von_anchor.a2a import EndpointInfo
 from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, ENDPOINT_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.error import (
     AbsentCredDef,
@@ -41,7 +40,7 @@ from von_anchor.error import (
 from von_anchor.indytween import Role, SchemaKey
 from von_anchor.nodepool import NodePool
 from von_anchor.util import ok_cred_def_id, ok_did, ok_endpoint, ok_rev_reg_id, ok_schema_id, schema_id, schema_key
-from von_anchor.wallet import Wallet
+from von_anchor.wallet import EndpointInfo, Wallet
 
 
 LOGGER = logging.getLogger(__name__)

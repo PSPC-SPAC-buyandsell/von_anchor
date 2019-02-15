@@ -15,8 +15,6 @@ limitations under the License.
 """
 
 
-import json
-
 from urllib.parse import urlparse
 
 from von_anchor.error import BadIdentifier

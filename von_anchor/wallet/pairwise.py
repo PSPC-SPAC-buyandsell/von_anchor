@@ -15,14 +15,11 @@ limitations under the License.
 """
 
 
-import json
-
-from von_anchor.canon import raw
-from von_anchor.error import BadWalletQuery
+from von_anchor.canon import raw, canon_pairwise_tag
+from von_anchor.wallet import NonSecret
 
 
 TYPE_PAIRWISE = 'pairwise'
-WQL_1_OPS = frozenset(('$in', '$not', '$neq', '$gt', '$gte', '$lt', '$lte', '$like'))
 
 
 class PairwiseInfo:
@@ -137,14 +134,15 @@ class PairwiseInfo:
             self.metadata)
 
 
-def pairwise_info2tags(pairwise: PairwiseInfo) -> str:
+def pairwise_info2tags(pairwise: PairwiseInfo) -> dict:
     """
     Given pairwise info with metadata mapping tags to values, return corresponding
-    indy-sdk json to store same in wallet (via non_secrets) unencrypted (for WQL search options).
-    Canonicalize metadata values to strings via raw() for WQL fitness.
+    indy-sdk non_secrets record tags dict to store same in wallet (via non_secrets)
+    unencrypted (for WQL search options).  Canonicalize metadata values to strings via
+    raw() for WQL fitness.
 
     :param pairwise: pairwise info with metadata dict mapping tags to values
-    :return: corresponding non_secrets tags json marked for unencrypted storage
+    :return: corresponding non_secrets tags dict marked for unencrypted storage
     """
 
     rv = {
@@ -154,74 +152,22 @@ def pairwise_info2tags(pairwise: PairwiseInfo) -> str:
     rv['~their_verkey'] = pairwise.their_verkey
     rv['~my_did'] = pairwise.my_did
     rv['~my_verkey'] = pairwise.my_verkey
-    return json.dumps(rv)
+    return rv
 
 
-def record2pairwise_info(record: dict) -> PairwiseInfo:
+def non_secret2pairwise_info(non_secret: NonSecret) -> PairwiseInfo:
     """
     Given indy-sdk non_secrets pairwise record dict, return corresponding PairwiseInfo.
 
-    :param record: non_secrets pairwise record dict
+    :param non_secret: non-secret to convert to PairwiseInfo
     :return: PairwiseInfo on non_secrets pairwise record DIDs, verkeys, metadata
     """
 
     return PairwiseInfo(
-        record['id'],  # = their did
-        record['value'],  # = their verkey
-        record['tags']['~my_did'],
-        record['tags']['~my_verkey'],
+        non_secret.id,  # = their did
+        non_secret.value,  # = their verkey
+        non_secret.tags['~my_did'],
+        non_secret.tags['~my_verkey'],
         {
-            tag[tag.startswith('~'):]: record['tags'][tag] for tag in record.get('tags', {})  # strip any leading '~'
+            tag[tag.startswith('~'):]: non_secret.tags[tag] for tag in (non_secret.tags or {})  # strip any leading '~'
         })
-
-
-def canon_pairwise_tag(tag: str) -> str:
-    """
-    Canonicalize pairwise tag to specify unencrypted storage.
-
-    :param tag: input tag
-    :return: tag prefixed with '~' if not already
-    """
-
-    return '{}{}'.format('' if tag.startswith('~') else '~', tag)
-
-
-def canon_pairwise_wql(query: dict = None) -> dict:
-    """
-    Canonicalize WQL tags to unencrypted storage specification.
-    Canonicalize comparison values to strings via raw().
-
-    Raise BadWalletQuery for WQL mapping '$or' to non-list.
-
-    :param query: WQL query
-    :return: canonicalized WQL query dict
-    """
-
-    if not query:
-        return {
-            '~their_did': {
-                '$neq': ''
-            }
-        }
-
-    for k in [qk for qk in query]:  # copy: iteration alters query keys
-        if isinstance(query[k], dict):  # only subqueries are dicts: recurse
-            query[k] = canon_pairwise_wql(query[k])
-        if k == '$or':
-            if not isinstance(query[k], list):
-                raise BadWalletQuery('Bad WQL; $or value must be a list in {}'.format(json.dumps(query)))
-            query[k] = [canon_pairwise_wql(subq) for subq in query[k]]
-        elif k not in WQL_1_OPS:
-            qkey = canon_pairwise_tag(k)
-            query[qkey] = query.pop(k)
-            tag_value = query[qkey]
-            if isinstance(tag_value, dict) and len(tag_value) == 1:
-                if '$in' in tag_value:
-                    tag_value['$in'] = [raw(val) for val in tag_value['$in']]
-                else:
-                    wql_op = set(tag_value.keys()).pop()  # $neq, $gt, $gt, etc.
-                    tag_value[wql_op] = raw(tag_value[wql_op])
-            else:
-                query[canon_pairwise_tag(k)] = raw(query.pop(qkey))
-
-    return query

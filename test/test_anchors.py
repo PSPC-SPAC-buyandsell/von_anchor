@@ -36,7 +36,6 @@ import pytest
 
 from indy import did
 
-from von_anchor.a2a import DIDInfo, EndpointInfo
 from von_anchor import (
     BCRegistrarAnchor,
     OrgBookAnchor,
@@ -85,7 +84,7 @@ from von_anchor.util import (
     rev_reg_id,
     schema_id,
     schema_key)
-from von_anchor.wallet import Wallet
+from von_anchor.wallet import DIDInfo, EndpointInfo, Wallet
 
 
 DIR_TAILS = join(expanduser('~'), '.indy_client', 'tails')
@@ -160,6 +159,40 @@ async def get_wallets(wallet_data, open_all, auto_remove=False):
             await w.open()
         rv[name] = w
     return rv
+
+
+def do(coro):
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
+
+
+def _get_cacheable(anchor, s_key, seq_no, issuer_did):
+    discriminant = hash(current_thread()) % 4
+    if discriminant == 0:
+        do(anchor.get_schema(seq_no))
+        print('.. Thread {} got schema {} v{} by seq #{}'.format(
+            current_thread().name,
+            s_key.name,
+            s_key.version,
+            seq_no))
+    elif discriminant == 1:
+        do(anchor.get_schema(s_key))
+        print('.. Thread {} got schema {} v{} by key'.format(
+            current_thread().name,
+            s_key.name,
+            s_key.version))
+    elif discriminant == 2:
+        cd_id = cred_def_id(issuer_did, seq_no)
+        do(anchor.get_cred_def(cd_id))
+        print('.. Thread {} got cred def {}'.format(current_thread().name, cd_id))
+    else:
+        rr_id = rev_reg_id(cred_def_id(issuer_did, seq_no), '0')
+        do(anchor.get_rev_reg_def(rr_id))
+        print('.. Thread {} got rev reg def {}'.format(current_thread().name, rr_id))
 
 
 @pytest.mark.skipif(False, reason='short-circuiting')
@@ -1942,7 +1975,10 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
     async with wallets['pspc-org-book'] as w_pspc, (
             wallets[SRI_NAME]) as w_sri, (
             manager.get(pool_name)) as p, (
-            OrgBookAnchor(w_pspc, p)) as pspcoban, (
+            OrgBookAnchor(w_pspc, p, config={
+                'parse-caches-on-open': True,
+                'archive-holder-prover-caches-on-close': True
+            })) as pspcoban, (
             SRIAnchor(w_sri, p, rrbx=True)) as san:  # exercise external rev reg builder
 
         nyms = {
@@ -2075,40 +2111,6 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
             len(REVO_CACHE[rr_id].rr_state_frames)))
 
     await RevRegBuilder.stop(SRI_NAME)
-
-
-def do(coro):
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coro)
-
-
-def _get_cacheable(anchor, s_key, seq_no, issuer_did):
-    discriminant = hash(current_thread()) % 4
-    if discriminant == 0:
-        do(anchor.get_schema(seq_no))
-        print('.. Thread {} got schema {} v{} by seq #{}'.format(
-            current_thread().name,
-            s_key.name,
-            s_key.version,
-            seq_no))
-    elif discriminant == 1:
-        do(anchor.get_schema(s_key))
-        print('.. Thread {} got schema {} v{} by key'.format(
-            current_thread().name,
-            s_key.name,
-            s_key.version))
-    elif discriminant == 2:
-        cd_id = cred_def_id(issuer_did, seq_no)
-        do(anchor.get_cred_def(cd_id))
-        print('.. Thread {} got cred def {}'.format(current_thread().name, cd_id))
-    else:
-        rr_id = rev_reg_id(cred_def_id(issuer_did, seq_no), '0')
-        do(anchor.get_rev_reg_def(rr_id))
-        print('.. Thread {} got rev reg def {}'.format(current_thread().name, rr_id))
 
 
 @pytest.mark.skipif(False, reason='short-circuiting')
@@ -2729,7 +2731,10 @@ async def test_util_wranglers(
             wallets['pspc-org-book']) as w_pspc, (
             manager.get(pool_name)) as p, (
             SRIAnchor(w_sri, p)) as san, (
-            OrgBookAnchor(w_pspc, p)) as pspcoban:
+            OrgBookAnchor(w_pspc, p, config={
+                'parse-caches-on-open': True,
+                'archive-holder-prover-caches-on-close': True
+            })) as pspcoban:
 
         assert p.handle is not None
 

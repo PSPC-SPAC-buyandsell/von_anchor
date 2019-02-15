@@ -19,31 +19,32 @@ import json
 import logging
 
 from ctypes import CDLL
-# from hashlib import sha256
 from time import time
-from typing import List, Sequence
+from typing import Callable, List, Sequence, Union
 
 from indy import crypto, did, non_secrets, wallet
 from indy.error import IndyError, ErrorCode
 
-from von_anchor.a2a import (
-    canon_pairwise_wql,
-    DIDInfo,
-    PairwiseInfo,
-    pairwise_info2tags,
-    record2pairwise_info,
-    TYPE_PAIRWISE)
+from von_anchor.canon import canon_non_secret_wql, canon_pairwise_wql
 from von_anchor.error import (
     AbsentRecord,
     AbsentMessage,
     AbsentWallet,
     BadKey,
     BadIdentifier,
+    BadRecord,
     ExtantWallet,
     ExtantRecord,
     WalletState)
 from von_anchor.util import ok_did
 from von_anchor.validcfg import validate_config
+from von_anchor.wallet import (
+    DIDInfo,
+    NonSecret,
+    non_secret2pairwise_info,
+    PairwiseInfo,
+    pairwise_info2tags,
+    TYPE_PAIRWISE)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -377,7 +378,6 @@ class Wallet:
                 self.handle,
                 self.did,
                 json.dumps({
-                    # 'seed_hash': sha256(seed.encode()).hexdigest(),
                     'anchor': True,
                     'since': int(time())
                 }))
@@ -523,65 +523,16 @@ class Wallet:
                 raise
 
         if my_did:
-            my_did_info = await self.get_local_did_info(my_did)
+            my_did_info = await self.get_local_did_info(my_did)  # raises AbsentRecord if no such local did
         else:
             my_did_info = await self.create_local_did(None, None, {'pairwise_for': their_did})
 
         pairwise = PairwiseInfo(their_did, their_verkey, my_did_info.did, my_did_info.verkey, metadata)
-        try:
-            record = json.loads(await non_secrets.get_wallet_record(
-                self.handle,
-                TYPE_PAIRWISE,
-                pairwise.their_did,
-                json.dumps({
-                    'retrieveType': False,
-                    'retrieveValue': True,
-                    'retrieveTags': True
-                })))
-            if record['value'] != pairwise.their_verkey:
-                await non_secrets.update_wallet_record_value(
-                    self.handle,
-                    TYPE_PAIRWISE,
-                    pairwise.their_did,
-                    pairwise.their_verkey)
-        except IndyError as x_indy:
-            if x_indy.error_code == ErrorCode.WalletItemNotFound:
-                await non_secrets.add_wallet_record(
-                    self.handle,
-                    TYPE_PAIRWISE,
-                    pairwise.their_did,
-                    pairwise.their_verkey,
-                    pairwise_info2tags(pairwise))
-            else:
-                LOGGER.debug(
-                    'Wallet.write_pairwise <!< Wallet lookup raised indy error code %s',
-                    x_indy.error_code)
-                raise
-        else:
-            ex_pairwise = record2pairwise_info(record)
-            if pairwise_info2tags(ex_pairwise) != pairwise_info2tags(pairwise):
-                new_pairwise = PairwiseInfo(
-                    pairwise.their_did,
-                    pairwise.their_verkey,
-                    pairwise.my_did,
-                    pairwise.my_verkey,
-                    pairwise.metadata if replace_meta else {**ex_pairwise.metadata, **(pairwise.metadata or {})})
-                await non_secrets.update_wallet_record_tags(
-                    self.handle,
-                    TYPE_PAIRWISE,
-                    pairwise.their_did,
-                    pairwise_info2tags(new_pairwise))
+        non_sec = await self.write_non_secret(
+            NonSecret(TYPE_PAIRWISE, their_did, their_verkey, pairwise_info2tags(pairwise)),
+            replace_meta)
 
-        rv = record2pairwise_info(json.loads(await non_secrets.get_wallet_record(
-            self.handle,
-            TYPE_PAIRWISE,
-            pairwise.their_did,
-            json.dumps({
-                'retrieveType': False,
-                'retrieveValue': True,
-                'retrieveTags': True
-            }))))  # get from source and touch up tags
-
+        rv = non_secret2pairwise_info(non_sec)
         LOGGER.debug('Wallet.write_pairwise <<< %s', rv)
         return rv
 
@@ -599,21 +550,7 @@ class Wallet:
             LOGGER.debug('Wallet.delete_pairwise <!< Bad DID %s', their_did)
             raise BadIdentifier('Bad DID {}'.format(their_did))
 
-        if not self.handle:
-            LOGGER.debug('Wallet.delete_pairwise <!< Wallet %s is closed', self.name)
-            raise WalletState('Wallet {} is closed'.format(self.name))
-
-        try:
-            await non_secrets.delete_wallet_record(self.handle, TYPE_PAIRWISE, their_did)
-        except IndyError as x_indy:
-            if x_indy.error_code == ErrorCode.WalletItemNotFound:
-                LOGGER.info('Wallet.delete_pairwise <!< no record for pairwise DID on %s', their_did)
-            else:
-                LOGGER.debug(
-                    'Wallet.delete_pairwise <!< deletion of pairwise DID record on %s raised indy error code %s',
-                    their_did,
-                    x_indy.error_code)
-                raise
+        await self.delete_non_secret(TYPE_PAIRWISE, their_did)
 
         LOGGER.debug('Wallet.delete_pairwise <<<')
 
@@ -632,13 +569,140 @@ class Wallet:
             LOGGER.debug('Wallet.get_pairwise <!< Wallet %s is closed', self.name)
             raise WalletState('Wallet {} is closed'.format(self.name))
 
+        non_secs = await self.get_non_secret(
+            TYPE_PAIRWISE,
+            pairwise_filt if ok_did(pairwise_filt) or not pairwise_filt else json.loads(pairwise_filt),
+            canon_pairwise_wql)
+        rv = {k: non_secret2pairwise_info(non_secs[k]) for k in non_secs}  # touch up tags, mute leading ~
+
+        LOGGER.debug('Wallet.get_pairwise <<< %s', rv)
+        return rv
+
+    async def write_non_secret(self, non_secret: NonSecret, replace_meta: bool = False) -> NonSecret:
+        """
+        Add or update non-secret record to the wallet; return resulting wallet non-secret record.
+
+        :param non_secret: non-secret record
+        :return: non-secret record as it appears in the wallet after write
+        """
+
+        LOGGER.debug('Wallet.write_non_secret >>> non_secret: %s, replace_meta: %s', non_secret, replace_meta)
+
+        if not NonSecret.ok_tags(non_secret.tags):
+            LOGGER.debug('Wallet.write_non_secret <!< bad non_secret tags %s; use flat {str: str} dict', non_secret)
+            raise BadRecord('Bad non_secret tags {}; use flat {{str:str}} dict'.format(non_secret))
+
+        try:
+            record = json.loads(await non_secrets.get_wallet_record(
+                self.handle,
+                non_secret.type,
+                non_secret.id,
+                json.dumps({
+                    'retrieveType': False,
+                    'retrieveValue': True,
+                    'retrieveTags': True
+                })))
+            if record['value'] != non_secret.value:
+                await non_secrets.update_wallet_record_value(
+                    self.handle,
+                    non_secret.type,
+                    non_secret.id,
+                    non_secret.value)
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletItemNotFound:
+                await non_secrets.add_wallet_record(
+                    self.handle,
+                    non_secret.type,
+                    non_secret.id,
+                    non_secret.value,
+                    json.dumps(non_secret.tags) if non_secret.tags else None)
+            else:
+                LOGGER.debug(
+                    'Wallet.write_non_secret <!< Wallet lookup raised indy error code %s',
+                    x_indy.error_code)
+                raise
+        else:
+            if (record['tags'] or None) != non_secret.tags:  # record maps no tags to {}, not None
+                tags = (non_secret.tags or {}) if replace_meta else {**record['tags'], **(non_secret.tags or {})}
+
+                await non_secrets.update_wallet_record_tags(
+                    self.handle,
+                    non_secret.type,
+                    non_secret.id,
+                    json.dumps(tags))  # indy-sdk takes '{}' instead of None for null tags
+
+        record = json.loads(await non_secrets.get_wallet_record(
+            self.handle,
+            non_secret.type,
+            non_secret.id,
+            json.dumps({
+                'retrieveType': False,
+                'retrieveValue': True,
+                'retrieveTags': True
+            })))
+
+        rv = NonSecret(non_secret.type, record['id'], record['value'], record.get('tags', None))
+        LOGGER.debug('Wallet.write_non_secret <<< %s', rv)
+        return rv
+
+    async def delete_non_secret(self, typ: str, ident: str) -> None:
+        """
+        Remove a pairwise DID record by its type and identifier. Silently return if no such record is present.
+        Raise WalletState for closed wallet.
+
+        :param typ: non-secret record type
+        :param ident: non-secret record identifier
+        """
+
+        LOGGER.debug('Wallet.delete_non_secret >>> typ: %s, ident: %s', typ, ident)
+
+        if not self.handle:
+            LOGGER.debug('Wallet.delete_non_secret <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+
+        try:
+            await non_secrets.delete_wallet_record(self.handle, typ, ident)
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletItemNotFound:
+                LOGGER.info('Wallet.delete_non_secret <!< no record for type %s on identifier %s', typ, ident)
+            else:
+                LOGGER.debug(
+                    'Wallet.delete_non_secret <!< deletion of %s record on identifier %s raised indy error code %s',
+                    typ,
+                    ident,
+                    x_indy.error_code)
+                raise
+
+        LOGGER.debug('Wallet.delete_non_secret <<<')
+
+    async def get_non_secret(
+            self,
+            typ: str,
+            filt: Union[dict, str] = None,
+            canon_wql: Callable[[dict], dict] = None) -> dict:
+        """
+        Return dict mapping each non-secret record of interest by identifier or,
+        for no filter specified, mapping them all. If wallet has no such item, return empty dict.
+
+        :param typ: non-secret record type
+        :param filt: non-secret record identifier or WQL json (default all)
+        :param canon_wql: WQL canonicalization function (default wallet.nonsecret.canon_non_secret_wql())
+        :return: dict mapping identifiers to non-secret records
+        """
+
+        LOGGER.debug('Wallet.get_non_secret >>> typ: %s, filt: %s, canon_wql: %s', typ, filt, canon_wql)
+
+        if not self.handle:
+            LOGGER.debug('Wallet.get_non_secret <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+
         records = []
-        if pairwise_filt and ok_did(pairwise_filt):  # ordinary their-DID match
+        if isinstance(filt, str):  # ordinary lookup by value
             try:
                 records = [json.loads(await non_secrets.get_wallet_record(
                     self.handle,
-                    TYPE_PAIRWISE,
-                    pairwise_filt,
+                    typ,
+                    filt,
                     json.dumps({
                         'retrieveType': False,
                         'retrieveValue': True,
@@ -649,15 +713,16 @@ class Wallet:
                     pass
                 else:
                     LOGGER.debug(
-                        'Wallet.get_pairwise <!< Wallet %s lookup raised indy exception %s',
+                        'Wallet.get_non_secret <!< Wallet %s lookup raised indy exception %s',
                         self.name,
                         x_indy.error_code)
                     raise
         else:
+            canon = canon_wql or canon_non_secret_wql
             s_handle = await non_secrets.open_wallet_search(
                 self.handle,
-                TYPE_PAIRWISE,
-                json.dumps(canon_pairwise_wql(json.loads(pairwise_filt or '{}'))),
+                typ,
+                json.dumps(canon(filt or {})),
                 json.dumps({
                     'retrieveRecords': True,
                     'retrieveTotalCount': True,
@@ -672,11 +737,8 @@ class Wallet:
                 records = json.loads(
                     await non_secrets.fetch_wallet_search_next_records(self.handle, s_handle, count))['records']
 
-        rv = {
-            record['id']: record2pairwise_info(record) for record in records
-        }
-
-        LOGGER.debug('Wallet.get_pairwise <<< %s', rv)
+        rv = {record['id']: NonSecret(typ, record['id'], record['value'], record['tags']) for record in records}
+        LOGGER.debug('Wallet.get_non_secret <<< %s', rv)
         return rv
 
     async def encrypt(self, message: bytes, authn: bool = False, verkey: str = None) -> bytes:
@@ -891,7 +953,6 @@ class Wallet:
             self.handle,
             self.did,
             json.dumps({
-                # 'seed_hash': sha256(self._next_seed.encode()).hexdigest(),
                 'anchor': True,
                 'since': int(time())
             }))

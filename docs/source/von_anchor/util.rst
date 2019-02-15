@@ -156,7 +156,7 @@ Utility ``revealed_attrs()`` takes an indy-sdk proof and returns its revealed at
         }
     }
 
-for an actuator to build proof of one credential into another that stems from it (recall that an indy-sdk proof can have at most one credential per credential definition). Mapping attributes from the credential definitions in the proof to relying credential definitions must be an exercise for the actuator (or possibly the VON-X layer), but note that indy-sdk canonicalizes attribute names in proofs (also, credential offers) – the canon() utility of :ref:`canon-util` may be of interest in navigating this detail.
+for an actuator to build proof of one credential into another that stems from it (recall that an indy-sdk proof can have at most one credential per credential definition). Mapping attributes from the credential definitions in the proof to relying credential definitions must be an exercise for the actuator (or possibly the VON-X layer), but note that indy-sdk canonicalizes attribute names in proofs (also, credential offers) – the ``canon()`` utility of :ref:`canon-util` may be of interest in navigating this detail.
 
 .. _canon-util:
 
@@ -168,6 +168,12 @@ File ``von_anchor/canon.py`` houses utilities to canonicalize attribute names as
 The ``canon()`` convenience method canonicalizes an attribute name to its indy-sdk representation inside proofs and credential offers. This canonicalization is simple: it eliminates internal spaces and converts to lower case.
 
 The ``canon_wql()`` convenience method canonicalizes an WQL attribute marker and value keys for input to credential search. The caller need not use this method; the anchor search methods already call it before applying WQL queries.
+
+The ``canon_non_secret_wql()`` free function canonicalizes WQL for use in the indy-sdk non-secrets API to search non-secret records by metadata. It coerces comparison values to strings.
+
+The ``canon_pairwise_tag()`` free function canonicalizes a metadata attribute name into a tag for WQL use within the indy-sdk non-secrets API. Its operation prepends a tilde (``~``) for any attribute name not starting with one already; this nomenclature identifies the attribute for non-encrypted storage, allowing full WQL search.
+
+The ``canon_pairwise_wql()`` free function canonicalizes WQL for use in the indy-sdk non-secrets API to search pairwise DIDs by metadata. It delegates to ``canon_pairwise_tag()`` to mark all attributes for non-encrypted storage, and coerces comparison values to strings.
 
 
 Indytween Utilities

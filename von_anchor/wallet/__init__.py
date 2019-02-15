@@ -15,6 +15,8 @@ limitations under the License.
 """
 
 
-from .diddoc import DIDDoc
-from .publickey import LinkedDataKeySpec, PublicKey, PublicKeyType
-from .service import Service
+from .didinfo import DIDInfo
+from .endpointinfo import EndpointInfo
+from .nonsecret import NonSecret
+from .pairwise import non_secret2pairwise_info, PairwiseInfo, pairwise_info2tags, TYPE_PAIRWISE
+from .wallet import register_wallet_storage_library, Wallet
