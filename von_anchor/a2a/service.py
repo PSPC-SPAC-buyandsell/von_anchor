@@ -15,6 +15,8 @@ limitations under the License.
 """
 
 
+from typing import List, Sequence, Union
+
 from von_anchor.a2a.docutil import canon_did, canon_ref
 
 
@@ -25,19 +27,29 @@ class Service:
     (oriented toward W3C-facing operations).
     """
 
-    def __init__(self, did: str, ident: str, s_type: str, endpoint: str):
+    def __init__(
+            self, did: str,
+            ident: str,
+            typ: str,
+            recip_keys: Union[Sequence, str],
+            rtg_keys: Union[Sequence, str],
+            endpoint: str):
         """
         Retain service specification particulars. Raise BadIdentifier on bad input controller DID.
 
         :param did: DID of DID document embedding public key, specified raw (operation converts to URI)
         :param ident: identifier for public key
-        :param s_type: service type
+        :param typ: service type
+        :param recip_keys: recipient key or keys
+        :param rtg_keys: routing key or keys
         :param endpoint: service endpoint
         """
 
         self._did = canon_did(did)
         self._id = canon_ref(self._did, ident, ';')
-        self._type = s_type
+        self._type = typ
+        self._recip_keys = [recip_keys] if isinstance(recip_keys, str) else list(recip_keys) if recip_keys else None
+        self._routing_keys = [rtg_keys] if isinstance(rtg_keys, str) else list(rtg_keys) if rtg_keys else None
         self._endpoint = canon_ref(self._did, endpoint)
 
     @property
@@ -71,6 +83,26 @@ class Service:
         return self._type
 
     @property
+    def recip_keys(self) -> List[str]:
+        """
+        Return recipient keys.
+
+        :return: recip keys
+        """
+
+        return self._recip_keys
+
+    @property
+    def routing_keys(self) -> List[str]:
+        """
+        Return routing keys.
+
+        :return: routing keys
+        """
+
+        return self._routing_keys
+
+    @property
     def endpoint(self) -> str:
         """
         Return endpoint value.
@@ -85,8 +117,14 @@ class Service:
         Return dict representation of service to embed in DID document.
         """
 
-        return {
+        rv = {
             'id': self.id,
             'type': self.type,
-            'serviceEndpoint': self.endpoint
         }
+        if self.recip_keys:
+            rv['recipientKeys'] = self.recip_keys
+        if self.routing_keys:
+            rv['routingKeys'] = self.routing_keys
+        rv['serviceEndpoint'] = self.endpoint
+
+        return rv

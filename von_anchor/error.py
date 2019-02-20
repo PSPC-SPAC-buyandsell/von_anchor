@@ -64,6 +64,9 @@ class ErrorCode(IntEnum):
     # Errors to do with caching
     CacheIndex = 5000
 
+    # Errors in DID Doc processing
+    AbsentId = 6000
+
     # JSON validation
     JSONValidation = 9000
 
@@ -581,6 +584,21 @@ class CacheIndex(VonAnchorError):
         """
 
         super().__init__(ErrorCode.CacheIndex, message)
+
+
+class AbsentId(VonAnchorError):
+    """
+    Absent identifier in DID document.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.AbsentId, message)
 
 
 class JSONValidation(VonAnchorError):

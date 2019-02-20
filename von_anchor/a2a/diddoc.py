@@ -16,12 +16,31 @@ limitations under the License.
 
 
 import json
+import logging
 
-from typing import Iterable, List, Union
+from os import urandom
+from typing import List, Sequence, Union
 
-from von_anchor.a2a.docutil import canon_did, canon_ref
+from von_anchor.a2a.docutil import canon_did, canon_ref, resource
 from von_anchor.a2a.publickey import PublicKey, PublicKeyType
 from von_anchor.a2a.service import Service
+from von_anchor.error import AbsentId
+from von_anchor.util import B58, ok_did
+
+
+LOGGER = logging.getLogger(__name__)
+
+
+def random_did():
+    """
+    Generate random DID.
+    """
+
+    rv = ''
+    rando = urandom(22)
+    for i in range(22):
+        rv += B58[rando[i] % 58]
+    return rv
 
 
 class DIDDoc:
@@ -64,7 +83,7 @@ class DIDDoc:
         self._did = canon_did(value) if value else None
 
     @property
-    def verkeys(self) -> List:
+    def verkeys(self) -> List[PublicKey]:
         """
         Accessor for verification keys.
         """
@@ -72,7 +91,7 @@ class DIDDoc:
         return self._verkeys
 
     @verkeys.setter
-    def verkeys(self, value: Union[Iterable, PublicKey] = None) -> None:
+    def verkeys(self, value: Union[Sequence[PublicKey], PublicKey] = None) -> None:
         """
         Set verication keys.
 
@@ -85,7 +104,7 @@ class DIDDoc:
             self._verkeys = []
 
     @property
-    def authnkeys(self) -> List:
+    def authnkeys(self) -> List[PublicKey]:
         """
         Accessor for verification keys marked as authentication keys.
         """
@@ -101,7 +120,7 @@ class DIDDoc:
         return self._services
 
     @services.setter
-    def services(self, value: Union[Iterable, Service] = None) -> None:
+    def services(self, value: Union[Sequence[Service], Service] = None) -> None:
         """
         Set services.
 
@@ -145,11 +164,27 @@ class DIDDoc:
         """
         Construct DIDDoc object from dict representation.
 
+        Raise BadIdentifier for bad DID, MissingId for no identifying DID present.
+
         :param did_doc: DIDDoc dict reprentation.
         :return: DIDDoc from input json.
         """
 
-        rv = DIDDoc(did_doc['id'])
+        rv = None
+        if 'id' in did_doc:
+            rv = DIDDoc(did_doc['id'])
+        else:
+            if 'publicKey' not in did_doc:
+                LOGGER.debug('DIDDoc.deserialize <!< no identifier in DID document')
+                raise AbsentId('No identifier in DID document')
+            for pubkey in did_doc['publicKey']:
+                pubkey_did = canon_did(resource(pubkey['id']))
+                if ok_did(pubkey_did):
+                    rv = DIDDoc(pubkey_did)
+                    break
+            else:
+                LOGGER.debug('DIDDoc.deserialize <!< no identifier in DID document')
+                raise AbsentId('No identifier in DID document')
 
         verkeys = []
         for pubkey in did_doc['publicKey']:  # include public keys and authentication keys by reference
@@ -158,10 +193,10 @@ class DIDDoc:
             value = pubkey[pubkey_type.specifier]
             authn = any(
                 canon_ref(rv.did, ak.get('publicKey', '')) == canon_ref(rv.did, pubkey['id'])
-                for ak in did_doc['authentication'] if isinstance(ak.get('publicKey', None), str))
+                for ak in did_doc.get('authentication', {}) if isinstance(ak.get('publicKey', None), str))
             verkeys.append(PublicKey(rv.did, pubkey['id'], pubkey_type, controller, value, authn))
 
-        for akey in did_doc['authentication']:  # include embedded authentication keys
+        for akey in did_doc.get('authentication', {}):  # include embedded authentication keys
             pk_ref = akey.get('publicKey', None)
             if pk_ref:
                 pass  # got it already with public keys
@@ -172,11 +207,16 @@ class DIDDoc:
                 verkeys.append(PublicKey(rv.did, akey['id'], pubkey_type, controller, value, True))
         rv.verkeys = verkeys
 
-        rv.services = [Service(
-            rv.did,
-            service['id'],
-            service['type'],
-            service['serviceEndpoint']) for service in did_doc['service']]
+        services = []
+        for service in did_doc.get('service', {}):
+            services.append(Service(
+                rv.did,
+                service.get('id', canon_ref(rv.did, str(len(services)), ';')),
+                service['type'],
+                service.get('recipientKeys', service.get('routing_keys', None)),  # standard creep - revisit once stable
+                service.get('routingKeys', service.get('routing_keys', None)),
+                service['serviceEndpoint']))
+        rv.services = services
 
         return rv
 

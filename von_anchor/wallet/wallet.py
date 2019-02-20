@@ -731,6 +731,7 @@ class Wallet:
                     'retrieveTags': True
                 }))
 
+            # TODO: paginate?  Take approach from cred search WQL in holder-prover
             count = int(json.loads(
                 await non_secrets.fetch_wallet_search_next_records(self.handle, s_handle, 0))['totalCount'])
             if count > 0:

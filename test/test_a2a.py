@@ -73,53 +73,6 @@ async def test_a2a():
     dd_out = dd.serialize()
     print('\n\n== 1 == DID Doc on referenced authn keys from dict and back again: {}'.format(ppjson(dd_out)))
 
-    # One authn key embedded
-    dd_in = {
-        '@context': 'https://w3id.org/did/v1',
-        'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
-        'publicKey': [
-            {
-                'id': 'routing',
-                'type': 'RsaVerificationKey2018',
-                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
-                'publicKeyPem': '-----BEGIN PUBLIC X...'
-            },
-            {
-                'id': '4',
-                'type': 'RsaVerificationKey2018',
-                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
-                'publicKeyPem': '-----BEGIN PUBLIC 9...'
-            }
-        ],
-        'authentication': [
-            {
-                'type': 'RsaSignatureAuthentication2018',
-                'publicKey': 'did:sov:LjgpST2rjsoxYegQDRm7EL#4'
-            },
-            {
-                'id': '6',
-                'type': 'RsaVerificationKey2018',
-                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
-                'publicKeyPem': '-----BEGIN PUBLIC A...'
-            }
-        ],
-        'service': [
-            {
-                'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL;0',
-                'type': 'Agency',
-                'serviceEndpoint': 'https://www.von.ca'
-            }
-        ]
-    }
-
-    dd = DIDDoc.deserialize(dd_in)
-    assert len(dd.verkeys) == len(dd_in['publicKey']) + 1
-    assert len(dd.authnkeys) == len(dd_in['authentication'])
-
-    dd_out = dd.serialize()
-    print('\n\n== 2 == DID Doc on 1 referenced and 1 embedded authn key from dict and back again: {}'.format(
-        ppjson(dd_out)))
-
     # One authn key embedded, all possible refs canonical
     dd_in = {
         '@context': 'https://w3id.org/did/v1',
@@ -164,4 +117,78 @@ async def test_a2a():
     assert len(dd.authnkeys) == len(dd_in['authentication'])
 
     dd_out = dd.serialize()
+    print('\n\n== 2 == DID Doc on refs canonical where possible from dict and back again: {}'.format(ppjson(dd_out)))
+
+    # All references canonical where possible
+    dd_in = {
+        '@context': 'https://w3id.org/did/v1',
+        'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+        'publicKey': [
+            {
+                'id': 'routing',
+                'type': 'RsaVerificationKey2018',
+                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyPem': '-----BEGIN PUBLIC X...'
+            },
+            {
+                'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL#4',
+                'type': 'RsaVerificationKey2018',
+                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyPem': '-----BEGIN PUBLIC 9...'
+            }
+        ],
+        'authentication': [
+            {
+                'type': 'RsaSignatureAuthentication2018',
+                'publicKey': 'did:sov:LjgpST2rjsoxYegQDRm7EL#4'
+            },
+            {
+                'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL#6',
+                'type': 'RsaVerificationKey2018',
+                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyPem': '-----BEGIN PUBLIC A...'
+            }
+        ],
+        'service': [
+            {
+                'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL;0',
+                'type': 'Agency',
+                'serviceEndpoint': 'https://www.von.ca'
+            }
+        ]
+    }
+
+    dd = DIDDoc.deserialize(dd_in)
+    assert len(dd.verkeys) == len(dd_in['publicKey']) + 1
+    assert len(dd.authnkeys) == len(dd_in['authentication'])
+
+    dd_out = dd.serialize()
     print('\n\n== 3 == DID Doc on refs canonical where possible from dict and back again: {}'.format(ppjson(dd_out)))
+
+    # Minimal as per indy-agent test suite circa 2019-02
+    dd_in = {
+        '@context': 'https://w3id.org/did/v1',
+        'publicKey': [
+            {
+                'id': 'LjgpST2rjsoxYegQDRm7EL#keys-1',
+                'type': 'Ed25519VerificationKey2018',
+                'controller': 'LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyBase58': '~XXXXXXXXXXXXXXXXXX'
+            }
+        ],
+        'service': [
+            {
+                'type': 'IndyAgent',
+                'recipientKeys': ['~XXXXXXXXXXXXXXXX'],
+                'serviceEndpoint': 'www.von.ca'
+            }
+        ]
+    }
+
+    dd = DIDDoc.deserialize(dd_in)
+    assert len(dd.verkeys) == len(dd_in['publicKey'])
+    assert len(dd.authnkeys) == 0
+
+    dd_out = dd.serialize()
+    print('\n\n== 4 == DID Doc miminal style from dict and back again: {}'.format(
+        ppjson(dd_out)))
