@@ -18,6 +18,7 @@ limitations under the License.
 from typing import List, Sequence, Union
 
 from von_anchor.a2a.docutil import canon_did, canon_ref
+from von_anchor.a2a.publickey import PublicKey
 
 
 class Service:
@@ -28,29 +29,34 @@ class Service:
     """
 
     def __init__(
-            self, did: str,
+            self,
+            did: str,
             ident: str,
             typ: str,
-            recip_keys: Union[Sequence, str],
-            rtg_keys: Union[Sequence, str],
-            endpoint: str):
+            recip_keys: Union[Sequence, PublicKey],
+            routing_keys: Union[Sequence, PublicKey],
+            endpoint: str,
+            priority: int = 0):
         """
         Retain service specification particulars. Raise BadIdentifier on bad input controller DID.
 
-        :param did: DID of DID document embedding public key, specified raw (operation converts to URI)
-        :param ident: identifier for public key
+        :param did: DID of DID document embedding service, specified raw (operation converts to URI)
+        :param ident: identifier for service
         :param typ: service type
         :param recip_keys: recipient key or keys
-        :param rtg_keys: routing key or keys
+        :param routing_keys: routing key or keys
         :param endpoint: service endpoint
+        :param priority: service priority
         """
 
         self._did = canon_did(did)
         self._id = canon_ref(self._did, ident, ';')
         self._type = typ
         self._recip_keys = [recip_keys] if isinstance(recip_keys, str) else list(recip_keys) if recip_keys else None
-        self._routing_keys = [rtg_keys] if isinstance(rtg_keys, str) else list(rtg_keys) if rtg_keys else None
-        self._endpoint = canon_ref(self._did, endpoint)
+        self._routing_keys = (
+            [routing_keys] if isinstance(routing_keys, str) else list(routing_keys) if routing_keys else None)
+        self._endpoint = endpoint
+        self._priority = priority
 
     @property
     def did(self) -> str:
@@ -65,9 +71,9 @@ class Service:
     @property
     def id(self) -> str:
         """
-        Return public key identifier.
+        Return service identifier.
 
-        :return: public key identifier
+        :return: service identifier
         """
 
         return self._id
@@ -83,7 +89,7 @@ class Service:
         return self._type
 
     @property
-    def recip_keys(self) -> List[str]:
+    def recip_keys(self) -> List[PublicKey]:
         """
         Return recipient keys.
 
@@ -93,7 +99,7 @@ class Service:
         return self._recip_keys
 
     @property
-    def routing_keys(self) -> List[str]:
+    def routing_keys(self) -> List[PublicKey]:
         """
         Return routing keys.
 
@@ -112,6 +118,16 @@ class Service:
 
         return self._endpoint
 
+    @property
+    def priority(self) -> int:
+        """
+        Return priority value.
+
+        :return: priority value
+        """
+
+        return self._priority
+
     def to_dict(self):
         """
         Return dict representation of service to embed in DID document.
@@ -120,11 +136,12 @@ class Service:
         rv = {
             'id': self.id,
             'type': self.type,
+            'priority': self.priority
         }
         if self.recip_keys:
-            rv['recipientKeys'] = self.recip_keys
+            rv['routingKeys'] = [canon_ref(k.did, k.id, '#') for k in  self.recip_keys]
         if self.routing_keys:
-            rv['routingKeys'] = self.routing_keys
+            rv['routingKeys'] = [canon_ref(k.did, k.id, '#') for k in self.routing_keys]
         rv['serviceEndpoint'] = self.endpoint
 
         return rv

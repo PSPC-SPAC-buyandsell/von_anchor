@@ -711,14 +711,14 @@ class HolderProver(BaseAnchor):
         (handle, cardinality) = await anoncreds.prover_search_credentials(
             self.wallet.handle,
             json.dumps(canon_cred_wql(json.loads(query_json))))  # indy-sdk requires attr name canonicalization
-        chunk = min(cardinality, limit or cardinality, Wallet.DEFAULT_CHUNK)  # heuristic
+        chunk = min(cardinality, limit or cardinality, Wallet.DEFAULT_CHUNK)
         if limit:
             cardinality = min(limit, cardinality)
         try:
             while len(infos) != cardinality:
                 batch = json.loads(await anoncreds.prover_fetch_credentials(handle, chunk))
                 infos.extend(batch)
-                if len(batch) < cardinality:
+                if len(batch) < chunk:
                     break
             if len(infos) != cardinality:
                 LOGGER.warning('Credential search/limit indicated %s results but fetched %s', cardinality, len(infos))

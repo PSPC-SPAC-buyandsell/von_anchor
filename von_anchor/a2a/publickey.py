@@ -100,26 +100,26 @@ class PublicKey:
             self,
             did: str,
             ident: str,
-            pk_type: PublicKeyType,
-            controller: str,
             value: str,
+            pk_type: PublicKeyType = None,
+            controller: str = None,
             authn: bool = False) -> None:
         """
         Retain key specification particulars. Raise BadIdentifier on any bad input DID.
 
         :param did: DID of DID document embedding public key
         :param ident: identifier for public key
-        :param pk_type: public key type (enum)
-        :param controller: controller DID
         :param value: key content, encoded as key specification requires
-        :param authn: whether key as has DID authentication privilege
+        :param pk_type: public key type (enum), default ED25519_SIG_2018
+        :param controller: controller DID (default DID of DID document)
+        :param authn: whether key as has DID authentication privilege (default False)
         """
 
         self._did = canon_did(did)
         self._id = canon_ref(self._did, ident)
-        self._type = pk_type
-        self._controller = canon_did(controller)
         self._value = value
+        self._type = pk_type or PublicKeyType.ED25519_SIG_2018
+        self._controller = canon_did(controller) if controller else self._did
         self._authn = authn
 
     @property
@@ -192,7 +192,6 @@ class PublicKey:
 
         self._authn = value
 
-
     def to_dict(self):
         """
         Return dict representation of public key to embed in DID document.
@@ -204,3 +203,16 @@ class PublicKey:
             'controller': canon_ref(self.did, self.controller),
             **self.type.specification(self.value)
         }
+
+    def __repr__(self):
+        """
+        Return representation.
+        """
+
+        return 'PublicKey({}, {}, {}, {}, {}, {})'.format(
+            self.did,
+            self.id,
+            self.value,
+            self.type,
+            self.controller,
+            self.authn)

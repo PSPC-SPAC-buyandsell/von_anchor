@@ -18,29 +18,16 @@ limitations under the License.
 import json
 import logging
 
-from os import urandom
 from typing import List, Sequence, Union
 
 from von_anchor.a2a.docutil import canon_did, canon_ref, resource
 from von_anchor.a2a.publickey import PublicKey, PublicKeyType
 from von_anchor.a2a.service import Service
-from von_anchor.error import AbsentId
-from von_anchor.util import B58, ok_did
+from von_anchor.error import AbsentDIDDocItem
+from von_anchor.util import ok_did
 
 
 LOGGER = logging.getLogger(__name__)
-
-
-def random_did():
-    """
-    Generate random DID.
-    """
-
-    rv = ''
-    rando = urandom(22)
-    for i in range(22):
-        rv += B58[rando[i] % 58]
-    return rv
 
 
 class DIDDoc:
@@ -61,8 +48,8 @@ class DIDDoc:
         """
 
         self._did = canon_did(did) if did else None  # allow specification post-hoc
-        self._verkeys = []
-        self._services = []
+        self._pubkey = {}
+        self._service = {}
 
     @property
     def did(self) -> str:
@@ -83,54 +70,28 @@ class DIDDoc:
         self._did = canon_did(value) if value else None
 
     @property
-    def verkeys(self) -> List[PublicKey]:
+    def pubkey(self) -> dict:
         """
-        Accessor for verification keys.
-        """
-
-        return self._verkeys
-
-    @verkeys.setter
-    def verkeys(self, value: Union[Sequence[PublicKey], PublicKey] = None) -> None:
-        """
-        Set verication keys.
-
-        :param value: verification key or keys (specify None to clear)
+        Accessor for public keys by identifier.
         """
 
-        if value:
-            self._verkeys = [value] if isinstance(value, PublicKey) else list(value)
-        else:
-            self._verkeys = []
+        return self._pubkey
 
     @property
-    def authnkeys(self) -> List[PublicKey]:
+    def authnkey(self) -> dict:
         """
-        Accessor for verification keys marked as authentication keys.
+        Accessor for public keys marked as authentication keys, by identifier.
         """
 
-        return [k for k in self._verkeys if k.authn]
+        return {k: self._pubkey[k] for k in self._pubkey if self._pubkey[k].authn}
 
     @property
-    def services(self) -> List:
+    def service(self) -> dict:
         """
-        Accessor for services.
-        """
-
-        return self._services
-
-    @services.setter
-    def services(self, value: Union[Sequence[Service], Service] = None) -> None:
-        """
-        Set services.
-
-        :param value: service or services (specify None to clear)
+        Accessor for services by identifier.
         """
 
-        if value:
-            self._services = [value] if isinstance(value, Service) else list(value)
-        else:
-            self._services = []
+        return self._service
 
     def serialize(self) -> str:
         """
@@ -142,12 +103,12 @@ class DIDDoc:
         return {
             '@context': DIDDoc.CONTEXT,
             'id': canon_ref(self.did, self.did),
-            'publicKey': [verkey.to_dict() for verkey in self.verkeys],
+            'publicKey': [pubkey.to_dict() for pubkey in self.pubkey.values()],
             'authentication': [{
-                'type': verkey.type.authn_type,
-                'publicKey': canon_ref(self.did, verkey.id)
-            } for verkey in self.verkeys if verkey.authn],
-            'service': [service.to_dict() for service in self.services]
+                'type': pubkey.type.authn_type,
+                'publicKey': canon_ref(self.did, pubkey.id)
+            } for pubkey in self.pubkey.values() if pubkey.authn],
+            'service': [service.to_dict() for service in self.service.values()]
         }
 
     def to_json(self) -> str:
@@ -159,12 +120,56 @@ class DIDDoc:
 
         return json.dumps(self.serialize())
 
+    def add_service_pubkeys(self, service: dict, tags: Union[Sequence[str], str]) -> List[PublicKey]:
+        """
+        Add public keys specified in service. Return public keys so discovered.
+
+        Raise AbsentDIDDocItem for public key reference not present in DID document.
+
+        :param service: service from DID document
+        :param tags: potential tags marking public keys of type of interest - the standard is still coalescing
+        :return: list of public keys that service specification in DID document identifies.
+        """
+
+        rv = []
+        for tag in [tags] if isinstance(tags, str) else list(tags):
+
+            for svc_key in service.get(tag, {}):
+                canon_key = canon_ref(self.did, svc_key)
+                pubkey = None
+
+                if '#' in svc_key:
+                    if canon_key in self.pubkey:
+                        pubkey = self.pubkey[canon_key]
+                    else:  # service key refers to another DID doc
+                        LOGGER.debug(
+                            'DIDDoc.add_service_pubkeys <!< DID document %s has no public key %s',
+                            self.did,
+                            svc_key)
+                        raise AbsentDIDDocItem('DID document {} has no public key {}'.format(self.did, svc_key))
+                else:
+                    for existing_pubkey in self.pubkey.values():
+                        if existing_pubkey.value == svc_key:
+                            pubkey = existing_pubkey
+                            break
+                    else:
+                        pubkey = PublicKey(
+                            self.did,
+                            ident=svc_key[-9:-1],  # industrial-grade uniqueness
+                            value=svc_key)
+                        self._pubkey[pubkey.id] = pubkey
+
+                if pubkey and pubkey not in rv:  # perverse case: could specify same key multiple ways; append once
+                    rv.append(pubkey)
+
+        return rv
+
     @classmethod
     def deserialize(cls, did_doc: dict) -> 'DIDDoc':
         """
         Construct DIDDoc object from dict representation.
 
-        Raise BadIdentifier for bad DID, MissingId for no identifying DID present.
+        Raise BadIdentifier for bad DID.
 
         :param did_doc: DIDDoc dict reprentation.
         :return: DIDDoc from input json.
@@ -173,10 +178,10 @@ class DIDDoc:
         rv = None
         if 'id' in did_doc:
             rv = DIDDoc(did_doc['id'])
-        else:
+        else:  # get DID to serve as DID document identifier from first public key
             if 'publicKey' not in did_doc:
                 LOGGER.debug('DIDDoc.deserialize <!< no identifier in DID document')
-                raise AbsentId('No identifier in DID document')
+                raise AbsentDIDDocItem('No identifier in DID document')
             for pubkey in did_doc['publicKey']:
                 pubkey_did = canon_did(resource(pubkey['id']))
                 if ok_did(pubkey_did):
@@ -184,17 +189,21 @@ class DIDDoc:
                     break
             else:
                 LOGGER.debug('DIDDoc.deserialize <!< no identifier in DID document')
-                raise AbsentId('No identifier in DID document')
+                raise AbsentDIDDocItem('No identifier in DID document')
 
-        verkeys = []
         for pubkey in did_doc['publicKey']:  # include public keys and authentication keys by reference
             pubkey_type = PublicKeyType.get(pubkey['type'])
-            controller = canon_did(pubkey['controller'])
-            value = pubkey[pubkey_type.specifier]
             authn = any(
                 canon_ref(rv.did, ak.get('publicKey', '')) == canon_ref(rv.did, pubkey['id'])
                 for ak in did_doc.get('authentication', {}) if isinstance(ak.get('publicKey', None), str))
-            verkeys.append(PublicKey(rv.did, pubkey['id'], pubkey_type, controller, value, authn))
+            key = PublicKey(  # initialization canonicalizes id
+                rv.did,
+                pubkey['id'],
+                pubkey[pubkey_type.specifier],
+                pubkey_type,
+                canon_did(pubkey['controller']),
+                authn)
+            rv.pubkey[key.id] = key
 
         for akey in did_doc.get('authentication', {}):  # include embedded authentication keys
             pk_ref = akey.get('publicKey', None)
@@ -202,21 +211,26 @@ class DIDDoc:
                 pass  # got it already with public keys
             else:
                 pubkey_type = PublicKeyType.get(akey['type'])
-                controller = canon_did(akey['controller'])
-                value = akey[pubkey_type.specifier]
-                verkeys.append(PublicKey(rv.did, akey['id'], pubkey_type, controller, value, True))
-        rv.verkeys = verkeys
+                key = PublicKey(  # initialization canonicalized id
+                    rv.did,
+                    akey['id'],
+                    akey[pubkey_type.specifier],
+                    pubkey_type,
+                    canon_did(akey['controller']),
+                    True)
+                rv.pubkey[key.id] = key
 
-        services = []
         for service in did_doc.get('service', {}):
-            services.append(Service(
+            endpoint = service['serviceEndpoint']
+            svc = Service(  # initialization canonicalizes id
                 rv.did,
-                service.get('id', canon_ref(rv.did, str(len(services)), ';')),
+                service.get('id', canon_ref(rv.did, 'assigned-service-{}'.format(len(rv.service)), ';')),
                 service['type'],
-                service.get('recipientKeys', service.get('routing_keys', None)),  # standard creep - revisit once stable
-                service.get('routingKeys', service.get('routing_keys', None)),
-                service['serviceEndpoint']))
-        rv.services = services
+                rv.add_service_pubkeys(service, 'recipientKeys'),
+                rv.add_service_pubkeys(service, ['mediatorKeys', 'routingKeys']),
+                canon_ref(rv.did, endpoint, ';') if ';' in endpoint else endpoint,
+                service.get('priority', None))
+            rv.service[svc.id] = svc
 
         return rv
 

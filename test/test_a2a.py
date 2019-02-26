@@ -19,7 +19,7 @@ import json
 import pytest
 
 from von_anchor.a2a.diddoc import DIDDoc
-from von_anchor.error import BadIdentifier
+from von_anchor.error import AbsentDIDDocItem
 from von_anchor.frill import Ink, ppjson
 
 
@@ -33,7 +33,7 @@ async def test_a2a():
         'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
         'publicKey': [
             {
-                'id': 'routing',
+                'id': '3',
                 'type': 'RsaVerificationKey2018',
                 'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
                 'publicKeyPem': '-----BEGIN PUBLIC X...'
@@ -67,11 +67,11 @@ async def test_a2a():
     }
 
     dd = DIDDoc.deserialize(dd_in)
-    assert len(dd.verkeys) == len(dd_in['publicKey'])
-    assert len(dd.authnkeys) == len(dd_in['authentication'])
+    assert len(dd.pubkey) == len(dd_in['publicKey'])
+    assert len(dd.authnkey) == len(dd_in['authentication'])
 
     dd_out = dd.serialize()
-    print('\n\n== 1 == DID Doc on referenced authn keys from dict and back again: {}'.format(ppjson(dd_out)))
+    print('\n\n== 1 == DID Doc on abbreviated identifiers: {}'.format(ppjson(dd_out)))
 
     # One authn key embedded, all possible refs canonical
     dd_in = {
@@ -79,7 +79,7 @@ async def test_a2a():
         'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
         'publicKey': [
             {
-                'id': 'routing',
+                'id': '3',
                 'type': 'RsaVerificationKey2018',
                 'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
                 'publicKeyPem': '-----BEGIN PUBLIC X...'
@@ -113,19 +113,19 @@ async def test_a2a():
     }
 
     dd = DIDDoc.deserialize(dd_in)
-    assert len(dd.verkeys) == len(dd_in['publicKey']) + 1
-    assert len(dd.authnkeys) == len(dd_in['authentication'])
+    assert len(dd.pubkey) == len(dd_in['publicKey']) + 1
+    assert len(dd.authnkey) == len(dd_in['authentication'])
 
     dd_out = dd.serialize()
-    print('\n\n== 2 == DID Doc on refs canonical where possible from dict and back again: {}'.format(ppjson(dd_out)))
+    print('\n\n== 2 == DID Doc on mixed reference styles, embedded and ref style authn keys: {}'.format(ppjson(dd_out)))
 
-    # All references canonical where possible
+    # All references canonical where possible; one authn key embedded and one by reference
     dd_in = {
         '@context': 'https://w3id.org/did/v1',
         'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
         'publicKey': [
             {
-                'id': 'routing',
+                'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL#3',
                 'type': 'RsaVerificationKey2018',
                 'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
                 'publicKeyPem': '-----BEGIN PUBLIC X...'
@@ -152,20 +152,20 @@ async def test_a2a():
         'service': [
             {
                 'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL;0',
-                'type': 'Agency',
+                'type': 'DidMessaging',
                 'serviceEndpoint': 'https://www.von.ca'
             }
         ]
     }
 
     dd = DIDDoc.deserialize(dd_in)
-    assert len(dd.verkeys) == len(dd_in['publicKey']) + 1
-    assert len(dd.authnkeys) == len(dd_in['authentication'])
+    assert len(dd.pubkey) == len(dd_in['publicKey']) + 1
+    assert len(dd.authnkey) == len(dd_in['authentication'])
 
     dd_out = dd.serialize()
-    print('\n\n== 3 == DID Doc on refs canonical where possible from dict and back again: {}'.format(ppjson(dd_out)))
+    print('\n\n== 3 == DID Doc on canonical refs: {}'.format(ppjson(dd_out)))
 
-    # Minimal as per indy-agent test suite circa 2019-02
+    # Minimal as per indy-agent test suite without explicit identifiers
     dd_in = {
         '@context': 'https://w3id.org/did/v1',
         'publicKey': [
@@ -173,22 +173,156 @@ async def test_a2a():
                 'id': 'LjgpST2rjsoxYegQDRm7EL#keys-1',
                 'type': 'Ed25519VerificationKey2018',
                 'controller': 'LjgpST2rjsoxYegQDRm7EL',
-                'publicKeyBase58': '~XXXXXXXXXXXXXXXXXX'
+                'publicKeyBase58': '~XXXXXXXXXXXXXXXX'
             }
         ],
         'service': [
             {
-                'type': 'IndyAgent',
+                'type': 'DidMessaging',
                 'recipientKeys': ['~XXXXXXXXXXXXXXXX'],
-                'serviceEndpoint': 'www.von.ca'
+                'serviceEndpoint': 'https://www.von.ca'
             }
         ]
     }
 
     dd = DIDDoc.deserialize(dd_in)
-    assert len(dd.verkeys) == len(dd_in['publicKey'])
-    assert len(dd.authnkeys) == 0
+    assert len(dd.pubkey) == len(dd_in['publicKey'])
+    assert len(dd.authnkey) == 0
 
     dd_out = dd.serialize()
-    print('\n\n== 4 == DID Doc miminal style from dict and back again: {}'.format(
+    print('\n\n== 4 == DID Doc miminal style, implcit DID document identifier: {}'.format(
         ppjson(dd_out)))
+
+    # Minimal + ids as per indy-agent test suite with explicit identifiers; novel service recipient key on raw base58
+    dd_in = {
+        '@context': 'https://w3id.org/did/v1',
+        'id': 'LjgpST2rjsoxYegQDRm7EL',
+        'publicKey': [
+            {
+                'id': 'LjgpST2rjsoxYegQDRm7EL#keys-1',
+                'type': 'Ed25519VerificationKey2018',
+                'controller': 'LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyBase58': '~XXXXXXXXXXXXXXXX'
+            }
+        ],
+        'service': [
+            {
+                'id': 'LjgpST2rjsoxYegQDRm7EL;indy',
+                'type': 'DidMessaging',
+                'priority': 1,
+                'recipientKeys': ['~YYYYYYYYYYYYYYYY'],
+                'serviceEndpoint': 'https://www.von.ca'
+            }
+        ]
+    }
+
+    dd = DIDDoc.deserialize(dd_in)
+    assert len(dd.pubkey) == 1 + len(dd_in['publicKey'])
+    assert len(dd.authnkey) == 0
+
+    dd_out = dd.serialize()
+    print('\n\n== 5 == DID Doc miminal style plus explicit idents and novel raw base58 service recip key: {}'.format(
+        ppjson(dd_out)))
+
+    # Minimal + ids as per indy-agent test suite with explicit identifiers; novel service recipient key on raw base58
+    dd_in = {
+        '@context': 'https://w3id.org/did/v1',
+        'id': 'LjgpST2rjsoxYegQDRm7EL',
+        'publicKey': [
+            {
+                'id': 'LjgpST2rjsoxYegQDRm7EL#keys-1',
+                'type': 'Ed25519VerificationKey2018',
+                'controller': 'LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyBase58': '~XXXXXXXXXXXXXXXX'
+            },
+            {
+                'id': 'LjgpST2rjsoxYegQDRm7EL#keys-2',
+                'type': 'Ed25519VerificationKey2018',
+                'controller': 'LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyBase58': '~YYYYYYYYYYYYYYYY'
+            },
+            {
+                'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL#keys-3',
+                'type': 'RsaVerificationKey2018',
+                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyPem': '-----BEGIN PUBLIC A...'
+            }
+        ],
+        'service': [
+            {
+                'id': 'LjgpST2rjsoxYegQDRm7EL;indy',
+                'type': 'DidMessaging',
+                'priority': 0,
+                'recipientKeys': ['~ZZZZZZZZZZZZZZZZ'],
+                'serviceEndpoint': 'did:sov:LjgpST2rjsoxYegQDRm7EL;1'
+            },
+            {
+                'id': '1',
+                'type': 'one',
+                'priority': 1,
+                'recipientKeys': [
+                    '~XXXXXXXXXXXXXXXX',
+                    'did:sov:LjgpST2rjsoxYegQDRm7EL#keys-1'
+                ],
+                'routingKeys': [
+                    'did:sov:LjgpST2rjsoxYegQDRm7EL#keys-3'
+                ],
+                'serviceEndpoint': 'LjgpST2rjsoxYegQDRm7EL;2'
+            },
+            {
+                'id': '2',
+                'type': 'two',
+                'priority': 2,
+                'recipientKeys': [
+                    '~XXXXXXXXXXXXXXXX',
+                    'did:sov:LjgpST2rjsoxYegQDRm7EL#keys-1'
+                ],
+                'routingKeys': [
+                    'did:sov:LjgpST2rjsoxYegQDRm7EL#keys-3'
+                ],
+                'serviceEndpoint': 'https://www.two.ca/two'
+            }
+        ]
+    }
+
+    dd = DIDDoc.deserialize(dd_in)
+    assert len(dd.pubkey) == 1 + len(dd_in['publicKey'])
+    assert len(dd.authnkey) == 0
+    assert {s.priority for s in dd.service.values()} == {0, 1, 2}
+    assert len(dd.service) == 3
+
+    dd_out = dd.serialize()
+    print('\n\n== 6 == DID Doc on mixed service routing and recipient keys: {}'.format(
+        ppjson(dd_out)))
+
+    # Exercise missing service recipient key
+    dd_in = {
+        '@context': 'https://w3id.org/did/v1',
+        'id': 'LjgpST2rjsoxYegQDRm7EL',
+        'publicKey': [
+            {
+                'id': 'LjgpST2rjsoxYegQDRm7EL#keys-1',
+                'type': 'Ed25519VerificationKey2018',
+                'controller': 'LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyBase58': '~XXXXXXXXXXXXXXXX'
+            }
+        ],
+        'service': [
+            {
+                'id': 'LjgpST2rjsoxYegQDRm7EL;indy',
+                'type': 'DidMessaging',
+                'priority': 1,
+                'recipientKeys': [
+                    'did:sov:LjgpST2rjsoxYegQDRm7EL#keys-3'
+                ],
+                'serviceEndpoint': 'https://www.von.ca'
+            }
+        ]
+    }
+
+    try:
+        dd = DIDDoc.deserialize(dd_in)
+        assert False
+    except AbsentDIDDocItem:
+        pass
+    print('\n\n== 7 == DID Doc on underspecified service key fails as expected')

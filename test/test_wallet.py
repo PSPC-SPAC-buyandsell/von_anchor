@@ -137,31 +137,31 @@ async def test_local_dids():
     # Open wallet and operate
     async with wallets['multipass'] as w:
         did_info = await w.create_local_did(None, '55GkHamhTU1ZbTbV2ab9DE')
-        print('\n\n == 1 == Created local known DID: {}'.format(did_info))
+        print('\n\n== 1 == Created local known DID: {}'.format(did_info))
         assert did_info.did and did_info.verkey and len(did_info.metadata) == 1  # 'since'
         assert did_info == await w.get_local_did_info(did_info.did)
         assert did_info == await w.get_local_did_info(did_info.verkey)
 
         did_info = await w.create_local_did()
-        print('\n\n == 2 == Created random local DID: {}'.format(did_info))
+        print('\n\n== 2 == Created random local DID: {}'.format(did_info))
         assert did_info.did and did_info.verkey and len(did_info.metadata) == 1
         assert did_info == await w.get_local_did_info(did_info.did)
         assert did_info == await w.get_local_did_info(did_info.verkey)
 
         did_info = await w.create_local_did('Agent-44-00000000000000000000000')
-        print('\n\n == 3 == Created local DID on seed: {}'.format(did_info))
+        print('\n\n== 3 == Created local DID on seed: {}'.format(did_info))
         assert did_info.did and did_info.verkey and len(did_info.metadata)
         assert did_info == await w.get_local_did_info(did_info.did)
         assert did_info == await w.get_local_did_info(did_info.verkey)
 
         did_info = await w.create_local_did(metadata={'hello': 'world'})
-        print('\n\n == 4 == Created random local DID with metadata: {}'.format(did_info))
+        print('\n\n== 4 == Created random local DID with metadata: {}'.format(did_info))
         assert did_info.did and did_info.verkey and len(did_info.metadata) == 2
         assert did_info == await w.get_local_did_info(did_info.did)
         assert did_info == await w.get_local_did_info(did_info.verkey)
 
         did_info = await w.create_local_did('Agent-13-00000000000000000000000', metadata={'hello': 'world'})
-        print('\n\n == 5 == Created local DID on seed with metadata: {}'.format(did_info))
+        print('\n\n== 5 == Created local DID on seed with metadata: {}'.format(did_info))
         assert did_info.did and did_info.verkey and len(did_info.metadata) == 2
         assert did_info == await w.get_local_did_info(did_info.did)
         assert did_info == await w.get_local_did_info(did_info.verkey)
@@ -859,6 +859,47 @@ async def test_non_secrets():
             ppjson({k: vars(recs[k]) for k in recs})))
         assert len(recs) == 1
 
+        # Exercise WQL search pagination
+        cardinality = Wallet.DEFAULT_CHUNK + 16
+        nsw = [
+            NonSecret('wql', str(i), 'value {}'.format(i), {'~meta': str(i)}) for i in range(cardinality)
+        ]
+
+        for i in range(cardinality):
+            await w.write_non_secret(nsw[i])
+
+        recs = await w.get_non_secret(
+            'wql',
+            {
+                '~meta': {
+                    '$gte': 0
+                }
+            })
+
+        print('\n\n== 14 == Stored and got {} record{} using WQL pagination'.format(
+            len(recs or {}),
+            '' if len(recs or {}) == 1 else 's'))
+        assert len(recs) == cardinality
+        assert {i for i in range(cardinality)} == {int(k) for k in recs}
+
+        # Exercise limit
+        recs = await w.get_non_secret(
+            'wql',
+            {
+                '~meta': {
+                    '$gte': 0
+                }
+            },
+            limit=Wallet.DEFAULT_CHUNK)
+
+        print('\n\n== 15 == Stored and got {} record{} using hard limit of {}: {}'.format(
+            len(recs or {}),
+            '' if len(recs or {}) == 1 else 's',
+            Wallet.DEFAULT_CHUNK,
+            ppjson({k: vars(recs[k]) for k in recs})))
+        assert len(recs) == Wallet.DEFAULT_CHUNK
+        assert all(int(k) in range(cardinality) for k in recs)
+
 
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
@@ -891,10 +932,10 @@ async def test_pack():
         assert unpacked == (plain, w86.verkey, None)
         packed = await w86.pack(plain, w86.verkey)
         unpacked = await w86.unpack(packed)
-        assert unpacked == (plain, w86.verkey, None) 
+        assert unpacked == (plain, w86.verkey, None)
         packed = await w86.pack(plain, [w86.verkey])
         unpacked = await w86.unpack(packed)
-        assert unpacked == (plain, w86.verkey, None) 
+        assert unpacked == (plain, w86.verkey, None)
         print('\n\n== 3 == {} packed and unpacked anonymous message: {}'.format(w86.name, unpacked[0]))
 
         # Agent 86 signs and packs to itself, then unpacks, with anchor verkey and loc did verkey

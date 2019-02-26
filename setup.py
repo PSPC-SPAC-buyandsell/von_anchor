@@ -20,7 +20,19 @@ from setuptools import setup, find_packages
 
 
 pkg_name = 'von_anchor'
-version = '1.8.6'
+version = '1.8.7'
+
+
+def parse_requirements(filename):
+    """
+    Load requirements from a pip requirements file.
+
+    :param filename: file name with requirements to parse
+    """
+
+    with open(filename) as fh_req:
+        return [line.strip() for line in fh_req if line.strip() and not line.startswith('#')]
+
 
 setup(
     name=pkg_name,
@@ -46,11 +58,8 @@ setup(
         'Programming Language :: Python :: 3.7',
     ],
     python_requires='>=3.5',
-    install_requires=[
-        'base58',
-        'python3-indy',
-        'chardet',
-        'certifi',
-        'jsonschema'
-    ],
+    install_requires=parse_requirements("requirements.txt"),
 )
+
+
+

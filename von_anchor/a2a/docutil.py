@@ -57,7 +57,7 @@ def canon_ref(did: str, ref: str, delimiter: str = None):
 
     :param did: DID acting as the identifier of the DID document
     :param ref: reference to canonicalize, either a DID or a fragment pointing to a location in the DID doc
-    :param delimiter: delimiter character marking fragment ('#', to which default None maps) or
+    :param delimiter: delimiter character marking fragment (default '#') or
         introducing identifier (';') against DID resource
     """
 
@@ -67,6 +67,9 @@ def canon_ref(did: str, ref: str, delimiter: str = None):
     if ok_did(ref):  # e.g., LjgpST2rjsoxYegQDRm7EL
         return 'did:sov:{}'.format(did)
 
+    if ok_did(resource(ref, delimiter)):  # e.g., LjgpST2rjsoxYegQDRm7EL#keys-1
+        return 'did:sov:{}'.format(ref)
+
     if ref.startswith('did:sov:'):  # e.g., did:sov:LjgpST2rjsoxYegQDRm7EL, did:sov:LjgpST2rjsoxYegQDRm7EL#3
         rv = ref[8:]
         if ok_did(resource(rv, delimiter)):
@@ -74,9 +77,6 @@ def canon_ref(did: str, ref: str, delimiter: str = None):
         raise BadIdentifier('Bad URI {} does not correspond to a sovrin DID'.format(ref))
 
     if urlparse(ref).scheme:  # e.g., https://example.com/messages/8377464
-        return ref
-
-    if ref == 'routing':
         return ref
 
     return 'did:sov:{}{}{}'.format(did, delimiter if delimiter else '#', ref)  # e.g., 3

@@ -679,7 +679,8 @@ class Wallet:
             self,
             typ: str,
             filt: Union[dict, str] = None,
-            canon_wql: Callable[[dict], dict] = None) -> dict:
+            canon_wql: Callable[[dict], dict] = None,
+            limit: int = None) -> dict:
         """
         Return dict mapping each non-secret record of interest by identifier or,
         for no filter specified, mapping them all. If wallet has no such item, return empty dict.
@@ -687,6 +688,7 @@ class Wallet:
         :param typ: non-secret record type
         :param filt: non-secret record identifier or WQL json (default all)
         :param canon_wql: WQL canonicalization function (default wallet.nonsecret.canon_non_secret_wql())
+        :param limit: maximum number of results to return (default no limit)
         :return: dict mapping identifiers to non-secret records
         """
 
@@ -731,12 +733,26 @@ class Wallet:
                     'retrieveTags': True
                 }))
 
-            # TODO: paginate?  Take approach from cred search WQL in holder-prover
-            count = int(json.loads(
+            records = []
+            cardinality = int(json.loads(
                 await non_secrets.fetch_wallet_search_next_records(self.handle, s_handle, 0))['totalCount'])
-            if count > 0:
-                records = json.loads(
-                    await non_secrets.fetch_wallet_search_next_records(self.handle, s_handle, count))['records']
+            chunk = min(cardinality, limit or cardinality, Wallet.DEFAULT_CHUNK)
+            if limit:
+                cardinality = min(limit, cardinality)
+            try:
+                while len(records) != cardinality:
+                    batch = json.loads(
+                        await non_secrets.fetch_wallet_search_next_records(self.handle, s_handle, chunk))['records']
+                    records.extend(batch)
+                    if len(batch) < chunk:
+                        break
+                if len(records) != cardinality:
+                    LOGGER.warning(
+                        'Non-secret search/limit indicated %s results but fetched %s',
+                        cardinality,
+                        len(records))
+            finally:
+                await non_secrets.close_wallet_search(s_handle)
 
         rv = {record['id']: NonSecret(typ, record['id'], record['value'], record['tags']) for record in records}
         LOGGER.debug('Wallet.get_non_secret <<< %s', rv)
