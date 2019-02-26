@@ -20,7 +20,7 @@ from setuptools import setup, find_packages
 
 
 pkg_name = 'von_anchor'
-version = '1.8.8'
+version = '1.8.9'
 
 
 def parse_requirements(filename):

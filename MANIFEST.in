@@ -1,2 +1,2 @@
-recursive-include von_anchor
+recursive-include von_anchor *
 prune test
