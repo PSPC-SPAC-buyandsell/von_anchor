@@ -20,7 +20,7 @@ from setuptools import setup, find_packages
 
 
 pkg_name = 'von_anchor'
-version = '1.8.7'
+version = '1.8.8'
 
 
 def parse_requirements(filename):
@@ -34,6 +34,7 @@ def parse_requirements(filename):
         return [line.strip() for line in fh_req if line.strip() and not line.startswith('#')]
 
 
+print('FIND PACKAGES: {}'.format(find_packages(exclude=['test'])))
 setup(
     name=pkg_name,
     version=version,
@@ -55,11 +56,8 @@ setup(
         'Intended Audience :: Developers',
         'Topic :: Software Development',
         'License :: OSI Approved :: Apache Software License',
-        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.5',
     ],
     python_requires='>=3.5',
     install_requires=parse_requirements("requirements.txt"),
 )
-
-
-
