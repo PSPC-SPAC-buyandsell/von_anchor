@@ -34,7 +34,6 @@ def parse_requirements(filename):
         return [line.strip() for line in fh_req if line.strip() and not line.startswith('#')]
 
 
-print('FIND PACKAGES: {}'.format(find_packages(exclude=['test'])))
 setup(
     name=pkg_name,
     version=version,
