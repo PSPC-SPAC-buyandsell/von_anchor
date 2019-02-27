@@ -16,11 +16,13 @@ limitations under the License.
 
 
 import os
+from os.path import realpath
 from setuptools import setup, find_packages
+from sys import stderr
 
 
 pkg_name = 'von_anchor'
-version = '1.8.9'
+version = '1.8.10'
 
 
 def parse_requirements(filename):
@@ -30,9 +32,12 @@ def parse_requirements(filename):
     :param filename: file name with requirements to parse
     """
 
-    with open(filename) as fh_req:
-        return [line.strip() for line in fh_req if line.strip() and not line.startswith('#')]
-
+    try:
+        with open(filename) as fh_req:
+            return [line.strip() for line in fh_req if line.strip() and not line.startswith('#')]
+    except FileNotFoundError:
+        print('File not found: {}'.format(realpath(filename)), file=stderr)
+        raise
 
 setup(
     name=pkg_name,
@@ -58,5 +63,5 @@ setup(
         'Programming Language :: Python :: 3.5',
     ],
     python_requires='>=3.5',
-    install_requires=parse_requirements("requirements.txt"),
+    install_requires=parse_requirements('requirements.txt'),
 )
