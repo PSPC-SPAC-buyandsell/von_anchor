@@ -18,7 +18,6 @@ limitations under the License.
 import json
 import re
 
-from collections import namedtuple
 from copy import deepcopy
 from typing import Sequence, Union
 
@@ -27,10 +26,6 @@ from base58 import alphabet
 from von_anchor.error import BadIdentifier
 from von_anchor.nodepool import Protocol
 from von_anchor.indytween import Role, Predicate, SchemaKey
-
-
-NodePoolData = namedtuple('NodePoolData', 'name genesis_txn_path')  # for op configuration
-AnchorData = namedtuple('AnchorData', 'role seed wallet_name wallet_type wallet_key')
 
 
 B58 = alphabet if isinstance(alphabet, str) else alphabet.decode('ascii')

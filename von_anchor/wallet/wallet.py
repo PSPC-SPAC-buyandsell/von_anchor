@@ -18,11 +18,10 @@ limitations under the License.
 import json
 import logging
 
-from ctypes import CDLL
 from time import time
 from typing import Callable, List, Sequence, Union
 
-from indy import crypto, did, non_secrets, wallet
+from indy import anoncreds, crypto, did, non_secrets, wallet
 from indy.error import IndyError, ErrorCode
 
 from von_anchor.canon import canon_non_secret_wql, canon_pairwise_wql
@@ -33,18 +32,11 @@ from von_anchor.error import (
     BadKey,
     BadIdentifier,
     BadRecord,
-    ExtantWallet,
     ExtantRecord,
     WalletState)
 from von_anchor.util import ok_did
-from von_anchor.validcfg import validate_config
-from von_anchor.wallet import (
-    DIDInfo,
-    NonSecret,
-    non_secret2pairwise_info,
-    PairwiseInfo,
-    pairwise_info2tags,
-    TYPE_PAIRWISE)
+from von_anchor.wallet import DIDInfo, non_secret2pairwise_info, PairwiseInfo, pairwise_info2tags
+from von_anchor.wallet.nonsecret import NonSecret, TYPE_PAIRWISE, TYPE_LINK_SECRET_LABEL
 
 
 LOGGER = logging.getLogger(__name__)
@@ -55,52 +47,25 @@ class Wallet:
     Class encapsulating indy-sdk wallet.
     """
 
-    DEFAULT_ACCESS_CREDS = {'key': 'key'}
     DEFAULT_CHUNK = 256  # chunk size in searching credentials
 
-    def __init__(
-            self,
-            name: str,
-            storage_type: str = None,
-            config: dict = None,
-            access_creds: dict = None) -> None:
+    def __init__(self, indy_config: dict, access: str, auto_remove: bool = False) -> None:
         """
-        Initializer for wallet. Store input parameters, packing name and storage_type into config.
-        Do not create wallet until call to create(). Do not open until call to open() or __aenter__().
+        Initializer for wallet that WalletManager created. Store configuration and access credentials value.
 
-        :param name: name of the wallet
-        :param storage_type: storage type (default None)
-        :param config: configuration dict (default None); i.e.,
-            ::
-            {
-                'auto-remove': bool (default False) - whether to remove serialized indy configuration data on close,
-                ... (more keys) : ... (more types) - any other configuration data to pass through to indy-sdk
-            }
-        :param access_creds: wallet access credentials dict, None for default
+        Actuators should prefer WalletManager.get() to calling this initializer directly.
+
+        :param indy_config: configuration for indy-sdk wallet
+        :param access: wallet access credentials value
+        :param auto_remove: whether to remove wallet on next close
         """
 
-        LOGGER.debug(
-            'Wallet.__init__ >>> name %s, storage_type %s, config %s, access_creds %s',
-            name,
-            storage_type,
-            config,
-            access_creds)
+        LOGGER.debug('Wallet.__init__ >>> indy_config %s, access %s, auto_remove %s', indy_config, access, auto_remove)
 
-        self._next_seed = None
         self._handle = None
-
-        self._config = {**config} if config else {}
-        self._config['id'] = name
-        self._config['storage_type'] = storage_type
-        if 'freshness_time' not in self._config:
-            self._config['freshness_time'] = 0
-
-        validate_config('wallet', self._config)
-
-        # pop and retain configuration specific to von_anchor.Wallet, extrinsic to indy-sdk
-        self._auto_remove = self._config.pop('auto-remove') if self._config and 'auto-remove' in self._config else False
-
-        self._access_creds = access_creds
+        self._config = {**indy_config}  # make a copy
+        self._auto_remove = auto_remove
+        self._access = access
         self._did = None
         self._verkey = None
 
@@ -146,6 +111,16 @@ class Wallet:
 
         return self._auto_remove
 
+    @auto_remove.setter
+    def auto_remove(self, value: bool) -> None:
+        """
+        Set auto-remove wallet config behaviour.
+
+        :param value: auto-remove
+        """
+
+        self._auto_remove = value
+
     @property
     def access_creds(self) -> dict:
         """
@@ -154,7 +129,17 @@ class Wallet:
         :return: wallet access credentials
         """
 
-        return self._access_creds
+        return {'key': self._access}
+
+    @property
+    def access(self) -> str:
+        """
+        Accessor for wallet access credentials value.
+
+        :return: wallet access credentials value
+        """
+
+        return self._access
 
     @property
     def storage_type(self) -> str:
@@ -175,6 +160,16 @@ class Wallet:
         """
 
         return self._did
+
+    @did.setter
+    def did(self, value: str) -> None:
+        """
+        Set anchor DID in wallet.
+
+        :param value: anchor DID
+        """
+
+        self._did = value
 
     @property
     def verkey(self) -> str:
@@ -224,9 +219,9 @@ class Wallet:
             if x_indy.error_code == ErrorCode.DidAlreadyExistsError:
                 LOGGER.debug('Wallet.create_local_did <!< DID %s already present in wallet %s', loc_did, self.name)
                 raise ExtantRecord('Local DID {} already present in wallet {}'.format(loc_did, self.name))
-            else:
-                LOGGER.debug('Wallet.create_local_did <!< indy-sdk raised error %s', x_indy.error_code)
-                raise
+
+            LOGGER.debug('Wallet.create_local_did <!< indy-sdk raised error %s', x_indy.error_code)
+            raise
 
         loc_did_metadata = {**(metadata or {}), 'since': int(time())}
         await did.set_did_metadata(self.handle, created_did, json.dumps(loc_did_metadata))
@@ -283,9 +278,9 @@ class Wallet:
                 if x_indy.error_code == ErrorCode.WalletItemNotFound:
                     LOGGER.debug('Wallet.get_local_did_info <!< DID %s not present in wallet %s', loc, self.name)
                     raise AbsentRecord('Local DID {} not present in wallet {}'.format(loc, self.name))
-                else:
-                    LOGGER.debug('Wallet.get_local_did_info <!< indy-sdk raised error %s', x_indy.error_code)
-                    raise
+                LOGGER.debug('Wallet.get_local_did_info <!< indy-sdk raised error %s', x_indy.error_code)
+                raise
+
         else:  # it's a verkey
             dids_with_meta = json.loads(await did.list_my_dids_with_meta(self.handle))  # list
             for did_with_meta in dids_with_meta:
@@ -304,7 +299,7 @@ class Wallet:
 
     async def get_anchor_did(self) -> str:
         """
-        Get current anchor DID by metadata. Raise AbsentRecord for no match.
+        Get current anchor DID by metadata, None for not yet set.
 
         :return: DID
         """
@@ -329,65 +324,82 @@ class Wallet:
             except json.decoder.JSONDecodeError:
                 continue  # it's not an anchor DID, carry on
 
-        if not rv:  # no match in metadata
-            LOGGER.debug('Wallet.get_anchor_did <!< no anchor DID in wallet %s by metadata', self.name)
-            raise AbsentRecord('No anchor DID in wallet {} by metadata'.format(self.name))
-
         LOGGER.debug('Wallet.get_anchor_did <<< %s', rv)
         return rv
 
-    async def create(self, seed: str) -> 'Wallet':
+    async def create_link_secret(self, label: str) -> None:
         """
-        Create wallet as configured and store DID.
+        Create link secret (a.k.a. master secret) used in proofs by HolderProver, if the
+        current link secret does not already correspond to the input link secret label.
 
-        Raise ExtantWallet if wallet already exists on current name.
+        Raise WalletState if wallet is closed, or any other IndyError causing failure
+        to set link secret in wallet.
 
-        :param seed: seed
-        :return: current object
+        :param label: label for link secret; indy-sdk uses label to generate link secret
         """
 
-        LOGGER.debug('Wallet.create >>> seed: [SEED]')
+        LOGGER.debug('Wallet.create_link_secret >>> label: %s', label)
+
+        if not self.handle:
+            LOGGER.debug('Wallet.create_link_secret <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         try:
-            await wallet.create_wallet(
-                config=json.dumps(self.config),
-                credentials=json.dumps(self.access_creds or Wallet.DEFAULT_ACCESS_CREDS))
-            LOGGER.info('Created wallet %s', self.name)
+            await anoncreds.prover_create_master_secret(self.handle, label)
+            await self._write_link_secret_label(label)
         except IndyError as x_indy:
-            if x_indy.error_code == ErrorCode.WalletAlreadyExistsError:
-                LOGGER.info('Wallet %s already exists', self.name)
-                raise ExtantWallet('Wallet {} already exists'.format(self.name))
+            if x_indy.error_code == ErrorCode.AnoncredsMasterSecretDuplicateNameError:
+                LOGGER.warning(
+                    'Wallet %s link secret already current: abstaining from updating label record', self.name)
+                await self._write_link_secret_label(label)
             else:
                 LOGGER.debug(
-                    'Wallet.create <!< indy error code %s on creation of wallet %s',
-                    x_indy.error_code,
-                    self.name)
+                    'Wallet.create_link_secret <!< cannot create link secret for wallet %s, indy error code %s',
+                    self.name,
+                    x_indy.error_code)
                 raise
 
-        self._handle = await wallet.open_wallet(
-            json.dumps(self.config),
-            json.dumps(self.access_creds or Wallet.DEFAULT_ACCESS_CREDS))
-        LOGGER.info('Opened wallet %s on handle %s', self.name, self.handle)
+        LOGGER.debug('Wallet.create_link_secret <<<')
 
-        try:
-            (self._did, self.verkey) = await did.create_and_store_my_did(
-                self.handle,
-                json.dumps({'seed': seed}))
-            LOGGER.debug('Wallet %s stored new DID %s, verkey %s from seed', self.name, self.did, self.verkey)
-            await did.set_did_metadata(
-                self.handle,
-                self.did,
-                json.dumps({
-                    'anchor': True,
-                    'since': int(time())
-                }))
-            LOGGER.info('Wallet %s set seed hash metadata for DID %s', self.name, self.did)
-        finally:
-            await wallet.close_wallet(self.handle)  # bypass self.close() in case auto-remove set
-            self._handle = None
+    async def _write_link_secret_label(self, label) -> None:
+        """
+        Update non-secrets record with link secret label.
 
-        LOGGER.debug('Wallet.create <<<')
-        return self
+        :param label: link secret label
+        """
+
+        LOGGER.debug('Wallet._write_link_secret_label <<< %s', label)
+
+        if await self.get_link_secret_label() == label:
+            LOGGER.info('Wallet._write_link_secret_label abstaining - already current')
+        else:
+            await self.write_non_secret(NonSecret(
+                TYPE_LINK_SECRET_LABEL,
+                str(int(time())),  # indy requires str
+                label))
+
+        LOGGER.debug('Wallet._write_link_secret_label <<<')
+
+    async def get_link_secret_label(self) -> str:
+        """
+        Get current link secret label from non-secret records; return None for no match.
+
+        :return: latest non-secret record for link secret label
+        """
+
+        LOGGER.debug('Wallet.get_link_secret_label >>>')
+
+        if not self.handle:
+            LOGGER.debug('Wallet.get_link_secret <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+
+        rv = None
+        records = await self.get_non_secret(TYPE_LINK_SECRET_LABEL)
+        if records:
+            rv = records[str(max(int(k) for k in records))].value  # str to int, max, and back again
+
+        LOGGER.debug('Wallet.get_link_secret_label <<< %s', rv)
+        return rv
 
     async def __aenter__(self) -> 'Wallet':
         """
@@ -410,7 +422,6 @@ class Wallet:
         """
         Explicit entry. Open wallet as configured, for later closure via close().
         For use when keeping wallet open across multiple calls.
-
         Raise any IndyError causing failure to open wallet, WalletState if wallet already open,
         or AbsentWallet on attempt to enter wallet not yet created.
 
@@ -422,20 +433,22 @@ class Wallet:
         try:
             self._handle = await wallet.open_wallet(
                 json.dumps(self.config),
-                json.dumps(self.access_creds or Wallet.DEFAULT_ACCESS_CREDS))
+                json.dumps(self.access_creds))
             LOGGER.info('Opened wallet %s on handle %s', self.name, self.handle)
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.WalletNotFoundError:
                 LOGGER.info('Wallet %s does not exist', self.name)
                 raise AbsentWallet('Wallet {} does not exist'.format(self.name))
-            elif x_indy.error_code == ErrorCode.WalletAlreadyOpenedError:
+
+            if x_indy.error_code == ErrorCode.WalletAlreadyOpenedError:
                 LOGGER.info('Wallet %s is already open', self.name)
                 raise WalletState('Wallet {} is already open'.format(self.name))
-            else:
-                raise
 
-        self._did = await self.get_anchor_did()
-        self.verkey = await did.key_for_local_did(self.handle, self.did)
+            LOGGER.info('Wallet %s open raised indy error %s', self.name, x_indy.error_code)
+            raise
+
+        self.did = await self.get_anchor_did()
+        self.verkey = await did.key_for_local_did(self.handle, self.did) if self.did else None
         LOGGER.info('Wallet %s got verkey %s for existing DID %s', self.name, self.verkey, self.did)
 
         LOGGER.debug('Wallet.open <<<')
@@ -477,6 +490,27 @@ class Wallet:
         self._handle = None
 
         LOGGER.debug('Wallet.close <<<')
+
+    async def remove(self) -> None:
+        """
+        Remove serialized wallet if it exists. Raise WalletState if wallet is open.
+        """
+
+        LOGGER.debug('Wallet.remove >>>')
+
+        if self.handle:
+            LOGGER.debug('Wallet.remove <!< Wallet %s is open', self.name)
+            raise WalletState('Wallet {} is open'.format(self.name))
+
+        try:
+            LOGGER.info('Removing wallet: %s', self.name)
+            await wallet.delete_wallet(
+                json.dumps(self.config),
+                json.dumps(self.access_creds))
+        except IndyError as x_indy:
+            LOGGER.info('Abstaining from wallet %s removal; indy-sdk error code %s', self.name, x_indy.error_code)
+
+        LOGGER.debug('Wallet.remove <<<')
 
     async def write_pairwise(
             self,
@@ -924,19 +958,19 @@ class Wallet:
             if x_indy.error_code == ErrorCode.WalletItemNotFound:
                 LOGGER.debug('Wallet.unpack <!< Wallet %s has no local key to unpack ciphertext', self.name)
                 raise AbsentRecord('Wallet {} has no local key to unpack ciphertext'.format(self.name))
-            else:
-                LOGGER.debug('Wallet.unpack <!< Wallet %s unpack() raised indy error code {}', x_indy.error_code)
-                raise
+            LOGGER.debug('Wallet.unpack <!< Wallet %s unpack() raised indy error code {}', x_indy.error_code)
+            raise
+
         rv = (unpacked['message'], unpacked.get('recipient_verkey', None), unpacked.get('sender_verkey', None))
 
         LOGGER.debug('Wallet.unpack <<< %s', rv)
         return rv
 
-    async def reseed_init(self, next_seed) -> str:
+    async def reseed_init(self, next_seed: str = None) -> str:
         """
         Begin reseed operation: generate new key. Raise WalletState if wallet is closed.
 
-        :param seed: incoming replacement seed
+        :param next_seed: incoming replacement seed (default random)
         :return: new verification key
         """
 
@@ -946,15 +980,16 @@ class Wallet:
             LOGGER.debug('Wallet.reseed_init <!< Wallet %s is closed', self.name)
             raise WalletState('Wallet {} is closed'.format(self.name))
 
-        self._next_seed = next_seed
-        rv = await did.replace_keys_start(self.handle, self.did, json.dumps({'seed': next_seed}))
+        rv = await did.replace_keys_start(self.handle, self.did, json.dumps({'seed': next_seed} if next_seed else {}))
         LOGGER.debug('Wallet.reseed_init <<< %s', rv)
         return rv
 
-    async def reseed_apply(self) -> None:
+    async def reseed_apply(self) -> DIDInfo:
         """
         Replace verification key with new verification key from reseed operation.
         Raise WalletState if wallet is closed.
+
+        :return: DIDInfo with new verification key and metadata for DID
         """
 
         LOGGER.debug('Wallet.reseed_apply >>>')
@@ -965,40 +1000,19 @@ class Wallet:
 
         await did.replace_keys_apply(self.handle, self.did)
         self.verkey = await did.key_for_local_did(self.handle, self.did)
-
-        await did.set_did_metadata(
-            self.handle,
+        rv = DIDInfo(
             self.did,
-            json.dumps({
+            self.verkey,
+            {
                 'anchor': True,
                 'since': int(time())
-            }))
+            })
+        await did.set_did_metadata(self.handle, self.did, json.dumps(rv.metadata))
 
         LOGGER.info('Wallet %s set seed hash metadata for DID %s', self.name, self.did)
-        self._next_seed = None
 
-        LOGGER.debug('Wallet.reseed_apply <<<')
-
-    async def remove(self) -> None:
-        """
-        Remove serialized wallet if it exists. Raise WalletState if wallet is open.
-        """
-
-        LOGGER.debug('Wallet.remove >>>')
-
-        if self.handle:
-            LOGGER.debug('Wallet.reseed_init <!< Wallet %s is open', self.name)
-            raise WalletState('Wallet {} is open'.format(self.name))
-
-        try:
-            LOGGER.info('Removing wallet: %s', self.name)
-            await wallet.delete_wallet(
-                json.dumps(self.config),
-                json.dumps(self.access_creds or Wallet.DEFAULT_ACCESS_CREDS))
-        except IndyError as x_indy:
-            LOGGER.info('Abstaining from wallet removal; indy-sdk error code %s', x_indy.error_code)
-
-        LOGGER.debug('Wallet.remove <<<')
+        LOGGER.debug('Wallet.reseed_apply <<< %s', rv)
+        return rv
 
     def __repr__(self) -> str:
         """
@@ -1007,48 +1021,4 @@ class Wallet:
         :return: representation for current object
         """
 
-        return '{}({}, {}, {}, [ACCESS_CREDS])'.format(
-            self.__class__.__name__,
-            self.name,
-            self.storage_type,
-            self.config)
-
-
-async def register_wallet_storage_library(storage_type: str, c_library: str, entry_point: str) -> None:
-    """
-    Load a wallet storage plug-in.
-
-    An indy-sdk wallet storage plug-in is a shared library; relying parties must explicitly
-    load it before creating or opening a wallet with the plug-in.
-
-    The implementation loads a dynamic library and calls an entry point; internally,
-    the plug-in calls the indy-sdk wallet
-    async def register_wallet_storage_library(storage_type: str, c_library: str, fn_pfx: str).
-
-    :param storage_type: wallet storage type
-    :param c_library: plug-in library
-    :param entry_point: function to initialize the library
-    """
-
-    LOGGER.debug(
-        'register_wallet_storage_library >>> storage_type %s, c_library %s, entry_point %s',
-        storage_type,
-        c_library,
-        entry_point)
-
-    try:
-        stg_lib = CDLL(c_library)
-        result = stg_lib[entry_point]()
-        if result:
-            raise IndyError(result)
-
-        LOGGER.info('Loaded wallet library type %s (%s)', storage_type, c_library)
-    except IndyError as x_indy:
-        LOGGER.debug(
-            'Wallet.register <!< indy error code %s on load of wallet storage %s %s',
-            x_indy.error_code,
-            storage_type,
-            c_library)
-        raise
-
-    LOGGER.debug('register_wallet_storage_library <<<')
+        return 'Wallet({}, [ACCESS], {})'.format(self.config, self.auto_remove)

@@ -96,13 +96,28 @@ class ArchivableCaches {
     {static} +purge_archives()
 }
 
+class WalletManager {
+    {static} +register_storage_library()
+    -_defaults
+    +default_storage_type
+    +default_freshness_time
+    +default_auto_remove
+    +default_access
+    -_config2indy()
+    +create()
+    +get()
+    +export_wallet()
+    +import_wallet()
+    +reset()
+    +remove()
+}
+
 class Wallet {
-    -_seed
-    -_next_seed
     +name
     +handle
     +config
     +auto_remove
+    +access
     +access_creds
     +storage_type
     +did
@@ -111,12 +126,18 @@ class Wallet {
     +get_local_did_infos()
     +get_local_did_info()
     +get_anchor_did()
-    +create()
+    +create_link_secret()
+    -_write_link_secret_label()
+    +get_link_secret_label()
     +open()
     +close()
+    +remove()
     +write_pairwise()
     +delete_pairwise()
     +get_pairwise()
+    +write_non_secret()
+    +delete_non_secret()
+    +get_non_secret()
     +encrypt()
     +decrypt()
     +sign()
@@ -125,13 +146,22 @@ class Wallet {
     +unpack()
     +reseed_init()
     +reseed_apply()
-    +remove()
 }
 
 class DIDInfo {
     +did
     +verkey
     +metadata
+}
+
+class NonSecret {
+    {static} +ok_tags()
+    +type
+    +id
+    +value
+    +tags
+    +clear_tags
+    +encr_tags
 }
 
 class PairwiseInfo {
@@ -264,9 +294,9 @@ class Issuer {
 class HolderProver {
     +config
     +dir_cache
-    -_link_secret
     -_sync_revoc_for_proof()
     -_build_rr_delta_json()
+    -_assert_link_secret()
     +build_req_creds_json()
     +dir_tails()
     +open()
@@ -374,8 +404,11 @@ RevoCacheEntry -up-> Tails
 RevoCacheEntry "2" *-down- "n" RevRegUpdateFrame
 RevocationCache -> RevoCacheEntry
 
+WalletManager .left.> Wallet
+
 Wallet --> DIDInfo
 Wallet --> PairwiseInfo
+Wallet --> NonSecret
 
 BaseAnchor --> EndpointInfo
 

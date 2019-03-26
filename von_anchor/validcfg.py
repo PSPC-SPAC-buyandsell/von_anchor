@@ -21,16 +21,6 @@ from von_anchor.error import JSONValidation
 
 
 CONFIG_JSON_SCHEMA = {
-    'wallet': {
-        '$schema': 'http://json-schema.org/draft-04/schema',
-        'type': 'object',
-        'properties': {
-            'auto-remove': {
-                'type': 'boolean'
-            }
-        },
-        'additionalProperties': True
-    },
     'pool': {
         '$schema': 'http://json-schema.org/draft-04/schema',
         'type': 'object',

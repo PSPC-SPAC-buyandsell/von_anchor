@@ -76,17 +76,17 @@ def setnym_ini_file(path_setnym_ini, pool_name, seed_trustee1, seed_von_anchor):
         'genesis.txn.path=${{HOME}}/.indy_client/pool/{}/{}.txn'.format(pool_name, pool_name),
         '',
         '[Trustee Anchor]',
-        'seed={}'.format(seed_trustee1),
-        'wallet.name=trustee-anchor',
+        'name=trustee-anchor',
         'wallet.type=',
-        'wallet.key=',
+        'wallet.access=',
         '',
         '[VON Anchor]',
         'role=TRUST_ANCHOR',
+        'name=anchor-{}'.format(seed_von_anchor[0:10]),
         'seed={}'.format(seed_von_anchor),
-        'wallet.name=anchor-{}'.format(seed_von_anchor[0:10]),
+        'wallet.create=True',
         'wallet.type=',
-        'wallet.key='])
+        'wallet.access='])
 
     with open(str(path_setnym_ini), "w+") as f:
         f.writelines(data)

@@ -395,11 +395,10 @@ class Issuer(RevRegBuilder):
                     self.wallet.name)
                 raise CorruptWallet('Cannot create cred offer: did not issue cred definition from wallet {}'.format(
                     self.wallet.name))
-            else:
-                LOGGER.debug(
-                    'Issuer.create_cred_offer <!< cannot create cred offer, indy error code %s',
-                    x_indy.error_code)
-                raise
+            LOGGER.debug(
+                'Issuer.create_cred_offer <!< cannot create cred offer, indy error code %s',
+                x_indy.error_code)
+            raise
 
         LOGGER.debug('Issuer.create_cred_offer <<< %s', rv)
         return rv

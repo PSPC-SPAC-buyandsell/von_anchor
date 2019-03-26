@@ -55,6 +55,7 @@ class ErrorCode(IntEnum):
     AbsentRecord = 3007
     AbsentMessage = 3008
     BadRecord = 3009
+    BadAccess = 3010
 
     # Errors to do with node pool management and operation
     ClosedPool = 4000
@@ -509,6 +510,21 @@ class BadRecord(VonAnchorError):
         """
 
         super().__init__(ErrorCode.BadRecord, message)
+
+
+class BadAccess(VonAnchorError):
+    """
+    Wallet access key value is incorrect.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.BadAccess, message)
 
 
 class ClosedPool(VonAnchorError):

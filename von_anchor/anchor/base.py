@@ -39,7 +39,7 @@ from von_anchor.error import (
     WalletState)
 from von_anchor.indytween import Role, SchemaKey
 from von_anchor.nodepool import NodePool
-from von_anchor.util import ok_cred_def_id, ok_did, ok_endpoint, ok_rev_reg_id, ok_schema_id, schema_id, schema_key
+from von_anchor.util import ok_cred_def_id, ok_did, ok_rev_reg_id, ok_schema_id, schema_id, schema_key
 from von_anchor.wallet import EndpointInfo, Wallet
 
 
@@ -189,15 +189,15 @@ class BaseAnchor:
 
         LOGGER.debug('BaseAnchor.close <<<')
 
-    async def reseed(self, seed) -> None:
+    async def reseed(self, seed: str = None) -> None:
         """
         Rotate key for VON anchor: generate new key, submit to ledger, update wallet.
         Raise WalletState if wallet is currently closed.
 
-        :param seed: new seed for ed25519 key pair
+        :param seed: new seed for ed25519 key pair (default random)
         """
 
-        LOGGER.debug('BaseAnchor.reseed_init >>> seed: [SEED]')
+        LOGGER.debug('BaseAnchor.reseed >>> seed: [SEED]')
 
         verkey = await self.wallet.reseed_init(seed)
         req_json = await ledger.build_nym_request(
@@ -209,7 +209,7 @@ class BaseAnchor:
         await self._sign_submit(req_json)
         await self.wallet.reseed_apply()
 
-        LOGGER.debug('BaseAnchor.reseed_init <<<')
+        LOGGER.debug('BaseAnchor.reseed <<<')
 
     async def get_nym(self, target_did: str = None) -> str:
         """
@@ -520,12 +520,11 @@ class BaseAnchor:
                 raise CorruptWallet('Corrupt wallet {} is not compatible with pool {}'.format(
                     self.wallet.name,
                     self.pool.name))
-            else:
-                LOGGER.debug(
-                    'BaseAnchor._sign_submit <!< cannot sign/submit request for ledger: indy error code %s',
-                    x_indy.error_code)
-                raise BadLedgerTxn('Cannot sign/submit request for ledger: indy error code {}'.format(
-                    x_indy.error_code))
+            LOGGER.debug(
+                'BaseAnchor._sign_submit <!< cannot sign/submit request for ledger: indy error code %s',
+                x_indy.error_code)
+            raise BadLedgerTxn('Cannot sign/submit request for ledger: indy error code {}'.format(
+                x_indy.error_code))
 
         resp = json.loads(rv_json)
         if resp.get('op', '') in ('REQNACK', 'REJECT'):

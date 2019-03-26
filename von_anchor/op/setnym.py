@@ -17,6 +17,7 @@ limitations under the License.
 
 import logging
 
+from collections import namedtuple
 from os import sys
 from os.path import dirname, realpath
 from sys import exit as sys_exit, path as sys_path
@@ -30,9 +31,13 @@ from von_anchor import NominalAnchor, TrusteeAnchor
 from von_anchor.error import AbsentNym, AbsentPool, BadRole, ExtantWallet, VonAnchorError
 from von_anchor.frill import do_wait, inis2dict
 from von_anchor.indytween import Role
-from von_anchor.nodepool import NodePool, NodePoolManager
-from von_anchor.util import AnchorData, NodePoolData, ok_role
-from von_anchor.wallet import Wallet
+from von_anchor.nodepool import NodePoolManager
+from von_anchor.util import ok_role
+from von_anchor.wallet import WalletManager
+
+
+NodePoolData = namedtuple('NodePoolData', 'name genesis_txn_path')
+AnchorData = namedtuple('AnchorData', 'role name seed did wallet_create wallet_type wallet_access')
 
 
 def usage() -> None:
@@ -54,22 +59,52 @@ def usage() -> None:
     print('    - genesis.txn.path: the path to the genesis transaction file')
     print('        for the node pool (may omit if node pool already exists)')
     print('  * section [Trustee Anchor]:')
-    print("    - seed: the trustee anchor's seed (omit if wallet exists)")
-    print("    - wallet.name: the trustee anchor's wallet name")
+    print("    - name: the trustee anchor's (wallet) name")
     print("    - wallet.type: (default blank) the trustee anchor's wallet type")
-    print("    - wallet.key: (default blank) the trustee anchor's")
+    print("    - wallet.access: (default blank) the trustee anchor's")
     print('        wallet access credential (password) value')
     print('  * section [VON Anchor]:')
     print('    - role: the role to request in the send-nym transaction; specify:')
     print('        - (default) empty value for user with no additional write privileges')
     print('        - TRUST_ANCHOR for VON anchor with write privileges for indy artifacts')
     print('        - TRUSTEE for VON anchor sending further cryptonyms to the ledger')
-    print("    - seed: the VON anchor's seed (omit if wallet exists)")
-    print("    - wallet.name: the VON anchor's wallet name")
+    print("    - name: the VON anchor's (wallet) name")
+    print("    - seed: the VON anchor's seed (optional, for wallet creation only)")
+    print("    - did: the VON anchor's DID (optional, for wallet creation only)")
+    print('    - wallet.create: whether create the wallet if it does not yet exist')
+    print('        (value True/False, 1/0, or Yes/No)')
     print("    - wallet.type: (default blank) the VON anchor's wallet type")
-    print("    - wallet.key: (default blank) the VON anchor's")
+    print("    - wallet.access: (default blank) the VON anchor's")
     print('        wallet access credential (password) value.')
     print()
+
+
+async def _set_wallets(an_data: dict) -> dict:
+    """
+    Set wallets as configured for setnym operation.
+
+    :param an_data: dict mapping profiles to anchor data
+    :return: dict mapping anchor names to wallet objects
+    """
+
+    w_mgr = WalletManager()
+    rv = {}
+    for profile in an_data:
+        w_cfg = {'id': an_data[profile].name}
+        if an_data[profile].wallet_type:
+            w_cfg['storage_type'] = an_data[profile].wallet_type
+        if an_data[profile].seed:
+            w_cfg['seed'] = an_data[profile].seed
+        if an_data[profile].did:
+            w_cfg['did'] = an_data[profile].did
+        if an_data[profile].wallet_create:
+            try:
+                await w_mgr.create(w_cfg, access=an_data[profile].wallet_access)
+            except ExtantWallet:
+                pass
+        rv[profile] = await w_mgr.get(w_cfg, access=an_data[profile].wallet_access)
+
+    return rv
 
 
 async def setnym(ini_path: str) -> int:
@@ -84,49 +119,42 @@ async def setnym(ini_path: str) -> int:
     """
 
     config = inis2dict(ini_path)
+    if config['Trustee Anchor']['name'] == config['VON Anchor']['name']:
+        raise ExtantWallet('Wallet names must differ between VON Anchor and Trustee Anchor')
+
     cfg_van_role = config['VON Anchor'].get('role', None) or None  # nudge empty value from '' to None
     if not ok_role(cfg_van_role):
         raise BadRole('Configured role {} is not valid'.format(cfg_van_role))
 
-    if config['Trustee Anchor']['wallet.name'] == config['VON Anchor']['wallet.name']:
-        raise ExtantWallet('Wallet names must differ between VON Anchor and Trustee Anchor')
-
     pool_data = NodePoolData(
         config['Node Pool']['name'],
         config['Node Pool'].get('genesis.txn.path', None) or None)
+
     an_data = {
         'tan': AnchorData(
             Role.TRUSTEE,
-            config['Trustee Anchor'].get('seed', None) or None,
-            config['Trustee Anchor']['wallet.name'],
+            config['Trustee Anchor']['name'],
+            None,
+            None,
+            False,
             config['Trustee Anchor'].get('wallet.type', None) or None,
-            config['Trustee Anchor'].get('wallet.key', None) or None),
+            config['Trustee Anchor'].get('wallet.access', None) or None),
         'van': AnchorData(
             Role.get(cfg_van_role),
+            config['VON Anchor']['name'],
             config['VON Anchor'].get('seed', None) or None,
-            config['VON Anchor']['wallet.name'],
+            config['VON Anchor'].get('did', None) or None,
+            config['VON Anchor'].get('wallet.create', '0').lower() in ['1', 'true', 'yes'],
             config['VON Anchor'].get('wallet.type', None) or None,
-            config['VON Anchor'].get('wallet.key', None) or None)
+            config['VON Anchor'].get('wallet.access', None) or None)
     }
-    an_wallet = {
-        an: Wallet(
-            an_data[an].wallet_name,
-            an_data[an].wallet_type,
-            None,
-            {'key': an_data[an].wallet_key} if an_data[an].wallet_key else None)
-                for an in an_data}
 
-    for anchor in an_data:  # create wallet if seed configured, silently continue if extant
-        if an_data[anchor].seed:
-            try:
-                await an_wallet[anchor].create(an_data[anchor].seed)
-            except ExtantWallet:
-                pass
+    an_wallet = await _set_wallets(an_data)
 
-    manager = NodePoolManager()
-    if pool_data.name not in await manager.list():
+    p_mgr = NodePoolManager()
+    if pool_data.name not in await p_mgr.list():
         if pool_data.genesis_txn_path:
-            await manager.add_config(pool_data.name, pool_data.genesis_txn_path)
+            await p_mgr.add_config(pool_data.name, pool_data.genesis_txn_path)
         else:
             raise AbsentPool('Node pool {} has no ledger configuration, but {} specifies no genesis txn path'.format(
                 pool_data.name,
@@ -134,7 +162,7 @@ async def setnym(ini_path: str) -> int:
 
     async with an_wallet['tan'] as w_tan, (
             an_wallet['van']) as w_van, (
-            manager.get(pool_data.name)) as pool, (
+            p_mgr.get(pool_data.name)) as pool, (
             TrusteeAnchor(w_tan, pool)) as tan, (
             NominalAnchor(w_van, pool)) as van:
 

@@ -34,9 +34,9 @@ Section [Trustee Anchor]
 This section configures the trustee anchor calling to send the cryptonym to the ledger. It contains:
 
 * ``seed``: the trustee anchor's seed (omit if its wallet already exists)
-* ``wallet.name``: the trustee anchor's wallet name
+* ``name``: the trustee anchor's name (wallet id)
 * ``wallet.type``: (default blank) the trustee anchor's wallet type
-* ``wallet.key``: (default blank) the trustee anchor's wallet access credential (password) value.
+* ``wallet.access``: (default blank) the trustee anchor's wallet access credential (password) value.
 
 Section [VON Anchor]
 ******************************
@@ -44,10 +44,11 @@ Section [VON Anchor]
 This section configures the anchor under registration to the ledger. It contains:
 
 * ``role``: the role to request in the send-nym transaction (default empty value for self-sovereign user with no additional write privileges)
+* ``name``: the VON anchor's name (wallet id)
 * ``seed``: the VON anchor's seed (omit if its wallet exists)
-* ``wallet.name``: the VON anchor's wallet name
+* ``wallet.create``: specify True to create the wallet if it does not exist
 * ``wallet.type``: (default blank) the VON anchor's wallet type
-* ``wallet.key``: (default blank) the VON anchor's wallet access credential (password) value.
+* ``wallet.access``: (default blank) the VON anchor's wallet access credential (password) value.
 
 The ``role`` value should be:
 

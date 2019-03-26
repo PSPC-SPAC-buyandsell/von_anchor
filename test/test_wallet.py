@@ -15,8 +15,11 @@ limitations under the License.
 """
 
 
+from os import unlink
+from os.path import join
 from pathlib import Path
 from time import time
+from tempfile import gettempdir
 
 import json
 import pytest
@@ -24,24 +27,64 @@ import pytest
 from indy import IndyError
 from indy.error import ErrorCode
 
-from von_anchor.error import AbsentRecord, BadRecord, ExtantWallet, JSONValidation, WalletState
+from von_anchor.error import AbsentRecord, BadAccess, BadRecord, ExtantWallet, JSONValidation, WalletState
 from von_anchor.frill import Ink, ppjson
-from von_anchor.wallet import NonSecret, PairwiseInfo, Wallet
+from von_anchor.wallet import NonSecret, PairwiseInfo, Wallet, WalletManager
 
 
 async def get_wallets(wallet_data, open_all, auto_remove=False):
     rv = {}
-    for (name, seed) in wallet_data.items():
-        w = Wallet(name, storage_type=None, config={'auto-remove': True} if auto_remove else None)
-        try:
-            if seed:
-                await w.create(seed)
-        except ExtantWallet:
-            pass
+    w_mgr = WalletManager()
+    for name in wallet_data:
+        w = None
+        creation_data = {'seed', 'did'} & {n for n in wallet_data[name]}  # create for tests when seed or did specifies
+        if creation_data:
+            config = {
+                'id': name,
+                **{k: wallet_data[name][k] for k in creation_data},
+                'auto_remove': auto_remove
+            }
+            if 'link_secret_label' in wallet_data[name]:
+                config['link_secret_label'] = wallet_data[name]['link_secret_label']
+            w = await w_mgr.create(
+                config,
+                replace=True)
+        else:
+            w = await w_mgr.get({'id': name, 'auto_remove': auto_remove})
         if open_all:
             await w.open()
+        assert w.did
+        assert w.verkey
         rv[name] = w
     return rv
+
+
+@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.asyncio
+async def test_manager():
+
+    print(Ink.YELLOW('\n\n== Testing Wallet Manager Basics =='))
+
+    w_mgr = WalletManager()
+    assert w_mgr.default_storage_type is None
+    assert w_mgr.default_freshness_time == 0
+    assert w_mgr.default_auto_remove == False
+    assert w_mgr.default_access == 'key'
+
+    w = await w_mgr.get({'id': 'test', 'auto_remove': True}, access='open-sesame')
+    assert w.auto_remove == True
+    assert w.name == 'test'
+    assert w.storage_type is None
+    assert w.access == 'open-sesame'
+    assert w.access_creds['key'] == 'open-sesame'
+
+    w_mgr = WalletManager({'key': 'up-down-left-right-a-b-c'})
+    assert w_mgr.default_access == 'up-down-left-right-a-b-c'
+    w = await w_mgr.get({'id': 'test', 'auto_remove': True})
+    assert w.access == 'up-down-left-right-a-b-c'
+    assert w.access_creds['key'] == 'up-down-left-right-a-b-c'
+
+    print('\n\n== 1 == Wallet manager basics operate OK')
 
 
 @pytest.mark.skipif(False, reason='short-circuiting')
@@ -52,23 +95,47 @@ async def test_wallet(path_home):
 
     seed = '00000000000000000000000000000000'
     name = 'my-wallet'
-    access_creds = {'key': 'secret-squirrel'}
+    access = 'secret-squirrel'
     path = Path(path_home, 'wallet', name)
+    w_mgr = WalletManager()
 
-    # 1. Configuration with auto-remove set
-    w = Wallet(name, None, {'auto-remove': True}, access_creds=access_creds)
-    await w.create(seed)
+    # Get VON wallet
+    x_wallet =  await w_mgr.get({'id': 'no-such-wallet-{}'.format(str(int(time())))})
+    assert x_wallet is not None
+
+    # Configuration with auto-remove set
+    w_seed = await w_mgr.create({'id': name, 'seed': seed, 'auto_remove': True}, access, replace=True)
     assert path.exists(), 'Wallet path {} not present'.format(path)
-    await w.open()
-    assert w.did
-    assert w.verkey
-    await w.close()
+    await w_seed.open()
+    assert w_seed.did
+    assert w_seed.verkey
+    await w_seed.close()
     assert not path.exists(), 'Wallet path {} still present'.format(path)
     print('\n\n== 1 == New wallet with auto-remove OK')
 
-    # 2. Default configuration (auto-remove=False)
-    w = Wallet(name, access_creds=access_creds)
-    await w.create(seed)
+    # Configuration with auto-remove set, on DID instead of seed
+    w_did = await w_mgr.create({'id': name, 'did': w_seed.did, 'auto_remove': True}, access, replace=True)
+    assert path.exists(), 'Wallet path {} not present'.format(path)
+    await w_did.open()
+    assert w_did.did
+    assert w_did.did == w_seed.did
+    assert w_did.verkey
+    await w_did.close()
+    assert not path.exists(), 'Wallet path {} still present'.format(path)
+    print('\n\n== 2 == Wallet creation specifies OK by DID instead of seed; auto-remove OK')
+
+    # Configuration with auto-remove set, default DID and seed
+    w_dflt = await w_mgr.create({'id': name, 'auto_remove': True}, access, replace=True)
+    assert path.exists(), 'Wallet path {} not present'.format(path)
+    await w_dflt.open()
+    assert w_dflt.did
+    assert w_dflt.verkey
+    await w_dflt.close()
+    assert not path.exists(), 'Wallet path {} still present'.format(path)
+    print('\n\n== 3 == Wallet creation specifies OK by default DID and seed; auto-remove OK')
+
+    # Default configuration (auto-remove=False)
+    w = await w_mgr.create({'id': name, 'seed': seed}, access)
     assert path.exists(), 'Wallet path {} not present'.format(path)
 
     await w.open()
@@ -77,32 +144,32 @@ async def test_wallet(path_home):
     (w_did, w_verkey) = (w.did, w.verkey)
     await w.close()
     assert path.exists(), 'Wallet path {} not present'.format(path)
-    print('\n\n== 2 == New wallet with default config (no auto-remove) OK')
+    print('\n\n== 4 == New wallet with default config (no auto-remove) OK')
 
-    # 3. Make sure wallet opens from extant file, only on correct access credentials
-    x = Wallet(name, None, {'auto-remove': True})
+    # Make sure wallet opens from extant file, only on correct access credentials
     try:
-        await x.create(seed)
+        x = await w_mgr.create({'id': name, 'seed': seed})
     except ExtantWallet:
         pass
 
     try:
+        x = await w_mgr.get({'id': name})
         async with x:
             assert False
     except IndyError as x_indy:
         assert x_indy.error_code == ErrorCode.WalletAccessFailed
 
-    ww = Wallet(name, None, {'auto-remove': True}, access_creds=access_creds)
+    ww = await w_mgr.get({'id': name, 'auto_remove': True}, access)
     async with ww:
         assert ww.did == w_did
         assert ww.verkey == w_verkey
 
     assert not path.exists(), 'Wallet path {} still present'.format(path)
-    print('\n\n== 3 == Re-use extant wallet on good access creds OK, wrong access creds fails as expected')
+    print('\n\n== 5 == Re-use extant wallet on good access creds OK, wrong access creds fails as expected')
 
-    # 4. Double-open
+    # Double-open
     try:
-        w = await Wallet(name, None, {'auto-remove': True}).create(seed)
+        w = await w_mgr.create({'id': name, 'seed': seed, 'auto_remove': True})
         async with w:
             async with w:
                 assert False
@@ -111,14 +178,9 @@ async def test_wallet(path_home):
 
     assert not path.exists(), 'Wallet path {} still present'.format(path)
 
-    # 5. Bad config
-    try:
-        Wallet(name, None, {'auto-remove': 'a suffusion of yellow'})
-    except JSONValidation:
-        pass
-    print('\n\n== 4 == Error cases error as expected')
+    print('\n\n== 6 == Double-open case encounters error as expected')
 
-    # X. Rekey operation tested via anchor, in test_anchors.py
+    #  Rekey operation tested via anchor, in test_anchors.py
 
 
 @pytest.mark.skipif(False, reason='short-circuiting')
@@ -129,7 +191,9 @@ async def test_local_dids():
 
     wallets = await get_wallets(
         {
-            'multipass': 'Multi-Pass-000000000000000000000',
+            'multipass': {
+                'seed': 'Multi-Pass-000000000000000000000'
+            },
         },
         open_all=False,
         auto_remove=True)
@@ -174,9 +238,15 @@ async def test_pairwise():
 
     wallets = await get_wallets(
         {
-            'multipass': 'Multi-Pass-000000000000000000000',
-            'agent-86': 'Agent-86-00000000000000000000000',
-            'agent-99': 'Agent-99-00000000000000000000000',
+            'multipass': {  
+                'seed': 'Multi-Pass-000000000000000000000'
+            },
+            'agent-86': {
+                'seed': 'Agent-86-00000000000000000000000'
+            },
+            'agent-99': {
+                'seed': 'Agent-99-00000000000000000000000'
+            },
         },
         open_all=False,
         auto_remove=True)
@@ -655,7 +725,9 @@ async def test_non_secrets():
 
     wallets = await get_wallets(
         {
-            'multipass': 'Multi-Pass-000000000000000000000'
+            'multipass': {
+                'seed': 'Multi-Pass-000000000000000000000'
+            }
         },
         open_all=False,
         auto_remove=True)
@@ -900,6 +972,15 @@ async def test_non_secrets():
         assert len(recs) == Wallet.DEFAULT_CHUNK
         assert all(int(k) in range(cardinality) for k in recs)
 
+        # Link secret checks
+        await w.create_link_secret('test-secret')
+        assert await w.get_link_secret_label() == 'test-secret'
+        await w.create_link_secret('test-secret')  # exercise double-write
+        assert await w.get_link_secret_label() == 'test-secret'
+        await w.create_link_secret('test-another-secret')
+        assert await w.get_link_secret_label() == 'test-another-secret'
+        print('\n\n== 16 == Link secret writes sync with non-secret label records OK')
+
 
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
@@ -909,9 +990,15 @@ async def test_pack():
 
     wallets = await get_wallets(
         {
-            'agent-13': 'Agent-13-00000000000000000000000',
-            'agent-86': 'Agent-86-00000000000000000000000',
-            'agent-99': 'Agent-99-00000000000000000000000'
+            'agent-13': {
+                'seed': 'Agent-13-00000000000000000000000'
+            },
+            'agent-86': {
+                'seed': 'Agent-86-00000000000000000000000',
+            },
+            'agent-99': {
+                'seed': 'Agent-99-00000000000000000000000'
+            }
         },
         open_all=False,
         auto_remove=True)
@@ -962,3 +1049,104 @@ async def test_pack():
         except AbsentRecord:
             pass
         print('\n\n== 5.2 == {} correctly failed to unpack ciphertext'.format(w86.name))
+
+
+@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.asyncio
+async def test_export_import(path_home):
+
+    print(Ink.YELLOW('\n\n== Testing export/import =='))
+
+    w_name = 'multipass'
+    w_mgr = WalletManager()
+    loc_did = '55GkHamhTU1ZbTbV2ab9DE'
+    path_export = Path(join(gettempdir(), 'export-multipass'))
+    if path_export.exists():
+        unlink(str(path_export))
+
+    wallets = await get_wallets(
+        {
+            w_name: {
+                'seed': 'Multi-Pass-000000000000000000000',
+                'link_secret_label': 'secret'
+            },
+        },
+        open_all=False,
+        auto_remove=True)
+
+    # Open wallet and operate, default access
+    async with wallets[w_name] as w:
+        did_info = await w.create_local_did(None, loc_did)
+        assert did_info.did and did_info.verkey and len(did_info.metadata) == 1  # 'since'
+        assert did_info == await w.get_local_did_info(did_info.did)
+        assert did_info == await w.get_local_did_info(did_info.verkey)
+
+        label = await w.get_link_secret_label()
+        assert label
+        print('\n\n== 1 == Created wallet for export with link secret label: {}'.format(label))
+        await w_mgr.export_wallet(w, str(path_export))
+
+    assert path_export.exists(), 'Exported wallet path {} not present'.format(path_export)
+    print('\n\n== 2 == Exported wallet to path {}'.format(path_export))
+
+    path_import = Path(path_home, 'wallet', w_name)
+    assert not path_import.exists()
+    await w_mgr.import_wallet({'id': w_name}, str(path_export))
+    assert path_import.exists()
+    print('\n\n== 3 == Imported wallet from path {}'.format(path_export))
+
+    async with await w_mgr.get({'id': w_name}) as w:
+        loc = await w.get_local_did_info(loc_did)
+        print('\n\n== 4.1 == Local DID imported OK: {}'.format(loc))
+        import_label = await w.get_link_secret_label()
+        print('\n\n== 4.2 == Link secret imported on label: {}'.format(label))
+        assert import_label == label
+        w.auto_remove = True  # no further need for it
+    assert not path_import.exists()
+
+    # Export/import on non-default access
+    if path_export.exists():
+        unlink(str(path_export))
+    access = 'secret-squirrel'
+    w = await w_mgr.create({'id': w_name, 'link_secret_label': 'secret', 'auto_remove': True}, access)
+
+    try:  # exercise export-closed exception
+        await w_mgr.export_wallet(w, str(path_export))
+        assert False
+    except WalletState:
+        pass
+    print('\n\n== 5 == Refused to export closed wallet as expected')
+
+    async with w:
+        did_info = await w.create_local_did(None, loc_did)
+        assert did_info.did and did_info.verkey and len(did_info.metadata) == 1  # 'since'
+        assert did_info == await w.get_local_did_info(did_info.did)
+        assert did_info == await w.get_local_did_info(did_info.verkey)
+
+        label = await w.get_link_secret_label()
+        assert label
+        print('\n\n== 6 == Created wallet for export with link secret label: {}'.format(label))
+        await w_mgr.export_wallet(w, str(path_export))
+
+    assert path_export.exists(), 'Exported wallet path {} not present'.format(path_export)
+    print('\n\n== 7 == Exported wallet to path {}'.format(path_export))
+
+    path_import = Path(path_home, 'wallet', w_name)
+    assert not path_import.exists()
+
+    try:  # exercise no import on bad access
+        await w_mgr.import_wallet({'id': w_name}, str(path_export), 'not-{}'.format(access))
+        assert False
+    except BadAccess:
+        pass
+
+    await w_mgr.import_wallet({'id': w_name}, str(path_export), access)
+    assert path_import.exists()
+    print('\n\n== 8 == Imported wallet from path {}'.format(path_export))
+
+    async with await w_mgr.get({'id': w_name, 'auto_remove': True}, access) as w:
+        loc = await w.get_local_did_info(loc_did)
+        print('\n\n== 9.1 == Local DID imported OK: {}'.format(loc))
+        import_label = await w.get_link_secret_label()
+        print('\n\n== 9.2 == Link secret imported on label: {}'.format(label))
+        assert import_label == label

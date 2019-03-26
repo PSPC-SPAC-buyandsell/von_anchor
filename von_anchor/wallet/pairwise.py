@@ -19,9 +19,6 @@ from von_anchor.canon import raw, canon_pairwise_tag
 from von_anchor.wallet import NonSecret
 
 
-TYPE_PAIRWISE = 'pairwise'
-
-
 class PairwiseInfo:
     """
     Bundle for pairwise DID relation: DIDs, verification keys, and metadata.

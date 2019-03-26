@@ -20,6 +20,9 @@ import logging
 from von_anchor.error import BadRecord
 
 
+TYPE_LINK_SECRET_LABEL = 'link_secret_label'
+TYPE_PAIRWISE = 'pairwise'
+
 LOGGER = logging.getLogger(__name__)
 
 

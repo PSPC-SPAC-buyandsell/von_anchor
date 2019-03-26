@@ -38,7 +38,7 @@ from von_anchor.error import AbsentProcess, BadIdentifier, WalletState
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.util import ok_rev_reg_id, rev_reg_id2cred_def_id, rev_reg_id2cred_def_id_tag
-from von_anchor.wallet import Wallet
+from von_anchor.wallet import Wallet, WalletManager
 
 
 LOGGER = logging.getLogger(__name__)
@@ -388,12 +388,14 @@ async def main(pool_name: str, wallet_name: str) -> None:
     for path_log in start_data['logging']['paths']:
         logging.getLogger(__name__).addHandler(logging.FileHandler(path_log))
 
-    async with Wallet(
-            wallet_name,
-            start_data['wallet']['storage_type'],
-            start_data['wallet']['config'],
-            start_data['wallet']['access_creds']) as wallet, (
-                RevRegBuilder(wallet, pool, rrbx=True)) as rrban:
+    wallet = await WalletManager().get(
+        {
+            'id': wallet_name,
+            'storage_type': start_data['wallet']['storage_type'],
+            **start_data['wallet']['config'],
+        },
+        access=start_data['wallet']['access_creds'].get('key', None))
+    async with wallet, RevRegBuilder(wallet, pool, rrbx=True) as rrban:
         await rrban.serve()
 
 

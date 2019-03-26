@@ -56,7 +56,7 @@ from von_anchor.util import (
     proof_req_pred_referents,
     rev_reg_id2cred_def_id_tag)
 from von_anchor.validcfg import validate_config
-from von_anchor.wallet import Wallet
+from von_anchor.wallet import Wallet, WalletManager
 
 
 LOGGER = logging.getLogger(__name__)
@@ -89,7 +89,6 @@ class HolderProver(BaseAnchor):
         LOGGER.debug('HolderProver.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)
 
         super().__init__(wallet, pool, **kwargs)
-        self._link_secret = None
 
         self._dir_tails = join(expanduser('~'), '.indy_client', 'tails')
         makedirs(self._dir_tails, exist_ok=True)
@@ -102,16 +101,19 @@ class HolderProver(BaseAnchor):
 
         LOGGER.debug('HolderProver.__init__ <<<')
 
-    def _assert_link_secret(self, action: str):
+    async def _assert_link_secret(self, action: str) -> str:
         """
-        Raise AbsentLinkSecret if link secret is not set.
+        Return current wallet link secret label. Raise AbsentLinkSecret if link secret is not set.
 
         :param action: action requiring link secret
         """
 
-        if self._link_secret is None:
+        rv = await self.wallet.get_link_secret_label()
+        if rv is None:
             LOGGER.debug('HolderProver._assert_link_secret: action %s requires link secret but it is not set', action)
             raise AbsentLinkSecret('Action {} requires link secret but it is not set'.format(action))
+
+        return rv
 
     @property
     def config(self) -> dict:
@@ -393,35 +395,21 @@ class HolderProver(BaseAnchor):
         LOGGER.debug('HolderProver.offline_intervals <<< %s', rv)
         return rv
 
-    async def create_link_secret(self, link_secret: str) -> None:
+    async def create_link_secret(self, label: str) -> None:
         """
-        Create link secret (a.k.a. master secret) used in proofs by HolderProver.
+        Create link secret (a.k.a. master secret) used in proofs by HolderProver, if the
+        current link secret does not already correspond to the input link secret label.
 
         Raise WalletState if wallet is closed, or any other IndyError causing failure
         to set link secret in wallet.
 
-        :param link_secret: label for link secret; indy-sdk uses label to generate link secret
+        :param label: label for link secret; indy-sdk uses label to generate link secret
         """
 
-        LOGGER.debug('HolderProver.create_link_secret >>> link_secret: %s', link_secret)
+        LOGGER.debug('HolderProver.create_link_secret >>> label: %s', label)
 
-        if not self.wallet.handle:
-            LOGGER.debug('HolderProver.create_link_secret <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+        await self.wallet.create_link_secret(label)
 
-        try:
-            await anoncreds.prover_create_master_secret(self.wallet.handle, link_secret)
-        except IndyError as x_indy:
-            if x_indy.error_code == ErrorCode.AnoncredsMasterSecretDuplicateNameError:
-                LOGGER.info('HolderProver did not create link secret - it already exists')
-            else:
-                LOGGER.debug(
-                    'HolderProver.create_link_secret <!< cannot create link secret %s, indy error code %s',
-                    self.wallet.name,
-                    x_indy.error_code)
-                raise
-
-        self._link_secret = link_secret
         LOGGER.debug('HolderProver.create_link_secret <<<')
 
     async def create_cred_req(self, cred_offer_json: str, cd_id: str) -> (str, str):
@@ -445,7 +433,7 @@ class HolderProver(BaseAnchor):
             LOGGER.debug('HolderProver.create_cred_req <!< Wallet %s is closed', self.wallet.name)
             raise WalletState('Wallet {} is closed'.format(self.wallet.name))
 
-        self._assert_link_secret('create_cred_req')
+        label = await self._assert_link_secret('create_cred_req')
 
         # Check that ledger has schema on ledger where cred def expects - in case of pool reset with extant wallet
         cred_def_json = await self.get_cred_def(cd_id)
@@ -462,7 +450,7 @@ class HolderProver(BaseAnchor):
             self.did,
             cred_offer_json,
             cred_def_json,
-            self._link_secret)
+            label)
         rv = (cred_req_json, cred_req_metadata_json)
 
         LOGGER.debug('HolderProver.create_cred_req <<< %s', rv)
@@ -824,13 +812,12 @@ class HolderProver(BaseAnchor):
                     self.wallet.name,
                     cred_id)
                 raise AbsentCred('No cred in wallet for {}'.format(cred_id))
-            else:
-                LOGGER.debug(
-                    'HolderProver.get_cred_info_by_id <!< wallet %s, cred id %s: indy error code %s',
-                    self.wallet.name,
-                    cred_id,
-                    x_indy.error_code)
-                raise
+            LOGGER.debug(
+                'HolderProver.get_cred_info_by_id <!< wallet %s, cred id %s: indy error code %s',
+                self.wallet.name,
+                cred_id,
+                x_indy.error_code)
+            raise
 
         LOGGER.debug('HolderProver.get_cred_info_by_id <<< %s', rv_json)
         return rv_json
@@ -1040,7 +1027,7 @@ class HolderProver(BaseAnchor):
             LOGGER.debug('HolderProver.create_proof <!< Wallet %s is closed', self.wallet.name)
             raise WalletState('Wallet {} is closed'.format(self.wallet.name))
 
-        self._assert_link_secret('create_proof')
+        label = await self._assert_link_secret('create_proof')
 
         cd_ids = set()
         x_cd_ids = set()
@@ -1136,14 +1123,14 @@ class HolderProver(BaseAnchor):
             self.wallet.handle,
             json.dumps(proof_req),
             json.dumps(requested_creds),
-            self._link_secret,
+            label,
             json.dumps(s_id2schema),
             json.dumps(cd_id2cred_def),
             json.dumps(rr_id2rev_state))
         LOGGER.debug('HolderProver.create_proof <<< %s', rv)
         return rv
 
-    async def reset_wallet(self, seed) -> Wallet:
+    async def reset_wallet(self, seed: str = None) -> Wallet:
         """
         Close and delete HolderProver wallet, then create and open a replacement on prior link secret.
         Note that this operation effectively destroys private keys for credential definitions. Its
@@ -1151,36 +1138,13 @@ class HolderProver(BaseAnchor):
 
         Raise AbsentLinkSecret if link secret not set. Raise WalletState if the wallet is closed.
 
-        :param seed: seed to use for new wallet
+        :param seed: seed to use for new wallet (default random)
         :return: replacement wallet
         """
 
         LOGGER.debug('HolderProver.reset_wallet >>>')
 
-        if not self.wallet.handle:
-            LOGGER.debug('HolderProver.reset_wallet <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
-
-        self._assert_link_secret('reset_wallet')
-
-        wallet_name = self.wallet.name
-        wallet_auto_remove = self.wallet.auto_remove
-        wallet_config = self.wallet.config
-        wallet_config['auto-remove'] = wallet_auto_remove
-        wallet_storage_type = self.wallet.storage_type
-        wallet_access_creds = self.wallet.access_creds
-
-        await self.wallet.close()
-        if not self.wallet.auto_remove:
-            await self.wallet.remove()
-        self.wallet = await Wallet(
-            wallet_name,
-            wallet_storage_type,
-            wallet_config,
-            wallet_access_creds).create(seed)
-        await self.wallet.open()
-
-        await self.create_link_secret(self._link_secret)  # carry over link secret to new wallet
+        self.wallet = await WalletManager().reset(self.wallet, seed)
 
         rv = self.wallet
         LOGGER.debug('HolderProver.reset_wallet <<< %s', rv)

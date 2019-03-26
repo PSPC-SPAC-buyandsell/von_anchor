@@ -22,7 +22,7 @@ from sys import stderr
 
 
 pkg_name = 'von_anchor'
-version = '1.8.10'
+version = '1.8.11'
 
 
 def parse_requirements(filename):
@@ -38,6 +38,7 @@ def parse_requirements(filename):
     except FileNotFoundError:
         print('File not found: {}'.format(realpath(filename)), file=stderr)
         raise
+
 
 setup(
     name=pkg_name,

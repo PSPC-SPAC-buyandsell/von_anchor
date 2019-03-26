@@ -27,20 +27,29 @@ from von_anchor.error import AbsentPool, ExtantWallet
 from von_anchor.frill import Ink, inis2dict, ppjson
 from von_anchor.indytween import Role
 from von_anchor.nodepool import NodePool, NodePoolManager
-from von_anchor.wallet import Wallet
+from von_anchor.wallet import Wallet, WalletManager
 
 
 async def get_wallets(wallet_data, open_all, auto_remove=False):
     rv = {}
-    for (name, seed) in wallet_data.items():
-        w = Wallet(name, storage_type=None, config={'auto-remove': True} if auto_remove else None)
-        try:
-            if seed:
-                await w.create(seed)
-        except ExtantWallet:
-            pass
+    w_mgr = WalletManager()
+    for name in wallet_data:
+        w = None
+        creation_data = {'seed', 'did'} & {n for n in wallet_data[name]}
+        if creation_data:
+            w = await w_mgr.create(
+                {
+                    'id': name,
+                    **{k: wallet_data[name][k] for k in creation_data},
+                    'auto_remove': auto_remove
+                },
+                replace=True)
+        else:
+            w = await w_mgr.get({'id': name, 'auto_remove': auto_remove})
         if open_all:
             await w.open()
+        assert w.did
+        assert w.verkey
         rv[name] = w
     return rv
 
@@ -66,12 +75,19 @@ async def test_setnym(
     if pool_name not in await manager.list():
         await manager.add_config(pool_name, pool_genesis_txn_data)
 
-    seeds = {
-        'trustee-anchor': seed_trustee1,
-        cfg['VON Anchor']['wallet.name']: cfg['VON Anchor']['seed'],
-        'x-anchor': 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-    }
-    wallets = await get_wallets(seeds, True)
+    wallets = await get_wallets(
+        {
+            'trustee-anchor': {
+                'seed': seed_trustee1
+            },
+            cfg['VON Anchor']['name']: {
+                'seed': cfg['VON Anchor']['seed']
+            },
+            'x-anchor': {
+                'seed': 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+            }
+        },
+        True)
 
     try:
         async with NominalAnchor(wallets['x-anchor']) as xan:
@@ -88,7 +104,7 @@ async def test_setnym(
     tan = TrusteeAnchor(wallets['trustee-anchor'], pool)
     await tan.open()
 
-    noman = NominalAnchor(wallets[cfg['VON Anchor']['wallet.name']], pool)
+    noman = NominalAnchor(wallets[cfg['VON Anchor']['name']], pool)
 
     nym = json.loads(await noman.get_nym(noman.did))
     print('\n\n== 2 == Nym {} on ledger for anchor {} on DID {}'.format(
@@ -215,7 +231,7 @@ async def test_setnym(
         ppjson(nym)))
 
     await pool.open()
-    san = SRIAnchor(wallets[cfg['VON Anchor']['wallet.name']], pool)
+    san = SRIAnchor(wallets[cfg['VON Anchor']['name']], pool)
     await san.open()
     next_seed = "{}000000000000VonAnchor1".format(int(time()) + 1)
     await san.reseed(next_seed)

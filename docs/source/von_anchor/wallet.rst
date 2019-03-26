@@ -2,7 +2,60 @@
 Wallet
 ***********************
 
-The Wallet subpackage encapsulates the indy-sdk wallet and abstractions useful for its records. It resides in ``von_anchor/wallet/``.
+The Wallet subpackage encapsulates the indy-sdk wallet, a wallet manager, and abstractions useful for its records. It resides in ``von_anchor/wallet/``.
+
+.. _wallet-manager:
+
+Wallet Manager
+#######################
+
+The Wallet Manager provides management utilities for wallets and retains default wallet configuration values. Its source resides in file ``von_anchor/wallet/manager.py``.
+
+Initialization
+++++++++++++++++++++++++++++
+
+The initializer takes and retains default configuration values to use in creating new VON Anchor wallets:
+
+* ``storage_type``: storage type (default None for indy-sdk default)
+* ``freshness_time``: freshness time (default 0 for infinite)
+* ``auto_remove``: auto-remove on first wallet close (default False)
+* ``key``: access credentials value (default ``key``).
+
+Accessors
+++++++++++++++++++++++++++++
+
+The class exposes accessors for default wallet configuration values.
+
+Wallet Instance Management
+++++++++++++++++++++++++++++
+
+The ``create()`` method takes configuration (overriding Wallet Manager instance defaults), access credentials value, and whether to replace an existing wallet on the same name (with the same access credentials). The configuration data includes:
+
+* ``id``: the wallet name
+* ``storage_type``, ``freshness_time``: indy-sdk configuration items
+* ``did``, ``seed``: optional DID an seed to use
+* ``auto_remove``: auto-remove behaviour on first wallet close
+* ``link_secret_label``: optional link secret label to use to create link secret.
+
+The implementation creates the indy-sdk wallet, sets the anchor DID and verification key (using the seed and DID if provided), and creates the link secret if the configuration specifies its label.
+
+The ``get()`` method takes a configuration dict and an access credentials value. Its operation returns a corresponding VON anchor wallet instance. Note that the corresponding indy-sdk wallet need not exist in persistent storage.
+
+The ``reset()`` method takes an open VON wallet and an optional seed. It closes and deletes the wallet, then re-creates a replacement on the same configuration.
+
+The ``remove()`` method takes a (closed) VON anchor wallet and removes it from persistent storage. Its implementation simply delegates to the wallet itself.
+
+Import and Export
+++++++++++++++++++++++++++++
+
+The ``export_wallet()`` method serializes and exports an (open) VON anchor wallet to a file path. It uses the wallet's access credentials value as the export key, on the ``ARGON2I_MOD`` indy-sdk default key derivation algorithm.
+
+The ``import_wallet()`` method deserializes and imports an exported wallet file into the indy-sdk wallet collection. It takes configuration data for the wallet including its identifier (name). The call requires the access credentials value for the wallet as exported *a priori*.
+
+Storage Type Registration
+++++++++++++++++++++++++++++
+
+The static method ``register_storage_library()`` registers a wallet storage plug-in with the indy-sdk.
 
 VON Anchor Wallet
 #######################
@@ -10,46 +63,49 @@ VON Anchor Wallet
 The VON Anchor wallet provides functionality for VON anchors to use indy-sdk wallets to manage keyed and non-secret records. It resides in ``von_anchor/wallet/wallet.py``.
 
 Initialization
-++++++++++++++++++
+++++++++++++++++++++++++++++
+
+Actuators should not call the wallet initializer directly; they should prefer the ``WalletManager.get()`` method of :ref:`wallet-manager` instead, which filters configuration parameters through preset defaults.
 
 The initializer takes:
 
-* the wallet name,
-* a storage type (default ``None``),
-* an optional configuration dict supporting:
-
-    - the ``auto_remove`` key (set its value ``True`` to instruct the wallet implementation to delete serialized indy-sdk configuration data on exit),
-    - any further properties to pass through to the indy-sdk for its own wallet configuration; and
-    - an optional access credentials dict.
+* a configuration dict with indy-sdk wallet configuration keys and values
+* the wallet access credentials value
+* auto-remove (behaviour) boolean.
 
 Its operation stores input parameters or sensible defaults, in waiting for further calls to create the wallet in storage or to open it for indy-sdk operations.
 
 Accessors
-++++++++++++++++++
+++++++++++++++++++++++++++++
 
-The class exposes accessors for the wallet name, indy-sdk handle, configuration, auto-remove status, access credentials, storage type, anchor DID, and verkey.
+The class exposes accessors for the wallet name, indy-sdk handle, configuration, auto-remove status, access credentials, storage type, anchor DID, and (public) verification key.
 
 .. _wallet-create:
 
-Creation
-++++++++++++++++++
-
-The ``create()`` call takes a 32-character seed. Its operation creates the wallet in storage, then to derive and store the anchor DID (see :ref:`did-management`) from its seed. When creating a new DID from seed for its user, the implementation writes the effective epoch time, and an anchor DID marker to metadata. If a wallet already exists on the ``Wallet`` object's name, the operation raises an ``ExtantWallet`` exception.
-
 Context Management
-++++++++++++++++++
+++++++++++++++++++++++++++++
 
 The context manager methods set up and tear down the wallet within the indy-sdk. On opening, the indy-sdk returns a wallet handle, which the the ``Wallet`` object retains for future indy-sdk interaction. On closing, the  instance directs the indy-sdk to invalidate the handle and to delete the wallet from persistent storage (if so configured).
 
 .. _wallet-reseed:
 
 Key Rotation
-++++++++++++++++++
+++++++++++++++++++++++++++++
 
-The ``reseed_init()`` and ``reseed_apply()`` methods perform key rotation. The anchor that owns the wallet calls these methods via its ``reseed()`` method to realize the operation, generating new keys from a new seed, as per :ref:`base-anchor`.
+The ``reseed_init()`` and ``reseed_apply()`` methods perform key rotation in the wallet (not on the ledger). Actuators should not call these methods directly, but use the owning anchor's or the Wallet Manager's delegators instead.
 
-Deletion
-++++++++++++++++++
+Anchor Cryptonym Key Rotation
+-----------------------------
+
+The anchor that owns the wallet calls these methods via its ``reseed()`` method to realize the operation, generating new keys from a new seed, as per :ref:`base-anchor`, en route to updating the anchor's cryptonym on the ledger.
+
+Wallet-Only Key Rotation
+-------------------------
+
+For the case where a wallet does not correspond to an anchor on the ledger, the ``WalletManager`` class (see :ref:`wallet-manager`) exposes a single ``reseed_local()`` method to perform a complete key rotation in the wallet without attempting to go to the ledger.
+
+Removal
+++++++++++++++++++++++++++++
 
 The ``remove()`` method removes the wallet from persistent storage if it exists.
 
@@ -80,8 +136,19 @@ Deleting
 
 The ``delete_non_secret()`` method takes a non-secret record type identifier, which uniquely identifies a non-secret record in the wallet, and removes it if present. If absent, it logs at level ``INFO`` and carries on.
 
+Link Secret Management
+++++++++++++++++++++++++++++
+
+The wallet uses non-secret records to retain link secret labels.
+
+On creating a link secret, the wallet operation writes a corresponding non-secret record with its label. When the operation needs a link secret, it fetches it using its most recent label. In this way the wallet obviates the need to recall and (attempt to) re-create the link secret on every subsequent open.
+
+The ``create_link_secret()`` creates a link secret on the input label, logging instead if it duplicates the current link secret. It adds a corresponding non-secret record with the link secret label.
+
+The ``get_link_secret_label()`` method retrieves the current link secret label from non-secret records.
+
 DID Management
-++++++++++++++++++
+++++++++++++++++++++++++++++
 
 The design identifies several kinds of DIDs.
 
@@ -142,7 +209,7 @@ Deleting
 The ``delete_pairwise()`` method takes a remote DID and delegates to ``delete_non_secret()`` to remove its corresponding pairwise relation, if present. If absent, it logs at level ``INFO`` and carries on.
 
 Cryptographic Operations
-+++++++++++++++++++++++++
+++++++++++++++++++++++++++++
 
 The ``encrypt()`` method takes a message, a recipient verification key (default value of current verification key for anchor DID), and whether to use authenticated encryption for proof of origin. Its operation delegates to indy-sdk to encrypt the message and return the ciphertext as a byte string.
 
@@ -155,11 +222,6 @@ The ``verify()`` method takes a message and putative signature plus a verificati
 The ``pack()`` method takes a message, recipient verification key or keys (default value of current verification key for anchor DID), and sender verification key (default ``None`` for anonymous encryption). Its operation delegates to the indy-sdk to pack a JWE of https://tools.ietf.org/html/rfc7516, which it returns.
 
 The ``unpack()`` method takes JWE ciphertext and delegates to indy-sdk to unpack it. It returns a triple with the message, the recipient verification key, and the sender verification key (``None`` for anonymous encryption).
-
-Storage Type Registration
-+++++++++++++++++++++++++
-
-The free function ``register_wallet_storage_library()`` in ``von_anchor/wallet.py`` registers a wallet storage plug-in with the indy-sdk.
 
 Supporting Classes
 ###################################

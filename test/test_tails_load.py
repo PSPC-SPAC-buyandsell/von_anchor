@@ -33,11 +33,12 @@ from von_anchor.util import (
     rev_reg_id2tag,
     schema_id,
     schema_key)
-from von_anchor.wallet import Wallet
+from von_anchor.wallet import Wallet, WalletManager
 
 
 def rrbx_prox():
     return int(subprocess.check_output('ps -ef | grep rrbuilder.py | wc -l', stderr=subprocess.STDOUT, shell=True))
+
 
 async def beep(msg, n):
     print('(waiting for {})'.format(msg))
@@ -45,6 +46,7 @@ async def beep(msg, n):
         await asyncio.sleep(1)
         print('.', end='', flush=True)
     print()
+
 
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
@@ -61,12 +63,13 @@ async def test_anchors_tails_load(
     await RevRegBuilder.stop(WALLET_NAME)  # in case of re-run
 
     # Set up node pool ledger config and wallets, open pool, init anchors
-    manager = NodePoolManager()
-    if pool_name not in await manager.list():
-        await manager.add_config(pool_name, pool_genesis_txn_data)
-    pool = manager.get(pool_name)
+    p_mgr = NodePoolManager()
+    if pool_name not in await p_mgr.list():
+        await p_mgr.add_config(pool_name, pool_genesis_txn_data)
+    pool = p_mgr.get(pool_name)
     await pool.open()
 
+    w_mgr = WalletManager()
     wallets = {
         'trustee-anchor': {
             'seed': seed_trustee1,
@@ -84,11 +87,13 @@ async def test_anchors_tails_load(
         }
     }
     for (name, wdata) in wallets.items():
-        wdata['wallet'] = Wallet(name, None, wdata['config'], wdata['access_creds'])
         try:
-            await wdata['wallet'].create(wdata['seed'])
+            wdata['wallet'] = await w_mgr.create({
+                'id': name,
+                'seed': wdata['seed']
+            })
         except ExtantWallet:
-            pass
+            wdata['wallet'] = await w_mgr.get({'id': name})
         finally:
             await wdata['wallet'].open()
 

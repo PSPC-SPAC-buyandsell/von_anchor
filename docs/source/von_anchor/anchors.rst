@@ -148,7 +148,7 @@ Its  ``revoke_cred()`` method revokes a credential by revocation registry identi
 HolderProver
 ****************************************************
 
-The HolderProver class has its own initializer method to set up a place holder for its link secret, to set its directory for cache archives, and to set any configuration parameters. Actuators need not call its ``_sync_revoc_for_proof()`` nor ``_build_rr_delta_json()`` methods; the implementation uses them internally as required to create manage tails file associations, and to build revocation registry delta structures (as a callback per :ref:`revo-cache-entry`).
+The HolderProver class has its own initializer method to set its directory for cache archives and to set any configuration parameters. Actuators need not call its ``_sync_revoc_for_proof()`` nor ``_build_rr_delta_json()`` methods; the implementation uses them internally as required to create manage tails file associations, and to build revocation registry delta structures (as a callback per :ref:`revo-cache-entry`).
 
 It implements properties for access to its configuration and cache directory.
 
@@ -260,7 +260,7 @@ Its  ``create_proof()`` method creates a proof for input indy-sdk proof request,
 Reset
 -----------------------------------------
 
-Its  ``reset_wallet()`` method allows the service wrapper layer to delete the wallet and start a new one of the same type, setting link secret to the prior value.
+Its  ``reset_wallet()`` method allows the service wrapper layer to delete the wallet and start a new one of the same type, setting link secret to the prior value. Its implementation delegates to the wallet manager's ``reset()`` method (:ref:`wallet-manager`).
 
 Verifier
 ****************************************************
@@ -280,7 +280,7 @@ The class's ``build_proof_req_json()`` helper takes a specification construct. I
 - ``'attrs'`` to a list of attributes of interest
     - if the key is absent, request all attributes
     - if the key is present but the value is null or empty, request no attributes (i.e., only predicates)
-- ``'>'``, ``'>='``, ``'<='``, ``'<'`` to a dict of bound values to request (by predicate) per attribute
+- ``'>'``, ``'>='``, ``'<='``, ``'<'`` to a dict of bound values to request (by predicate) per attribute (at present, indy-sdk supports only ``'>='`` predicates)
     - if such a key is absent or its value is null or empty, request no such predicates
 - ``'interval'`` to a single timestamp of interest, in integer epoch seconds, or to a pair of integers marking the boundaries of a non-revocation interval; if absent,
     - request the present moment if the credential definition supports revocation,
