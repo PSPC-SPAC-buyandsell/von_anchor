@@ -87,7 +87,7 @@ async def test_setnym(
                 'seed': 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
             }
         },
-        True)
+        open_all=True)
 
     try:
         async with NominalAnchor(wallets['x-anchor']) as xan:
@@ -115,6 +115,7 @@ async def test_setnym(
     await tan.close()
     await pool.close()
 
+    # Run setnym on initial configuration, check ledger
     sub_proc = subprocess.run(
         [
             'python',
@@ -137,6 +138,7 @@ async def test_setnym(
     await noman.close()
     await pool.close()
 
+    # Run setnym on configuration with no seeds nor VON Anchor role, check ledger
     with open(path_setnym_ini, 'w+') as ini_fh:
         for section in cfg:
             print('[{}]'.format(section), file=ini_fh)
@@ -171,7 +173,8 @@ async def test_setnym(
     await noman.close()
     await pool.close()
 
-    sub_proc = subprocess.run(  #  do it again
+    # Run again to check idempotence
+    sub_proc = subprocess.run(
         [
             'python',
             join(dirname(dirname(dirname(realpath(__file__)))), 'von_anchor', 'op', 'setnym.py'),
@@ -193,6 +196,7 @@ async def test_setnym(
     await noman.close()
     await pool.close()
 
+    # Run setnym on configuration with no seeds and bad VON Anchor role, check ledger
     with open(path_setnym_ini, 'w+') as ini_fh:
         for section in cfg:
             print('[{}]'.format(section), file=ini_fh)
@@ -233,10 +237,11 @@ async def test_setnym(
     await pool.open()
     san = SRIAnchor(wallets[cfg['VON Anchor']['name']], pool)
     await san.open()
-    next_seed = "{}000000000000VonAnchor1".format(int(time()) + 1)
+    next_seed = '{}000000000000VonAnchor1'.format(int(time()) + 1)
     await san.reseed(next_seed)
     nym = json.loads(await san.get_nym(noman.did))
     san_role = await san.get_nym_role()
+    await pool.close()
     assert nym and nym['seqNo'] != last_nym_seqno
     assert san_role == noman_role  # ensure that reseed does not side-effect role on ledger
 
@@ -245,7 +250,51 @@ async def test_setnym(
         san.wallet.name,
         ppjson(nym)))
 
-    await san.close()
+    # Run again without trustee anchor wallet present
+    await wallets['trustee-anchor'].close()
+    await wallets['trustee-anchor'].remove()
+    wallets.pop('trustee-anchor')
+    noman = NominalAnchor(wallets[cfg['VON Anchor']['name']], pool)
+
+    next_name = 'anchor-{}'.format(next_seed[0:10])  # workaround for indy-node bug: trustee can't change role from None
+    with open(path_setnym_ini, 'w+') as ini_fh:
+        for section in cfg:
+            print('[{}]'.format(section), file=ini_fh)
+            for (key, value) in cfg[section].items():
+                v = value
+                if section == 'VON Anchor':  # can remove this chicanery once indy-node bug is fixed
+                    if key == 'name':
+                        v = next_name
+                    elif key == 'seed':
+                        v = next_seed
+                print('{}={}'.format(key, v), file=ini_fh)
+            print(file=ini_fh)
+    with open(path_setnym_ini, 'r') as cfg_fh:
+        print('\n\n== 14 == New VON anchor, no Trustee anchor wallet:\n{}'.format(cfg_fh.read()))
+
+    sub_proc = subprocess.run(
+        [
+            'python',
+            join(dirname(dirname(dirname(realpath(__file__)))), 'von_anchor', 'op', 'setnym.py'),
+            str(path_setnym_ini)
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL)
+    assert not sub_proc.returncode
+    print('\n\n== 15 == Set nym with default role on {} for {}'.format(noman.did, noman.wallet.name))
+
+    await pool.open()
+    await noman.open()
+    nym = json.loads(await noman.get_nym(noman.did))
+    assert nym and Role.get(nym['role']) == Role.USER
+    last_nym_seqno = nym['seqNo']
+    print('\n\n== 16 == Got nym transaction from ledger for DID {} ({}): {}'.format(
+        noman.did,
+        noman.wallet.name,
+        ppjson(nym)))
+    await noman.close()
     await pool.close()
+
+    await san.close()
     for name in wallets:
         await wallets[name].close()

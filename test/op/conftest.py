@@ -77,6 +77,8 @@ def setnym_ini_file(path_setnym_ini, pool_name, seed_trustee1, seed_von_anchor):
         '',
         '[Trustee Anchor]',
         'name=trustee-anchor',
+        'seed={}'.format(seed_trustee1),
+        'wallet.create=True',
         'wallet.type=',
         'wallet.access=',
         '',

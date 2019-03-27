@@ -134,9 +134,9 @@ async def setnym(ini_path: str) -> int:
         'tan': AnchorData(
             Role.TRUSTEE,
             config['Trustee Anchor']['name'],
-            None,
-            None,
-            False,
+            config['Trustee Anchor'].get('seed', None) or None,
+            config['Trustee Anchor'].get('did', None) or None,
+            config['Trustee Anchor'].get('wallet.create', '0').lower() in ['1', 'true', 'yes'],
             config['Trustee Anchor'].get('wallet.type', None) or None,
             config['Trustee Anchor'].get('wallet.access', None) or None),
         'van': AnchorData(
