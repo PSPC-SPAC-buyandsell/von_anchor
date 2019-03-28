@@ -159,7 +159,7 @@ async def test_setnym(
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     assert not sub_proc.returncode
-    print('\n\n== 6 == Set nym with default role on {} for {}'.format(noman.did, noman.wallet.name))
+    print('\n\n== 6 == Set nym with USER role on {} for {}'.format(noman.did, noman.wallet.name))
 
     await pool.open()
     await noman.open()
@@ -256,21 +256,14 @@ async def test_setnym(
     wallets.pop('trustee-anchor')
     noman = NominalAnchor(wallets[cfg['VON Anchor']['name']], pool)
 
-    next_name = 'anchor-{}'.format(next_seed[0:10])  # workaround for indy-node bug: trustee can't change role from None
     with open(path_setnym_ini, 'w+') as ini_fh:
         for section in cfg:
             print('[{}]'.format(section), file=ini_fh)
             for (key, value) in cfg[section].items():
-                v = value
-                if section == 'VON Anchor':  # can remove this chicanery once indy-node bug is fixed
-                    if key == 'name':
-                        v = next_name
-                    elif key == 'seed':
-                        v = next_seed
-                print('{}={}'.format(key, v), file=ini_fh)
+                print('{}={}'.format(key, value), file=ini_fh)
             print(file=ini_fh)
     with open(path_setnym_ini, 'r') as cfg_fh:
-        print('\n\n== 14 == New VON anchor, no Trustee anchor wallet:\n{}'.format(cfg_fh.read()))
+        print('\n\n== 14 == Set VON anchor configuration, no Trustee anchor wallet a priori:\n{}'.format(cfg_fh.read()))
 
     sub_proc = subprocess.run(
         [
@@ -281,12 +274,12 @@ async def test_setnym(
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     assert not sub_proc.returncode
-    print('\n\n== 15 == Set nym with default role on {} for {}'.format(noman.did, noman.wallet.name))
+    print('\n\n== 15 == Set nym with TRUST_ANCHOR role on {} for {}'.format(noman.did, noman.wallet.name))
 
     await pool.open()
     await noman.open()
     nym = json.loads(await noman.get_nym(noman.did))
-    assert nym and Role.get(nym['role']) == Role.USER
+    assert nym and Role.get(nym['role']) == Role.TRUST_ANCHOR
     last_nym_seqno = nym['seqNo']
     print('\n\n== 16 == Got nym transaction from ledger for DID {} ({}): {}'.format(
         noman.did,

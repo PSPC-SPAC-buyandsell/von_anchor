@@ -172,7 +172,8 @@ async def setnym(ini_path: str) -> int:
             if an_data['van'].role == nym_role:
                 return 0  # ledger is as per configuration
             send_verkey = None  # only owner can touch verkey
-            await tan.send_nym(van.did, send_verkey, van.wallet.name, Role.ROLE_REMOVE)
+            if nym_role != Role.USER:  # only remove role when it is not already None on the ledger
+                await tan.send_nym(van.did, send_verkey, van.wallet.name, Role.ROLE_REMOVE)
         except AbsentNym:
             pass  # cryptonym not there yet, fall through
 

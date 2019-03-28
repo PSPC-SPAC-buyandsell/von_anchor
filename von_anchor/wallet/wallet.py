@@ -681,7 +681,7 @@ class Wallet:
 
     async def delete_non_secret(self, typ: str, ident: str) -> None:
         """
-        Remove a pairwise DID record by its type and identifier. Silently return if no such record is present.
+        Remove a non-secret record by its type and identifier. Silently return if no such record is present.
         Raise WalletState for closed wallet.
 
         :param typ: non-secret record type
