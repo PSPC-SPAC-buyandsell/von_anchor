@@ -110,6 +110,16 @@ class BaseAnchor:
         self._wallet = value
 
     @property
+    def name(self) -> str:
+        """
+        Accessor for anchor name, from wallet.
+
+        :return: anchor (wallet) name
+        """
+
+        return self.wallet.name
+
+    @property
     def did(self) -> str:
         """
         Accessor for anchor DID.
@@ -204,7 +214,7 @@ class BaseAnchor:
             self.did,
             self.did,
             verkey,
-            self.wallet.name,
+            self.name,
             (await self.get_nym_role()).token())
         await self._sign_submit(req_json)
         await self.wallet.reseed_apply()
@@ -230,8 +240,8 @@ class BaseAnchor:
             raise BadIdentifier('Bad DID {}'.format(target_did))
 
         if not (target_did or self.did):
-            LOGGER.debug('BaseAnchor.get_nym <!< Bad wallet state: DID for %s unavailable', self.wallet.name)
-            raise WalletState('Bad wallet state: DID for {} unavailable'.format(self.wallet.name))
+            LOGGER.debug('BaseAnchor.get_nym <!< Bad wallet state: DID for %s unavailable', self.name)
+            raise WalletState('Bad wallet state: DID for {} unavailable'.format(self.name))
 
         rv = json.dumps({})
         get_nym_req = await ledger.build_get_nym_request(self.did, target_did or self.did)
@@ -259,8 +269,8 @@ class BaseAnchor:
 
         nym = json.loads(await self.get_nym(target_did))
         if not nym:
-            LOGGER.debug('BaseAnchor.get_nym_role <!< Ledger has no cryptonym for anchor %s', self.wallet.name)
-            raise AbsentNym('Ledger has no cryptonym for anchor {}'.format(self.wallet.name))
+            LOGGER.debug('BaseAnchor.get_nym_role <!< Ledger has no cryptonym for anchor %s', self.name)
+            raise AbsentNym('Ledger has no cryptonym for anchor {}'.format(self.name))
 
         rv = Role.get(nym['role'])
 
@@ -307,10 +317,10 @@ class BaseAnchor:
         if not pairwise_info:
             LOGGER.debug(
                 'BaseAnchor.set_did_endpoint <!< Anchor %s has no pairwise relation for remote DID %s',
-                self.wallet.name,
+                self.name,
                 remote_did)
             raise AbsentRecord('Anchor {} has no pairwise relation for remote DID {}'.format(
-                self.wallet.name,
+                self.name,
                 remote_did))
 
         await self.wallet.write_pairwise(
@@ -341,8 +351,8 @@ class BaseAnchor:
             raise BadIdentifier('Bad DID {}'.format(remote_did))
 
         if not self.wallet.handle:
-            LOGGER.debug('BaseAnchor.get_did_endpoint <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+            LOGGER.debug('BaseAnchor.get_did_endpoint <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         pairwise_info = (await self.wallet.get_pairwise(remote_did)).get(remote_did, None)
         if not (pairwise_info and 'did_endpoint' in pairwise_info.metadata):
@@ -369,7 +379,7 @@ class BaseAnchor:
 
         ledger_endpoint = await self.get_endpoint()
         if ledger_endpoint == endpoint:
-            LOGGER.info('%s endpoint already set as %s', self.wallet.name, endpoint)
+            LOGGER.info('%s endpoint already set as %s', self.name, endpoint)
             LOGGER.debug('BaseAnchor.send_endpoint <<< (%s already set for %s )')
             return
 
@@ -408,8 +418,8 @@ class BaseAnchor:
         rv = None
 
         if not (target_did or self.did):
-            LOGGER.debug('BaseAnchor.get_endpoint <!< Bad wallet state: DID for %s unavailable', self.wallet.name)
-            raise WalletState('Bad wallet state: DID for {} unavailable'.format(self.wallet.name))
+            LOGGER.debug('BaseAnchor.get_endpoint <!< Bad wallet state: DID for %s unavailable', self.name)
+            raise WalletState('Bad wallet state: DID for {} unavailable'.format(self.name))
 
         target_did = target_did or self.did
         if not ok_did(target_did):
@@ -505,8 +515,8 @@ class BaseAnchor:
             raise ClosedPool('Cannot sign and submit request to closed pool {}'.format(self.pool.name))
 
         if not self.wallet.handle:
-            LOGGER.debug('BaseAnchor._sign_submit <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+            LOGGER.debug('BaseAnchor._sign_submit <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         try:
             rv_json = await ledger.sign_and_submit_request(self.pool.handle, self.wallet.handle, self.did, req_json)
@@ -515,10 +525,10 @@ class BaseAnchor:
             if x_indy.error_code == ErrorCode.WalletIncompatiblePoolError:
                 LOGGER.debug(
                     'BaseAnchor._sign_submit <!< Corrupt wallet %s is not compatible with pool %s',
-                    self.wallet.name,
+                    self.name,
                     self.pool.name)
                 raise CorruptWallet('Corrupt wallet {} is not compatible with pool {}'.format(
-                    self.wallet.name,
+                    self.name,
                     self.pool.name))
             LOGGER.debug(
                 'BaseAnchor._sign_submit <!< cannot sign/submit request for ledger: indy error code %s',
@@ -557,7 +567,7 @@ class BaseAnchor:
         if self.wallet.handle:
             try:
                 rv = await did.key_for_local_did(self.wallet.handle, target)
-                LOGGER.info('Anchor %s got verkey for DID %s from wallet', self.wallet.name, target)
+                LOGGER.info('Anchor %s got verkey for DID %s from wallet', self.name, target)
                 LOGGER.debug('BaseAnchor._verkey_for <<< %s', rv)
                 return rv
             except IndyError as x_indy:
@@ -572,12 +582,12 @@ class BaseAnchor:
         if not nym:
             LOGGER.debug(
                 'BaseAnchor._verkey_for <!< Wallet %s closed and ledger has no cryptonym for DID %s',
-                self.wallet.name,
+                self.name,
                 target)
-            raise AbsentNym('Wallet {} closed, and ledger has no cryptonym for DID {}'.format(self.wallet.name, target))
+            raise AbsentNym('Wallet {} closed, and ledger has no cryptonym for DID {}'.format(self.name, target))
 
         rv = json.loads(await self.get_nym(target))['verkey']
-        LOGGER.info('Anchor %s got verkey for DID %s from pool %s', self.wallet.name, target, self.pool.name)
+        LOGGER.info('Anchor %s got verkey for DID %s from pool %s', self.name, target, self.pool.name)
 
         LOGGER.debug('BaseAnchor._verkey_for <<< %s', rv)
         return rv
@@ -752,8 +762,8 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor.encrypt >>> message: %s, authn: %s, recip: %s', message, authn, recip)
 
         if not self.wallet.handle:
-            LOGGER.debug('BaseAnchor.encrypt <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+            LOGGER.debug('BaseAnchor.encrypt <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         rv = await self.wallet.encrypt(message, authn, await self._verkey_for(recip))
 
@@ -775,8 +785,8 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor.decrypt >>> ciphertext: %s, sender: %s', ciphertext, sender)
 
         if not self.wallet.handle:
-            LOGGER.debug('BaseAnchor.decrypt <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+            LOGGER.debug('BaseAnchor.decrypt <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         verkey = None
         if sender:
@@ -797,8 +807,8 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor.sign >>> message: %s', message)
 
         if not self.wallet.handle:
-            LOGGER.debug('BaseAnchor.sign <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+            LOGGER.debug('BaseAnchor.sign <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         rv = await self.wallet.sign(message)
 
@@ -819,8 +829,8 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor.verify >>> signer: %s, message: %s, signature: %s', signer, message, signature)
 
         if not self.wallet.handle:
-            LOGGER.debug('BaseAnchor.verify <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+            LOGGER.debug('BaseAnchor.verify <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         verkey = None
         if signer:

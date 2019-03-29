@@ -15,10 +15,10 @@ limitations under the License.
 """
 
 
-from .anchor.smith import AnchorSmith
-from .anchor.origin import Origin
-from .anchor.issuer import Issuer
-from .anchor.holderprover import HolderProver
-from .anchor.rrbuilder import RevRegBuilder
-from .anchor.verifier import Verifier
 from .anchor.demo import BCRegistrarAnchor, OrgBookAnchor, OrgHubAnchor, SRIAnchor, NominalAnchor, TrusteeAnchor
+from .anchor.holderprover import HolderProver
+from .anchor.issuer import Issuer
+from .anchor.origin import Origin
+from .anchor.rrbuilder import RevRegBuilder
+from .anchor.smith import AnchorSmith
+from .anchor.verifier import Verifier

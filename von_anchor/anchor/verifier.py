@@ -89,7 +89,7 @@ class Verifier(BaseAnchor):
         self._config = kwargs.get('config', {})
         validate_config('verifier', self._config)
 
-        self._dir_cache = join(expanduser('~'), '.indy_client', 'cache', self.wallet.name)
+        self._dir_cache = join(expanduser('~'), '.indy_client', 'cache', self.name)
         makedirs(self._dir_cache, exist_ok=True)
 
         LOGGER.debug('Verifier.__init__ <<<')
@@ -352,14 +352,14 @@ class Verifier(BaseAnchor):
                         except ClosedPool:
                             LOGGER.warning(
                                 'Verifier %s is offline from pool %s, cannot update revo cache reg state for %s to %s',
-                                self.wallet.name,
+                                self.name,
                                 self.pool.name,
                                 rr_id,
                                 rv)
                         except AbsentPool:
                             LOGGER.warning(
                                 'Verifier %s has no pool, cannot update revo cache reg state for %s to %s',
-                                self.wallet.name,
+                                self.name,
                                 rr_id,
                                 rv)
             else:

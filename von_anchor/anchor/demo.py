@@ -119,7 +119,7 @@ class OrgHubAnchor(Verifier, Origin, Issuer, OrgBookAnchor):
                 }
             }
 
-        :param rrbx: whether revocation registry builder is an external process
+        :param rrbx: whether revocation registry builder is an external process (default False)
         """
 
         LOGGER.debug('OrgHubAnchor.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)

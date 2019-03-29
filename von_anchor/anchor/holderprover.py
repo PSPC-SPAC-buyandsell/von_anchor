@@ -96,7 +96,7 @@ class HolderProver(BaseAnchor):
         self._config = kwargs.get('config', {})
         validate_config('holder-prover', self._config)
 
-        self._dir_cache = join(expanduser('~'), '.indy_client', 'cache', self.wallet.name)
+        self._dir_cache = join(expanduser('~'), '.indy_client', 'cache', self.name)
         makedirs(self._dir_cache, exist_ok=True)
 
         LOGGER.debug('HolderProver.__init__ <<<')
@@ -430,8 +430,8 @@ class HolderProver(BaseAnchor):
             raise BadIdentifier('Bad cred def id {}'.format(cd_id))
 
         if not self.wallet.handle:
-            LOGGER.debug('HolderProver.create_cred_req <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+            LOGGER.debug('HolderProver.create_cred_req <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         label = await self._assert_link_secret('create_cred_req')
 
@@ -474,8 +474,8 @@ class HolderProver(BaseAnchor):
             cred_req_metadata_json)
 
         if not self.wallet.handle:
-            LOGGER.debug('HolderProver.store_cred <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+            LOGGER.debug('HolderProver.store_cred <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         cred = json.loads(cred_json)
         cred_def_json = await self.get_cred_def(cred['cred_def_id'])
@@ -529,14 +529,14 @@ class HolderProver(BaseAnchor):
                     except ClosedPool:
                         LOGGER.warning(
                             'HolderProver %s is offline from pool %s, cannot update revo cache reg delta for %s to %s',
-                            self.wallet.name,
+                            self.name,
                             self.pool.name,
                             rr_id,
                             rv)
                     except AbsentPool:
                         LOGGER.warning(
                             'HolderProver %s has no pool, cannot update revo cache reg delta for %s to %s',
-                            self.wallet.name,
+                            self.name,
                             rr_id,
                             rv)
 
@@ -587,8 +587,8 @@ class HolderProver(BaseAnchor):
         LOGGER.debug('HolderProver.get_box_ids_held >>>')
 
         if not self.wallet.handle:
-            LOGGER.debug('HolderProver.get_box_ids_held <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+            LOGGER.debug('HolderProver.get_box_ids_held <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         rr_ids = {basename(link) for link in Tails.links(self._dir_tails)}
 
@@ -689,8 +689,8 @@ class HolderProver(BaseAnchor):
         LOGGER.debug('HolderProver.get_cred_infos_by_q >>> query_json: %s, limit: %s', query_json, limit)
 
         if not self.wallet.handle:
-            LOGGER.debug('HolderProver.get_cred_infos_by_q <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+            LOGGER.debug('HolderProver.get_cred_infos_by_q <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         infos = []
         if limit and limit < 0:
@@ -763,8 +763,8 @@ class HolderProver(BaseAnchor):
         LOGGER.debug('HolderProver.get_cred_infos_by_filter >>> filt: %s', filt)
 
         if not self.wallet.handle:
-            LOGGER.debug('HolderProver.get_cred_infos_by_filter <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+            LOGGER.debug('HolderProver.get_cred_infos_by_filter <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         rv_json = await anoncreds.prover_get_credentials(self.wallet.handle, json.dumps(filt or {}))
         LOGGER.debug('HolderProver.get_cred_infos_by_filter <<< %s', rv_json)
@@ -800,8 +800,8 @@ class HolderProver(BaseAnchor):
         LOGGER.debug('HolderProver.get_cred_info_by_id >>> cred_id: %s', cred_id)
 
         if not self.wallet.handle:
-            LOGGER.debug('HolderProver.get_cred_info_by_id <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+            LOGGER.debug('HolderProver.get_cred_info_by_id <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         try:
             rv_json = await anoncreds.prover_get_credential(self.wallet.handle, cred_id)
@@ -809,12 +809,12 @@ class HolderProver(BaseAnchor):
             if x_indy.error_code == ErrorCode.WalletItemNotFound:
                 LOGGER.debug(
                     'HolderProver.get_cred_info_by_id <!< no cred in wallet %s for cred id %s',
-                    self.wallet.name,
+                    self.name,
                     cred_id)
                 raise AbsentCred('No cred in wallet for {}'.format(cred_id))
             LOGGER.debug(
                 'HolderProver.get_cred_info_by_id <!< wallet %s, cred id %s: indy error code %s',
-                self.wallet.name,
+                self.name,
                 cred_id,
                 x_indy.error_code)
             raise
@@ -929,8 +929,8 @@ class HolderProver(BaseAnchor):
             x_queries_json)
 
         if not self.wallet.handle:
-            LOGGER.debug('HolderProver.get_cred_briefs_by_proof_req_q <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+            LOGGER.debug('HolderProver.get_cred_briefs_by_proof_req_q <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         def _pred_filter(brief):
             nonlocal pred_refts
@@ -1024,8 +1024,8 @@ class HolderProver(BaseAnchor):
             requested_creds)
 
         if not self.wallet.handle:
-            LOGGER.debug('HolderProver.create_proof <!< Wallet %s is closed', self.wallet.name)
-            raise WalletState('Wallet {} is closed'.format(self.wallet.name))
+            LOGGER.debug('HolderProver.create_proof <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
 
         label = await self._assert_link_secret('create_proof')
 
