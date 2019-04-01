@@ -22,7 +22,7 @@ from sys import stderr
 
 
 pkg_name = 'von_anchor'
-version = '1.8.13'
+version = '1.8.15'
 
 
 def parse_requirements(filename):

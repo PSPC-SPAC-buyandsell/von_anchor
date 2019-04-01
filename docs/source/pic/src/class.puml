@@ -265,7 +265,8 @@ class RevRegBuilder {
     {static} +dir_tails()
     {static} +dir_tails_sentinel()
     -_start_data_json()
-    -_create_rev_reg()
+    +external
+    +_create_rev_reg()
     +dir_tails_top()
     +dir_tails_target()
     +serve()
@@ -282,6 +283,10 @@ class Issuer {
     -_send_rev_reg_def()
     -_set_rev_reg()
     -_sync_revoc_for_issue()
+    -_create_cred_def()
+    +rrbx
+    +rrb
+    +rrb()
     +open()
     +path_tails()
     +send_cred_def()
@@ -424,7 +429,8 @@ BaseAnchor <|-right- NominalAnchor
 
 AnchorSmith <|-down- TrusteeAnchor
 BaseAnchor <|-down- RevRegBuilder
-RevRegBuilder <-- Issuer
+BaseAnchor <-- Issuer
+Issuer *- RevRegBuilder
 
 Origin <|-left- SRIAnchor
 Issuer <|-left- SRIAnchor

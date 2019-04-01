@@ -231,7 +231,7 @@ async def test_anchors_api(
     p = p_mgr.get(pool_name)
 
     try:  # exercise non-creation on nonexistent wallet
-        SRIAnchor(await w_mgr.get({'id': 'xxx', 'auto_remove': True}), p)
+        SRIAnchor(await w_mgr.get({'id': 'xxx', 'auto_remove': True}), p, rrbx=False)
     except AbsentWallet:
         pass
 
@@ -275,7 +275,7 @@ async def test_anchors_api(
             assert False
 
     tan = TrusteeAnchor(wallets['trustee-anchor'], p)
-    san = SRIAnchor(wallets['sri'], p)
+    san = SRIAnchor(wallets['sri'], p, rrbx=False)
     pspcoban = OrgBookAnchor(
         wallets['pspc-org-book'],
         p,
@@ -296,8 +296,9 @@ async def test_anchors_api(
                     schema_id(san.did, 'green', '1.0')
                 ]
             }
-        })
-    bcran = BCRegistrarAnchor(wallets['bc-registrar'], p)
+        },
+        rrbx=False)
+    bcran = BCRegistrarAnchor(wallets['bc-registrar'], p, rrbx=False)
 
     await tan.open()
 
@@ -529,8 +530,8 @@ async def test_anchors_api(
         cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
 
         assert (s_id == S_ID['NON-REVO']) or (
-            [f for f in Tails.links(str(an._dir_tails), an.did)
-                if cd_id[s_id] in f] and not Tails.unlinked(str(an._dir_tails)))
+            [f for f in Tails.links(str(an.dir_tails), an.did)
+                if cd_id[s_id] in f] and not Tails.unlinked(str(an.dir_tails)))
 
         cred_def_json[s_id] = await holder_prover[s_key.origin_did].get_cred_def(cd_id[s_id])  # ought to exist now
         cred_def[s_id] = json.loads(cred_def_json[s_id])
@@ -1839,7 +1840,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     # PSPC Org Book anchor (as HolderProver) creates multi-cred proof with specification of one by pred
     cd_id = {}
     schema = {}
-    san = SRIAnchor(wallets['sri'], p)
+    san = SRIAnchor(wallets['sri'], p, rrbx=False)
     async with wallets['sri']:
         S_ID = {
             'SRI-1.0': schema_id(san.did, 'sri', '1.0'),
@@ -1881,7 +1882,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
         'parse-caches-on-open': True,
         'archive-verifier-caches-on-close': json.loads(await pspcoban.get_box_ids_held())
     }
-    san = SRIAnchor(wallets['sri'], p, config=san_cfg)
+    san = SRIAnchor(wallets['sri'], p, config=san_cfg, rrbx=False)
 
     _set_tails_state(False)  # simulate not having tails file & cache
     _set_cache_state(False)
@@ -1934,7 +1935,7 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
     async with wallets['sri'] as w_sri, (
         wallets['pspc-org-book']) as w_pspc, (
         p_mgr.get(pool_name)) as p, (
-        SRIAnchor(w_sri, p)) as san, (
+        SRIAnchor(w_sri, p, rrbx=False)) as san, (
         OrgBookAnchor(
             w_pspc,
             p,
@@ -1954,8 +1955,8 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
         # Get cred def (should be present in cred def cache), create cred offer
         await san.send_cred_def(schema_id(*s_key))
         cd_id = cred_def_id(s_key.origin_did, schema['seqNo'])
-        assert ([f for f in Tails.links(str(san._dir_tails), san.did)
-            if cd_id in f] and not Tails.unlinked(str(san._dir_tails)))
+        assert ([f for f in Tails.links(str(san.dir_tails), san.did)
+            if cd_id in f] and not Tails.unlinked(str(san.dir_tails)))
 
         cred_def_json = await pspcoban.get_cred_def(cred_def_id(san.did, schema['seqNo']))
         cred_def = json.loads(cred_def_json)
@@ -2035,10 +2036,10 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
         RR_SIZE = RevoCacheEntry.MARK[1] + 32
         await san.send_cred_def(s_id, True, RR_SIZE)
         cd_id = cred_def_id(s_key.origin_did, seq_no)
-        rr_id = Tails.current_rev_reg_id(san._dir_tails, cd_id)
+        rr_id = Tails.current_rev_reg_id(san.dir_tails, cd_id)
 
-        assert [f for f in Tails.links(str(san._dir_tails), san.did)
-            if cd_id in f] and not Tails.unlinked(str(san._dir_tails))
+        assert [f for f in Tails.links(str(san.dir_tails), san.did)
+            if cd_id in f] and not Tails.unlinked(str(san.dir_tails))
 
         cred_def_json = await pspcoban.get_cred_def(cd_id)  # ought to exist now
         cred_def = json.loads(cred_def_json)
@@ -2155,9 +2156,9 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
             wallets['sri-1']) as w_sri1, (
             wallets['sri-2']) as w_sri2, (
             p_mgr.get(pool_name)) as p, (
-            SRIAnchor(w_sri0, p)) as san0, (
-            SRIAnchor(w_sri1, p)) as san1, (
-            SRIAnchor(w_sri2, p)) as san2:
+            SRIAnchor(w_sri0, p, rrbx=False)) as san0, (
+            SRIAnchor(w_sri1, p, rrbx=False)) as san1, (
+            SRIAnchor(w_sri2, p, rrbx=False)) as san2:
 
         sri_did = san0.did
         schema_key2seq_no = {
@@ -2359,7 +2360,7 @@ async def test_anchors_cache_only(
     # Create pool, init anchors, then open pool afterward
     p = p_mgr.get(pool_name)
 
-    san = SRIAnchor(wallets['sri'], p)
+    san = SRIAnchor(wallets['sri'], p, rrbx=False)
     pspcoban = OrgBookAnchor(
         wallets['pspc-org-book'],
         p,
@@ -2454,8 +2455,8 @@ async def test_anchors_cache_only(
         cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
 
         assert (s_id == S_ID['IDENT']) or (
-            [f for f in Tails.links(str(san._dir_tails), san.did)
-                if cd_id[s_id] in f] and not Tails.unlinked(str(san._dir_tails)))
+            [f for f in Tails.links(str(san.dir_tails), san.did)
+                if cd_id[s_id] in f] and not Tails.unlinked(str(san.dir_tails)))
 
         cred_def_json[s_id] = await pspcoban.get_cred_def(cd_id[s_id])  # ought to exist now
         cred_def[s_id] = json.loads(cred_def_json[s_id])
@@ -2769,7 +2770,7 @@ async def test_util_wranglers(
     async with wallets['sri'] as w_sri, (
             wallets['pspc-org-book']) as w_pspc, (
             p_mgr.get(pool_name)) as p, (
-            SRIAnchor(w_sri, p)) as san, (
+            SRIAnchor(w_sri, p, rrbx=False)) as san, (
             OrgBookAnchor(w_pspc, p, config={
                 'parse-caches-on-open': True,
                 'archive-holder-prover-caches-on-close': True
@@ -2865,8 +2866,8 @@ async def test_util_wranglers(
             cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
 
             assert (s_id == S_ID['NON-REVO-X']) or (
-                [f for f in Tails.links(str(san._dir_tails), san.did)
-                    if cd_id[s_id] in f] and not Tails.unlinked(str(san._dir_tails)))
+                [f for f in Tails.links(str(san.dir_tails), san.did)
+                    if cd_id[s_id] in f] and not Tails.unlinked(str(san.dir_tails)))
 
             cred_def_json[s_id] = await san.get_cred_def(cd_id[s_id])  # ought to exist now
             cred_def[s_id] = json.loads(cred_def_json[s_id])
@@ -3121,7 +3122,7 @@ async def test_crypto(
     async with wallets['sri'] as w_sri, (
             wallets['pspc-org-book']) as w_pspc, (
             p_mgr.get(pool_name)) as p, (
-            SRIAnchor(w_sri, p)) as san, (
+            SRIAnchor(w_sri, p, rrbx=False)) as san, (
             OrgBookAnchor(w_pspc, p)) as pspcoban:
 
         assert p.handle is not None
@@ -3257,7 +3258,7 @@ async def test_crypto(
     # Repeat crypto tests with anchors on wallet only
     async with wallets['sri'] as w_sri, (
             wallets['pspc-org-book']) as w_pspc, (
-            SRIAnchor(w_sri)) as san, (
+            SRIAnchor(w_sri, rrbx=False)) as san, (
             OrgBookAnchor(w_pspc)) as pspcoban:
 
         dids = {
@@ -3408,7 +3409,7 @@ async def test_share_wallet(
     # Open pool, init anchors
     async with wallets['multipass'] as w_multi, (
             p_mgr.get(pool_name)) as p, (
-            SRIAnchor(w_multi, p)) as san, (
+            SRIAnchor(w_multi, p, rrbx=False)) as san, (
             NominalAnchor(w_multi, p)) as noman:
 
         assert p.handle is not None
@@ -3444,7 +3445,7 @@ async def test_did_endpoints():
     # Set up wallets, anchors
     async with wallets['sri'] as w_sri, (
             wallets['pspc-org-book']) as w_pspc, (
-            SRIAnchor(w_sri)) as san, (
+            SRIAnchor(w_sri, rrbx=False)) as san, (
             OrgBookAnchor(w_pspc)) as pspcoban:
 
         dids = {

@@ -151,22 +151,15 @@ async def test_anchors_tails_load(
     assert schema  # should exist now
     print('\n\n== 2 == SCHEMA [{} v{}]: {}'.format(S_KEY.name, S_KEY.version, ppjson(schema)))
 
-    '''
-    # wait for rev reg builder to spin up?
-    if rrbx:
-        while not isfile(join(san._dir_tails_sentinel, '.pid')):
-            await asyncio.sleep(1)
-    '''
-
     # Setup link secret for creation of cred req or proof
     await san.create_link_secret('LinkSecret')
 
     # SRI anchor create, store, publish cred definitions to ledger; create cred offers
-    await san.send_cred_def(S_ID, revocation=True)
+    await san.send_cred_def(S_ID, revo=True)
     cd_id = cred_def_id(S_KEY.origin_did, schema['seqNo'], pool.protocol)
 
-    assert ((not Tails.unlinked(san._dir_tails)) and
-        [f for f in Tails.links(san._dir_tails, san.did) if cd_id in f])
+    assert ((not Tails.unlinked(san.dir_tails)) and
+        [f for f in Tails.links(san.dir_tails, san.did) if cd_id in f])
 
     cred_def_json = await san.get_cred_def(cd_id)  # ought to exist now
     cred_def = json.loads(cred_def_json)
@@ -207,7 +200,7 @@ async def test_anchors_tails_load(
                 'remainder': str(number % 100)
             })
         elapsed = swatch.mark()
-        tag = rev_reg_id2tag(Tails.current_rev_reg_id(san._dir_tails, cd_id))
+        tag = rev_reg_id2tag(Tails.current_rev_reg_id(san.dir_tails, cd_id))
         if tag not in optima:
             optima[tag] = (elapsed, elapsed)
         else:

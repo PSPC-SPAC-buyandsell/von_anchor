@@ -60,9 +60,9 @@ The ``Origin`` class exposes ``send_schema()`` to fulfill calls to send a schema
 RevRegBuilder
 ****************************************************
 
-The ``RevRegBuilder`` class builds revocation registries. It is tightly bound as the parent class for ``Issuer``: conceptually, every issuer is a revocation registry builder.
+The ``RevRegBuilder`` class builds revocation registries. Its purpose is to serve an ``Issuer`` instance, which aggregates and delegates to it.
 
-Its initializer method sets up key tails directory locations and starts the revocation registry builder if necessary. The design admits two postures for a revocation registry builder: internal or external to its ``Issuer`` instance. Both configurations use ``RevRegBuilder`` methods to initialize and to build revocation registries, and ``RevRegBuilder`` utilities to return locations in the tails tree for issuer implementation.
+Its initializer method sets up key tails directory locations and starts the revocation registry builder if necessary. The design admits two postures for a revocation registry builder: internal or external to its aggregating ``Issuer`` instance. Both configurations use ``RevRegBuilder`` methods to initialize and to build revocation registries, and ``RevRegBuilder`` utilities to return locations in the tails tree for issuer implementation.
 
 Actuators need not call  ``_create_rev_reg()`` method; the issuer uses it internally as required to create new revocation registries and tails files, and to synchronize their associations.
 
@@ -108,7 +108,11 @@ The figure illustrates the process of starting and stopping an external revocati
 Issuer
 ****************************************************
 
-The Issuer class inherits from ``RevRegBuilder``. It has its own ``open()`` method to synchronize its tails tree content (revocation registry identifiers to tails files). Actuators need not call its ``_sync_revoc_for_issue()`` methods; ``Issuer`` uses them internally as required to synchronize tails file associations on startup.
+The ``Issuer`` class issues credential definitions, against which it issues credentials - an Issuer can also revoke any credential it issues.
+
+Its initializer aggregates a ``RevRegBuilder`` instance, to which it delegates to build revocation registries.
+
+The class has its own ``open()`` method to synchronize its tails tree content (revocation registry identifiers to tails files). Actuators need not call its ``_sync_revoc_for_issue()`` methods; ``Issuer`` uses them internally as required to synchronize tails file associations on startup.
 
 Housekeeping Operations
 ===================================

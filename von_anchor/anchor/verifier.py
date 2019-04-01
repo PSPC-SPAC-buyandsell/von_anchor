@@ -248,7 +248,7 @@ class Verifier(BaseAnchor):
 
         cd_id2schema = {}
         now = int(time())
-        proof_req = {
+        rv = {
             'nonce': str(int(time())),
             'name': 'proof_req',
             'version': '0.0',
@@ -276,20 +276,20 @@ class Verifier(BaseAnchor):
             for attr in (cd_id2spec[cd_id].get('attrs', cd_id2schema[cd_id]['attrNames']) or []
                     if cd_id2spec[cd_id] else cd_id2schema[cd_id]['attrNames']):
                 attr_uuid = '{}_{}_uuid'.format(seq_no, canon(attr))
-                proof_req['requested_attributes'][attr_uuid] = {
+                rv['requested_attributes'][attr_uuid] = {
                     'name': attr,
                     'restrictions': [{
                         'cred_def_id': cd_id
                     }]
                 }
                 if interval:
-                    proof_req['requested_attributes'][attr_uuid]['non_revoked'] = interval
+                    rv['requested_attributes'][attr_uuid]['non_revoked'] = interval
 
             for pred in Predicate:
                 for attr in (cd_id2spec[cd_id].get(pred.value.math, {}) or {} if cd_id2spec[cd_id] else {}):
                     pred_uuid = '{}_{}_{}_uuid'.format(seq_no, canon(attr), pred.value.fortran)
                     try:
-                        proof_req['requested_predicates'][pred_uuid] = {
+                        rv['requested_predicates'][pred_uuid] = {
                             'name': attr,
                             'p_type': pred.value.math,
                             'p_value': Predicate.to_int(cd_id2spec[cd_id][pred.value.math][attr]),
@@ -305,11 +305,10 @@ class Verifier(BaseAnchor):
                             attr)
                         continue  # int conversion failed - reject candidate
                     if interval:
-                        proof_req['requested_predicates'][pred_uuid]['non_revoked'] = interval
+                        rv['requested_predicates'][pred_uuid]['non_revoked'] = interval
 
-        rv_json = json.dumps(proof_req)
-        LOGGER.debug('Verifier.build_proof_req_json <<< %s', rv_json)
-        return rv_json
+        LOGGER.debug('Verifier.build_proof_req_json <<< %s', json.dumps(rv))
+        return json.dumps(rv)
 
     async def load_cache_for_verification(self, archive: bool = False) -> int:
         """
@@ -325,8 +324,6 @@ class Verifier(BaseAnchor):
         """
 
         LOGGER.debug('Verifier.load_cache_for_verification >>> archive: %s', archive)
-
-        # Once indy-sdk supports get-cred-def by schema-id, get-rev-reg by schema-id/cred-def-id, should cascade
 
         rv = int(time())
         for s_id in self.config.get('archive-verifier-caches-on-close', {}).get('schema_id', {}):

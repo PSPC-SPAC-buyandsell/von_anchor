@@ -79,6 +79,16 @@ class Issuer(BaseAnchor):
         LOGGER.debug('Issuer.__init__ <<<')
 
     @property
+    def rrb(self) -> RevRegBuilder:
+        """
+        Issuer's revocation registry builder
+
+        :return: revocation registry builder (anchor)
+        """
+
+        return self._rrb
+
+    @property
     def rrbx(self) -> bool:
         """
         Whether revocation registry builder posture is external.
@@ -86,7 +96,7 @@ class Issuer(BaseAnchor):
         :return: True for external, False for internal
         """
 
-        return self._rrb.external
+        return self.rrb.external
 
     @property
     def dir_tails(self) -> str:
@@ -96,7 +106,7 @@ class Issuer(BaseAnchor):
         :return: tails directory root
         """
 
-        return self._rrb._dir_tails
+        return self.rrb.dir_tails
 
     async def open(self) -> 'Issuer':
         """
@@ -131,9 +141,8 @@ class Issuer(BaseAnchor):
 
         LOGGER.debug('Issuer._send_rev_reg_def >>> rr_id: %s', rr_id)
 
-        cd_id = rev_reg_id2cred_def_id(rr_id)
-        dir_tails_rr_id = self._rrb.dir_tails_top(rr_id)
-        dir_target = self._rrb.dir_tails_target(rr_id)
+        dir_tails_rr_id = self.rrb.dir_tails_top(rr_id)
+        dir_target = self.rrb.dir_tails_target(rr_id)
 
         if not Tails.linked(dir_tails_rr_id, rr_id):
             LOGGER.debug(
@@ -162,7 +171,7 @@ class Issuer(BaseAnchor):
             raise AbsentTails('Tails link {} not present in dir {}'.format(rr_id, dir_target))
 
         if self.rrbx:
-            dir_cd_id = join(self.dir_tails, cd_id)
+            dir_cd_id = join(self.dir_tails, rev_reg_id2cred_def_id(rr_id))
             makedirs(dir_cd_id, exist_ok=True)
             rename(file_tails, join(dir_cd_id, basename(file_tails)))
 
@@ -194,7 +203,7 @@ class Issuer(BaseAnchor):
         LOGGER.debug('Issuer._set_rev_reg >>> rr_id: %s, rr_size: %s', rr_id, rr_size)
         assert self.rrbx
 
-        dir_hopper_rr_id = join(self._rrb._dir_tails_hopper, rr_id)
+        dir_hopper_rr_id = join(self.rrb.dir_tails_hopper, rr_id)
 
         while Tails.linked(dir_hopper_rr_id, rr_id) is None:
             await asyncio.sleep(1)
@@ -203,12 +212,7 @@ class Issuer(BaseAnchor):
         cd_id = rev_reg_id2cred_def_id(rr_id)
         (next_tag, rr_size_suggested) = Tails.next_tag(self.dir_tails, cd_id)
         rr_id = rev_reg_id(cd_id, next_tag)
-        try:
-            makedirs(join(self._rrb._dir_tails_sentinel, rr_id), exist_ok=False)
-        except FileExistsError:
-            LOGGER.warning('Rev reg %s construction already in progress', rr_id)
-        else:
-            open(join(self._rrb._dir_tails_sentinel, rr_id, '.{}'.format(rr_size or rr_size_suggested)), 'w').close()
+        self.rrb.mark_in_progress(rr_id, rr_size or rr_size_suggested)
 
         LOGGER.debug('Issuer._set_rev_reg <<<')
 
@@ -218,7 +222,7 @@ class Issuer(BaseAnchor):
         open and cache tails file reader.
 
         :param rr_id: revocation registry identifier
-        :param rr_size: if new revocation registry necessary, its size (default as per RevRegBuilder._create_rev_reg())
+        :param rr_size: if new revocation registry necessary, its size (default as per RevRegBuilder.create_rev_reg())
         """
 
         LOGGER.debug('Issuer._sync_revoc_for_issue >>> rr_id: %s, rr_size: %s', rr_id, rr_size)
@@ -250,7 +254,7 @@ class Issuer(BaseAnchor):
                     if self.rrbx:
                         await self._set_rev_reg(rr_id, rr_size)
                     else:
-                        await self._rrb._create_rev_reg(rr_id, rr_size)
+                        await self.rrb.create_rev_reg(rr_id, rr_size)
                         await self._send_rev_reg_def(rr_id)
                     tails = await Tails(self.dir_tails, cd_id, tag).open()  # symlink should exist now
 
@@ -279,7 +283,65 @@ class Issuer(BaseAnchor):
         LOGGER.debug('Issuer.path_tails <<< %s', rv)
         return rv
 
-    async def send_cred_def(self, s_id: str, revocation: bool = True, rr_size: int = None) -> str:
+    async def _create_cred_def(self, schema: dict, ledger_cred_def: dict, revo: bool) -> (str, bool):
+        """
+        Create credential definition in wallet as part of the send_cred_def() sequence.
+        Return whether the private key for the cred def is OK to continue with the sequence,
+        propagating the cred def and revocation registry info to the ledger.
+
+        :param schema: schema on which to create cred def
+        :param ledger_cred_def: credential definition as ledger has it (typically, None)
+        :param revo: whether cred def supports revocation
+        :return: cred def json and whether local cred def private key is OK, hence cred def is OK to send to the ledger
+        """
+
+        LOGGER.debug(
+            'Issuer._create_cred_def >>> schema: %s, ledger_cred_def: %s, revo: %s',
+            schema,
+            ledger_cred_def,
+            revo)
+
+        cred_def_json = '{}'
+        private_key_ok = True
+        try:
+            (_, cred_def_json) = await anoncreds.issuer_create_and_store_credential_def(
+                self.wallet.handle,
+                self.did,  # issuer DID
+                json.dumps(schema),
+                self.pool.protocol.cd_id_tag(False),  # expect only one cred def per schema and issuer
+                'CL',
+                json.dumps({'support_revocation': revo}))
+            if ledger_cred_def:
+                private_key_ok = False
+                LOGGER.warning(
+                    'New cred def on %s in wallet shadows existing one on ledger: private key not usable',
+                    cred_def_id(self.did, schema['seqNo'], self.pool.protocol))
+                    # carry on though, this anchor may have other capacities so public key may be good enough
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.AnoncredsCredDefAlreadyExistsError:
+                if ledger_cred_def:
+                    LOGGER.info(
+                        'Issuer wallet %s reusing existing cred def on schema %s version %s',
+                        self.name,
+                        schema['name'],
+                        schema['version'])
+                else:
+                    LOGGER.debug('Issuer._create_cred_def <!< corrupt wallet %s', self.name)
+                    raise CorruptWallet('Corrupt Issuer wallet {} has cred def on schema {} not on ledger'.format(
+                        self.name,
+                        schema['id']))
+            else:
+                LOGGER.debug(
+                    'Issuer._create_cred_def <!< cannot store cred def in wallet %s: indy error code %s',
+                    self.name,
+                    x_indy.error_code)
+                raise
+
+        rv = (cred_def_json, private_key_ok)
+        LOGGER.debug('Issuer._create_cred_def <<< %s', rv)
+        return rv
+
+    async def send_cred_def(self, s_id: str, revo: bool = True, rr_size: int = None) -> str:
         """
         Create a credential definition as Issuer, store it in its wallet, and send it to the ledger.
 
@@ -288,13 +350,13 @@ class Issuer(BaseAnchor):
         or IndyError for any other failure to create and store credential definition in wallet.
 
         :param s_id: schema identifier
-        :param revocation: whether to support revocation for cred def
-        :param rr_size: size of initial revocation registry (default as per RevRegBuilder._create_rev_reg()),
+        :param revo: whether to support revocation for cred def
+        :param rr_size: size of initial revocation registry (default as per RevRegBuilder.create_rev_reg()),
             if revocation supported
         :return: json credential definition as it appears on ledger
         """
 
-        LOGGER.debug('Issuer.send_cred_def >>> s_id: %s, revocation: %s, rr_size: %s', s_id, revocation, rr_size)
+        LOGGER.debug('Issuer.send_cred_def >>> s_id: %s, revo: %s, rr_size: %s', s_id, revo, rr_size)
 
         if not ok_schema_id(s_id):
             LOGGER.debug('Issuer.send_cred_def <!< Bad schema id %s', s_id)
@@ -325,38 +387,7 @@ class Issuer(BaseAnchor):
             except AbsentCredDef:
                 pass  # OK - about to create, store, and send it
 
-            try:
-                (_, cred_def_json) = await anoncreds.issuer_create_and_store_credential_def(
-                    self.wallet.handle,
-                    self.did,  # issuer DID
-                    schema_json,
-                    self.pool.protocol.cd_id_tag(False),  # expect only one cred def per schema and issuer
-                    'CL',
-                    json.dumps({'support_revocation': revocation}))
-                if json.loads(rv_json):
-                    private_key_ok = False
-                    LOGGER.warning(
-                        'New cred def on %s in wallet shadows existing one on ledger: private key not usable', cd_id)
-                        # carry on though, this anchor may have other capacities so public key may be good enough
-            except IndyError as x_indy:
-                if x_indy.error_code == ErrorCode.AnoncredsCredDefAlreadyExistsError:
-                    if json.loads(rv_json):
-                        LOGGER.info(
-                            'Issuer wallet %s reusing existing cred def on schema %s version %s',
-                            self.name,
-                            schema['name'],
-                            schema['version'])
-                    else:
-                        LOGGER.debug('Issuer.send_cred_def <!< corrupt wallet %s', self.name)
-                        raise CorruptWallet('Corrupt Issuer wallet {} has cred def on schema {} not on ledger'.format(
-                            self.name,
-                            s_id))
-                else:
-                    LOGGER.debug(
-                        'Issuer.send_cred_def <!< cannot store cred def in wallet %s: indy error code %s',
-                        self.name,
-                        x_indy.error_code)
-                    raise
+            (cred_def_json, private_key_ok) = await self._create_cred_def(schema, json.loads(rv_json), revo)
 
             if not json.loads(rv_json):  # checking the ledger returned no cred def: send it
                 req_json = await ledger.build_cred_def_request(self.did, cred_def_json)
@@ -374,22 +405,14 @@ class Issuer(BaseAnchor):
                     LOGGER.debug('Issuer.send_cred_def <!< timed out waiting on sent cred_def %s', cd_id)
                     raise BadLedgerTxn('Timed out waiting on sent cred_def {}'.format(cd_id))
 
-                if revocation:  # create new rev reg for tag '0'
+                if revo:  # create new rev reg for tag '0'
                     if self.rrbx:
                         (_, rr_size_suggested) = Tails.next_tag(self.dir_tails, cd_id)
-                        rr_id = rev_reg_id(cd_id, '0')
-                        try:
-                            makedirs(join(self._rrb._dir_tails_sentinel, rr_id), exist_ok=False)
-                        except FileExistsError:
-                            LOGGER.warning('Rev reg %s construction already in progress', rr_id)
-                        else:
-                            open(
-                                join(self._rrb._dir_tails_sentinel, rr_id, '.{}'.format(rr_size or rr_size_suggested)),
-                                'w').close()
+                        self.rrb.mark_in_progress(rev_reg_id(cd_id, '0'), rr_size or rr_size_suggested)
 
                     await self._sync_revoc_for_issue(rev_reg_id(cd_id, '0'), rr_size)  # sync rev reg on tag '0'
 
-        if revocation and private_key_ok:
+        if revo and private_key_ok:
             for tag in [str(t) for t in range(1, int(Tails.next_tag(self.dir_tails, cd_id)[0]))]:  # '1' to next-1
                 await self._sync_revoc_for_issue(rev_reg_id(cd_id, tag), rr_size if tag == '0' else None)
 
@@ -471,7 +494,7 @@ class Issuer(BaseAnchor):
                 'weaknesses': None
             }
 
-        :param rr_size: size of new revocation registry (default as per RevRegBuilder._create_rev_reg()) if necessary
+        :param rr_size: size of new revocation registry (default as per RevRegBuilder.create_rev_reg()) if necessary
         :return: tuple with newly issued credential json, credential revocation identifier (if cred def
             supports revocation, None otherwise).
         """
@@ -517,7 +540,7 @@ class Issuer(BaseAnchor):
                         if self.rrbx:
                             await self._set_rev_reg(rr_id, rr_size)
                         else:
-                            await self._rrb._create_rev_reg(rr_id, rr_size or rr_size_suggested)
+                            await self.rrb.create_rev_reg(rr_id, rr_size or rr_size_suggested)
                             await self._send_rev_reg_def(rr_id)
 
                         REVO_CACHE[rr_id].tails = await Tails(self.dir_tails, cd_id).open()  # symlink OK now
@@ -634,8 +657,8 @@ class Issuer(BaseAnchor):
 
         LOGGER.debug('Issuer.get_box_ids_issued >>>')
 
-        cd_ids = [d for d in listdir(self.dir_tails)
-            if isdir(join(self.dir_tails, d)) and ok_cred_def_id(d, self.did)]
+        cd_ids = [
+            d for d in listdir(self.dir_tails) if isdir(join(self.dir_tails, d)) and ok_cred_def_id(d, self.did)]
         s_ids = []
         for cd_id in cd_ids:
             try:

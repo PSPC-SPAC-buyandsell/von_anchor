@@ -235,7 +235,7 @@ async def test_setnym(
         ppjson(nym)))
 
     await pool.open()
-    san = SRIAnchor(wallets[cfg['VON Anchor']['name']], pool)
+    san = SRIAnchor(wallets[cfg['VON Anchor']['name']], pool, rrbx=False)
     await san.open()
     next_seed = '{}000000000000VonAnchor1'.format(int(time()) + 1)
     await san.reseed(next_seed)

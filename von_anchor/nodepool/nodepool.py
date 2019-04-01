@@ -159,11 +159,11 @@ class NodePool:
             if x_indy.error_code == ErrorCode.PoolLedgerNotCreatedError:
                 LOGGER.debug('NodePool.open <!< Absent node pool %s ledger configuration', self.name)
                 raise AbsentPool('Absent node pool {} ledger configuration'.format(self.name))
-            else:
-                LOGGER.debug('NodePool.open <!< cannot open node pool %s: indy error code %s',
-                    self.name,
-                    x_indy.error_code)
-                raise
+            LOGGER.debug(
+                'NodePool.open <!< cannot open node pool %s: indy error code %s',
+                self.name,
+                x_indy.error_code)
+            raise
 
         LOGGER.debug('NodePool.open <<<')
         return self
