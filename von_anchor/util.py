@@ -44,6 +44,16 @@ def schema_id(origin_did: str, name: str, version: str) -> str:
     return '{}:2:{}:{}'.format(origin_did, name, version)  # 2 marks indy-sdk schema id
 
 
+def ok_seed(token: str) -> bool:
+    """
+    Whether input token looks like a valid seed.
+
+    :param: token: candidate string
+    :return: whether input token looks like a valid seed
+    """
+
+    return len(token) == 32
+
 def ok_wallet_reft(token: str) -> bool:
     """
     Whether input token looks like a valid wallet credential identifier

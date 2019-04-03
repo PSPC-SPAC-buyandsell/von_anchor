@@ -165,6 +165,26 @@ The ``create()`` method (:ref:`wallet-create`) creates the anchor DID from seed.
 
 The ``get_anchor_did()`` method returns the current anchor DID.
 
+Signing Key Pair Operations
+---------------------------
+
+This section discusses signing key pair operations within the wallet. The implementation uses indy-sdk cryptographic API calls to manage signing key pairs in the wallet.
+
+Writing
+...............
+
+Method ``create_signing_key()`` creates a signing key pair from an optional input optional seed (default random) and metadata (default empty).
+
+Fetching
+...............
+
+Method ``get_signing_key()`` takes a verification key and returns a ``KeyInfo`` (:ref:`key-info`) for the corresponding signing key pair, raising ``AbsentRecord`` if none exists.
+
+Replacing Metadata
+..................
+
+Method ``replace_signing_key_metadata()`` takes a verification key and metadata. Its operation sets the input metadata for the signing key pair that the verification key identifies, raising ``AbsentRecord`` if none exists.
+
 Local DID Operations
 ---------------------
 
@@ -178,7 +198,7 @@ Method ``create_local_did()`` creates a local DID from input optional seed, loca
 Fetching
 ...............
 
-Method ``get_local_did_infos()`` returns a list with a ``DIDInfo`` (:ref:`did-info`) object corresponding to every local DID in the wallet. Method ``get_local_did_info()`` takes a DID or verification key and returns a ``DIDInfo`` for the corresponding local DID, raising ``AbsentRecord`` if none exists.
+Method ``get_local_dids()`` returns a list with a ``DIDInfo`` (:ref:`did-info`) object corresponding to every local DID in the wallet. Method ``get_local_did()`` takes a DID or verification key and returns a ``DIDInfo`` for the corresponding local DID, raising ``AbsentRecord`` if none exists.
 
 Pairwise DID Operations
 -----------------------
@@ -227,6 +247,15 @@ Supporting Classes
 ###################################
 
 The ``von_anchor/wallet`` subpackage holds several classes for wallet records and pairwise relation abstractions.
+
+.. _key-info:
+
+KeyInfo
++++++++++++++++++++++++++++++++++++
+
+The ``von_anchor/wallet/keyinfo.py`` source file contains the ``KeyInfo`` class, which bundles information for a key (pair) in a wallet. It aggregates a verification key and metadata.
+
+.. _non-secret:
 
 .. _did-info:
 

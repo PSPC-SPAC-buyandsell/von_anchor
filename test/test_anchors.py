@@ -2258,7 +2258,7 @@ async def test_anchor_reseed(
         # Anchor reseed wallet
         old_found_did = await rsan.wallet.get_anchor_did()
         assert old_found_did == rsan.did
-        verkey_in_wallet = await did.key_for_local_did(rsan.wallet.handle, rsan.did)
+        verkey_in_wallet = (await rsan.wallet.get_local_did(rsan.did)).verkey
         print('\n\n== 3 == Anchor DID {}, verkey in wallet {}'.format(rsan.did, verkey_in_wallet))
         nym_resp = json.loads(await rsan.get_nym(rsan.did))
         print('\n\n== 4 == Anchor nym on ledger {}'.format(ppjson(nym_resp)))
@@ -2271,7 +2271,7 @@ async def test_anchor_reseed(
         assert old_found_did == rsan.did
         assert await rsan.get_nym_role() == old_rsan_nym_role
 
-        verkey_in_wallet = await did.key_for_local_did(rsan.wallet.handle, rsan.did)
+        verkey_in_wallet = (await rsan.wallet.get_local_did(rsan.did)).verkey
         print('\n\n== 5 == Anchor reseed operation retains DID {} and role {} on rekey from {} to {}'.format(
             rsan.did,
             old_rsan_nym_role.token(),
@@ -2303,7 +2303,7 @@ async def test_anchor_reseed(
         # Anchor reseed wallet on random seed
         old_found_did = await rsan.wallet.get_anchor_did()
         assert old_found_did == rsan.did
-        verkey_in_wallet = await did.key_for_local_did(rsan.wallet.handle, rsan.did)
+        verkey_in_wallet = (await rsan.wallet.get_local_did(rsan.did)).verkey
         print('\n\n== 7 == Anchor DID {}, verkey in wallet {}'.format(rsan.did, verkey_in_wallet))
         nym_resp = json.loads(await rsan.get_nym(rsan.did))
         print('\n\n== 8 == Anchor nym on ledger {}'.format(ppjson(nym_resp)))
@@ -2316,7 +2316,7 @@ async def test_anchor_reseed(
         assert old_found_did == rsan.did
         assert await rsan.get_nym_role() == old_rsan_nym_role
 
-        verkey_in_wallet = await did.key_for_local_did(rsan.wallet.handle, rsan.did)
+        verkey_in_wallet = (await rsan.wallet.get_local_did(rsan.did)).verkey
         print('\n\n== 9 == Anchor random-reseed operation retains DID {} and role {} on rekey from {} to {}'.format(
             rsan.did,
             old_rsan_nym_role.token(),

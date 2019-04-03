@@ -35,7 +35,7 @@ from von_anchor.error import (
     ExtantRecord,
     WalletState)
 from von_anchor.util import ok_did
-from von_anchor.wallet import DIDInfo, non_secret2pairwise_info, PairwiseInfo, pairwise_info2tags
+from von_anchor.wallet import DIDInfo, KeyInfo, non_secret2pairwise_info, PairwiseInfo, pairwise_info2tags
 from von_anchor.wallet.nonsecret import NonSecret, TYPE_PAIRWISE, TYPE_LINK_SECRET_LABEL
 
 
@@ -90,6 +90,16 @@ class Wallet:
         """
 
         return self._handle
+
+    @property
+    def opened(self) -> bool:
+        """
+        Accessor for indy-sdk wallet state: True for open, False for closed.
+
+        :return: indy-sdk wallet state
+        """
+
+        return bool(self._handle)
 
     @property
     def config(self) -> dict:
@@ -191,6 +201,97 @@ class Wallet:
 
         self._verkey = value
 
+    async def create_signing_key(self, seed: str = None, metadata: dict = None) -> KeyInfo:
+        """
+        Create a new signing key pair.
+
+        Raise WalletState if wallet is closed, ExtantRecord if verification key already exists.
+
+        :param seed: optional seed allowing deterministic key creation
+        :param metadata: optional metadata to store with key pair
+        :return: KeyInfo for new key pair
+        """
+
+        LOGGER.debug('Wallet.create_signing_key >>> seed: [SEED], metadata: %s', metadata)
+
+        if not self.handle:
+            LOGGER.debug('Wallet.create_signing_key <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+            
+        try:
+            verkey = await crypto.create_key(self.handle, json.dumps({'seed': seed} if seed else {}))
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletItemAlreadyExists:
+                LOGGER.debug('Wallet.create_signing_key <!< Verification key already present in wallet %s', self.name)
+                raise ExtantRecord('Verification key already present in wallet {}'.format(self.name))
+            LOGGER.debug('Wallet.create_signing_key <!< indy-sdk raised error %s', x_indy.error_code)
+            raise
+
+        await crypto.set_key_metadata(self.handle, verkey, json.dumps(metadata or {}))  # coerce None to empty
+
+        rv = KeyInfo(verkey, metadata or {})
+        LOGGER.debug('Wallet.create_signing_key <<< %s', rv)
+        return rv
+
+    async def get_signing_key(self, verkey: str) -> KeyInfo:
+        """
+        Get signing key pair for input verification key.
+
+        Raise WalletState if wallet is closed, AbsentRecord for no such key pair.
+
+        :param verkey: verification key of key pair
+        :return: KeyInfo for key pair
+        """
+
+        LOGGER.debug('Wallet.get_signing_key >>> seed: [SEED], verkey: %s', verkey)
+
+        if not self.handle:
+            LOGGER.debug('Wallet.get_signing_key <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+            
+        try:
+            metadata = await crypto.get_key_metadata(self.handle, verkey)
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletItemNotFound:
+                LOGGER.debug('Wallet.get_signing_key <!< Verification key %s not in wallet %s', verkey, self.name)
+                raise AbsentRecord('Verification key not in wallet {}'.format(self.name))
+            LOGGER.debug('Wallet.get_signing_key <!< indy-sdk raised error %s', x_indy.error_code)
+            raise
+
+        rv = KeyInfo(verkey, json.loads(metadata) if metadata else {})
+        LOGGER.debug('Wallet.get_signing_key <<< %s', rv)
+        return rv
+
+    async def replace_signing_key_metadata(self, verkey: str, metadata: dict) -> None:
+        """
+        Replace the metadata associated with a signing key pair.
+
+        Raise WalletState if wallet is closed, AbsentRecord for no such key pair.
+
+        :param: verification key of key pair
+        :metadata: new metadata to store
+        """
+
+        LOGGER.debug('Wallet.replace_signing_key >>> seed: [SEED], verkey: %s, metadata: %s', verkey, metadata)
+
+        if not self.handle:
+            LOGGER.debug('Wallet.get_signing_key <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+            
+        try:
+            metadata = await crypto.get_key_metadata(self.handle, verkey)
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletItemNotFound:
+                LOGGER.debug('Wallet.get_signing_key <!< Verification key %s not in wallet %s', verkey, self.name)
+                raise AbsentRecord('Verification key not in wallet {}'.format(self.name))
+            LOGGER.debug('Wallet.get_signing_key <!< indy-sdk raised error %s', x_indy.error_code)
+            raise
+
+        await self.get_signing_key(verkey)  # raises if no such verification key
+        await crypto.set_key_metadata(self.handle, verkey, json.dumps(metadata or {}))
+
+        LOGGER.debug('Wallet.replace_signing_key <<<')
+
     async def create_local_did(self, seed: str = None, loc_did: str = None, metadata: dict = None) -> DIDInfo:
         """
         Create and store a new local DID for use in pairwise DID relations.
@@ -219,7 +320,6 @@ class Wallet:
             if x_indy.error_code == ErrorCode.DidAlreadyExistsError:
                 LOGGER.debug('Wallet.create_local_did <!< DID %s already present in wallet %s', loc_did, self.name)
                 raise ExtantRecord('Local DID {} already present in wallet {}'.format(loc_did, self.name))
-
             LOGGER.debug('Wallet.create_local_did <!< indy-sdk raised error %s', x_indy.error_code)
             raise
 
@@ -231,14 +331,14 @@ class Wallet:
         LOGGER.debug('Wallet.create_local_did <<< %s', rv)
         return rv
 
-    async def get_local_did_infos(self) -> List[DIDInfo]:
+    async def get_local_dids(self) -> List[DIDInfo]:
         """
         Get list of DIDInfos for local DIDs.
 
         :return: list of local DIDInfos
         """
 
-        LOGGER.debug('Wallet.get_local_did_infos >>>')
+        LOGGER.debug('Wallet.get_local_dids >>>')
 
         dids_with_meta = json.loads(did.list_my_dids_with_meta(self.handle))  # list
 
@@ -249,10 +349,10 @@ class Wallet:
                 continue  # exclude anchor DIDs past and present
             rv.append(DIDInfo(did_with_meta['did'], did_with_meta['verkey'], meta))
 
-        LOGGER.debug('Wallet.get_local_did_infos <<< %s', rv)
+        LOGGER.debug('Wallet.get_local_dids <<< %s', rv)
         return rv
 
-    async def get_local_did_info(self, loc: str) -> DIDInfo:
+    async def get_local_did(self, loc: str) -> DIDInfo:
         """
         Get local DID info by local DID or verification key.
         Raise AbsentRecord for no such local DID.
@@ -261,10 +361,10 @@ class Wallet:
         :return: DIDInfo for local DID
         """
 
-        LOGGER.debug('Wallet.get_local_did_info >>> loc: %s', loc)
+        LOGGER.debug('Wallet.get_local_did >>> loc: %s', loc)
 
         if not self.handle:
-            LOGGER.debug('Wallet.get_local_did_info <!< Wallet %s is closed', self.name)
+            LOGGER.debug('Wallet.get_local_did <!< Wallet %s is closed', self.name)
             raise WalletState('Wallet {} is closed'.format(self.name))
 
         if ok_did(loc):  # it's a DID
@@ -276,9 +376,9 @@ class Wallet:
                     json.loads(did_with_meta['metadata']) if did_with_meta['metadata'] else {})  # nudge None to empty
             except IndyError as x_indy:
                 if x_indy.error_code == ErrorCode.WalletItemNotFound:
-                    LOGGER.debug('Wallet.get_local_did_info <!< DID %s not present in wallet %s', loc, self.name)
+                    LOGGER.debug('Wallet.get_local_did <!< DID %s not present in wallet %s', loc, self.name)
                     raise AbsentRecord('Local DID {} not present in wallet {}'.format(loc, self.name))
-                LOGGER.debug('Wallet.get_local_did_info <!< indy-sdk raised error %s', x_indy.error_code)
+                LOGGER.debug('Wallet.get_local_did <!< indy-sdk raised error %s', x_indy.error_code)
                 raise
 
         else:  # it's a verkey
@@ -291,10 +391,10 @@ class Wallet:
                         json.loads(did_with_meta['metadata']) if did_with_meta['metadata'] else {})
                     break
             else:
-                LOGGER.debug('Wallet.get_local_did_info <!< Wallet %s has no local DID for verkey %s', self.name, loc)
+                LOGGER.debug('Wallet.get_local_did <!< Wallet %s has no local DID for verkey %s', self.name, loc)
                 raise AbsentRecord('Wallet {} has no local DID for verkey {}'.format(self.name, loc))
 
-        LOGGER.debug('Wallet.get_local_did_info <<< %s', rv)
+        LOGGER.debug('Wallet.get_local_did <<< %s', rv)
         return rv
 
     async def get_anchor_did(self) -> str:
@@ -439,11 +539,9 @@ class Wallet:
             if x_indy.error_code == ErrorCode.WalletNotFoundError:
                 LOGGER.info('Wallet %s does not exist', self.name)
                 raise AbsentWallet('Wallet {} does not exist'.format(self.name))
-
             if x_indy.error_code == ErrorCode.WalletAlreadyOpenedError:
                 LOGGER.info('Wallet %s is already open', self.name)
                 raise WalletState('Wallet {} is already open'.format(self.name))
-
             LOGGER.info('Wallet %s open raised indy error %s', self.name, x_indy.error_code)
             raise
 
@@ -557,7 +655,7 @@ class Wallet:
                 raise
 
         if my_did:
-            my_did_info = await self.get_local_did_info(my_did)  # raises AbsentRecord if no such local did
+            my_did_info = await self.get_local_did(my_did)  # raises AbsentRecord if no such local did
         else:
             my_did_info = await self.create_local_did(None, None, {'pairwise_for': their_did})
 

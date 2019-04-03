@@ -16,13 +16,14 @@ limitations under the License.
 
 
 import os
-from os.path import realpath
+from os.path import dirname, join, realpath
 from setuptools import setup, find_packages
 from sys import stderr
 
 
 pkg_name = 'von_anchor'
-version = '1.8.15'
+with open(join(dirname(__file__), 'VERSION.txt')) as fh_version:
+    release = fh_version.read().strip()
 
 
 def parse_requirements(filename):
@@ -42,7 +43,7 @@ def parse_requirements(filename):
 
 setup(
     name=pkg_name,
-    version=version,
+    version=release,
     packages=find_packages(exclude=['test']),
     description='VON anchors',
     entry_points={
@@ -54,7 +55,7 @@ setup(
     author='PSPS-SPAC',
     author_email='stephen.klump@becker-carroll.com',
     url='https://github.com/PSPC-SPAC-buyandsell/{}'.format(pkg_name),
-    download_url='https://github.com/PSPC-SPAC-buyandsell/{}/archive/{}.tar.gz'.format(pkg_name, version),
+    download_url='https://github.com/PSPC-SPAC-buyandsell/{}/archive/{}.tar.gz'.format(pkg_name, release),
     keywords=['VON', 'SRI', 'anchor', 'The Org Book', 'indy'],
     classifiers=[
         'Development Status :: 3 - Alpha',

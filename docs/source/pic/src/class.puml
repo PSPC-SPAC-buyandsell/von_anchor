@@ -91,7 +91,7 @@ class EndpointCache {
 
 class ArchivableCaches {
     {static} +clear()
-    {static} +archive()
+    {static} +archdiive()
     {static} +parse()
     {static} +purge_archives()
 }
@@ -123,8 +123,8 @@ class Wallet {
     +did
     +verkey
     +create_local_did()
-    +get_local_did_infos()
-    +get_local_did_info()
+    +get_local_dids()
+    +get_local_did()
     +get_anchor_did()
     +create_link_secret()
     -_write_link_secret_label()
@@ -132,6 +132,9 @@ class Wallet {
     +open()
     +close()
     +remove()
+    +create_signing_key()
+    +get_signing_key()
+    +replace_signing_key_metadata()
     +write_pairwise()
     +delete_pairwise()
     +get_pairwise()
@@ -146,6 +149,11 @@ class Wallet {
     +unpack()
     +reseed_init()
     +reseed_apply()
+}
+
+class KeyInfo {
+    +verkey
+    +metadata
 }
 
 class DIDInfo {
@@ -411,6 +419,7 @@ RevocationCache -> RevoCacheEntry
 
 WalletManager .left.> Wallet
 
+Wallet --> KeyInfo
 Wallet --> DIDInfo
 Wallet --> PairwiseInfo
 Wallet --> NonSecret

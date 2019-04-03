@@ -203,32 +203,82 @@ async def test_local_dids():
         did_info = await w.create_local_did(None, '55GkHamhTU1ZbTbV2ab9DE')
         print('\n\n== 1 == Created local known DID: {}'.format(did_info))
         assert did_info.did and did_info.verkey and len(did_info.metadata) == 1  # 'since'
-        assert did_info == await w.get_local_did_info(did_info.did)
-        assert did_info == await w.get_local_did_info(did_info.verkey)
+        assert did_info == await w.get_local_did(did_info.did)
+        assert did_info == await w.get_local_did(did_info.verkey)
 
         did_info = await w.create_local_did()
         print('\n\n== 2 == Created random local DID: {}'.format(did_info))
         assert did_info.did and did_info.verkey and len(did_info.metadata) == 1
-        assert did_info == await w.get_local_did_info(did_info.did)
-        assert did_info == await w.get_local_did_info(did_info.verkey)
+        assert did_info == await w.get_local_did(did_info.did)
+        assert did_info == await w.get_local_did(did_info.verkey)
 
         did_info = await w.create_local_did('Agent-44-00000000000000000000000')
         print('\n\n== 3 == Created local DID on seed: {}'.format(did_info))
         assert did_info.did and did_info.verkey and len(did_info.metadata)
-        assert did_info == await w.get_local_did_info(did_info.did)
-        assert did_info == await w.get_local_did_info(did_info.verkey)
+        assert did_info == await w.get_local_did(did_info.did)
+        assert did_info == await w.get_local_did(did_info.verkey)
 
         did_info = await w.create_local_did(metadata={'hello': 'world'})
         print('\n\n== 4 == Created random local DID with metadata: {}'.format(did_info))
         assert did_info.did and did_info.verkey and len(did_info.metadata) == 2
-        assert did_info == await w.get_local_did_info(did_info.did)
-        assert did_info == await w.get_local_did_info(did_info.verkey)
+        assert did_info == await w.get_local_did(did_info.did)
+        assert did_info == await w.get_local_did(did_info.verkey)
 
         did_info = await w.create_local_did('Agent-13-00000000000000000000000', metadata={'hello': 'world'})
         print('\n\n== 5 == Created local DID on seed with metadata: {}'.format(did_info))
         assert did_info.did and did_info.verkey and len(did_info.metadata) == 2
-        assert did_info == await w.get_local_did_info(did_info.did)
-        assert did_info == await w.get_local_did_info(did_info.verkey)
+        assert did_info == await w.get_local_did(did_info.did)
+        assert did_info == await w.get_local_did(did_info.verkey)
+
+@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.asyncio
+async def test_signing_key():
+
+    print(Ink.YELLOW('\n\n== Testing signing key operations =='))
+
+    wallets = await get_wallets(
+        {
+            'multipass': {
+                'seed': 'Multi-Pass-000000000000000000000'
+            },
+        },
+        open_all=False,
+        auto_remove=True)
+
+    # Open wallet and operate
+    async with wallets['multipass'] as w:
+        key_info = await w.create_signing_key('Agent-8-000000000000000000000000')
+        print('\n\n== 1 == Created signing key: {}'.format(key_info))
+        assert key_info.verkey and not key_info.metadata
+        assert key_info == await w.get_signing_key(key_info.verkey)
+
+        key_info = await w.create_signing_key()
+        print('\n\n== 2 == Created random signing key: {}'.format(key_info))
+        assert key_info.verkey and not key_info.metadata
+        assert key_info == await w.get_signing_key(key_info.verkey)
+
+        key_info = await w.create_signing_key(metadata={'hello': 'world'})
+        print('\n\n== 3 == Created random signing key with metadata: {}'.format(key_info))
+        assert key_info.verkey and len(key_info.metadata) == 1
+        assert key_info == await w.get_signing_key(key_info.verkey)
+
+        key_info = await w.create_signing_key('Agent-K13-0000000000000000000000', metadata={'hello': 'world'})
+        print('\n\n== 4 == Created signing key on seed with metadata: {}'.format(key_info))
+        assert key_info.verkey and len(key_info.metadata) == 1
+        assert key_info == await w.get_signing_key(key_info.verkey)
+
+        metadata={'allo': 'tout le monde', 'hola': 'todos'}
+        await w.replace_signing_key_metadata(key_info.verkey, metadata=metadata)
+        print('\n\n== 5 == Replaced signing key {} metadata with: {}'.format(key_info.verkey, metadata))
+        assert key_info != await w.get_signing_key(key_info.verkey)
+
+        try:
+            x_key = key_info.verkey.replace(key_info.verkey[0], chr(ord(key_info.verkey[0]) + 1))  # probably absent
+            await w.get_signing_key(x_key)
+            assert False
+        except AbsentRecord:
+            pass
+        print('\n\n== 6 == Correctly raised absent record on get-key-pair for no such key')
 
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
@@ -1078,8 +1128,8 @@ async def test_export_import(path_home):
     async with wallets[w_name] as w:
         did_info = await w.create_local_did(None, loc_did)
         assert did_info.did and did_info.verkey and len(did_info.metadata) == 1  # 'since'
-        assert did_info == await w.get_local_did_info(did_info.did)
-        assert did_info == await w.get_local_did_info(did_info.verkey)
+        assert did_info == await w.get_local_did(did_info.did)
+        assert did_info == await w.get_local_did(did_info.verkey)
 
         label = await w.get_link_secret_label()
         assert label
@@ -1096,7 +1146,7 @@ async def test_export_import(path_home):
     print('\n\n== 3 == Imported wallet from path {}'.format(path_export))
 
     async with await w_mgr.get({'id': w_name}) as w:
-        loc = await w.get_local_did_info(loc_did)
+        loc = await w.get_local_did(loc_did)
         print('\n\n== 4.1 == Local DID imported OK: {}'.format(loc))
         import_label = await w.get_link_secret_label()
         print('\n\n== 4.2 == Link secret imported on label: {}'.format(label))
@@ -1120,8 +1170,8 @@ async def test_export_import(path_home):
     async with w:
         did_info = await w.create_local_did(None, loc_did)
         assert did_info.did and did_info.verkey and len(did_info.metadata) == 1  # 'since'
-        assert did_info == await w.get_local_did_info(did_info.did)
-        assert did_info == await w.get_local_did_info(did_info.verkey)
+        assert did_info == await w.get_local_did(did_info.did)
+        assert did_info == await w.get_local_did(did_info.verkey)
 
         label = await w.get_link_secret_label()
         assert label
@@ -1145,7 +1195,7 @@ async def test_export_import(path_home):
     print('\n\n== 8 == Imported wallet from path {}'.format(path_export))
 
     async with await w_mgr.get({'id': w_name, 'auto_remove': True}, access) as w:
-        loc = await w.get_local_did_info(loc_did)
+        loc = await w.get_local_did(loc_did)
         print('\n\n== 9.1 == Local DID imported OK: {}'.format(loc))
         import_label = await w.get_link_secret_label()
         print('\n\n== 9.2 == Link secret imported on label: {}'.format(label))

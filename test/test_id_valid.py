@@ -19,20 +19,33 @@ import pytest
 
 from von_anchor.frill import Ink
 from von_anchor.tails import Tails
-from von_anchor.util import ok_cred_def_id, ok_did, ok_endpoint, ok_rev_reg_id, ok_role, ok_schema_id, ok_wallet_reft
+from von_anchor.util import (
+    ok_cred_def_id,
+    ok_did,
+    ok_endpoint,
+    ok_rev_reg_id,
+    ok_role,
+    ok_schema_id,
+    ok_seed,
+    ok_wallet_reft)
 
 
 @pytest.mark.asyncio
-async def test_box_ids():
+async def test_ids():
     print(Ink.YELLOW('\n\n== Testing Identifier Checks =='))
 
     assert ok_wallet_reft('49ad0727-8663-45ae-a115-12b09860f9c6')
     assert not ok_wallet_reft('Q4zqM7aXqm7gDQkUVLng9I')
     assert not ok_wallet_reft('49ad0727-45ae-a115-12b09860f9c6')
 
-    assert ok_did('Q4zqM7aXqm7gDQkUVLng9h')  # quibble: not technically a box id
-    assert not ok_did('Q4zqM7aXqm7gDQkUVLng9I')
-    assert not ok_did('Q4zqM7aXqm7gDQkUVLng')
+    assert ok_seed('00000000000000000000000000000000')
+    assert ok_seed('                                ')
+    assert not ok_seed('00000000000000000000000000000000X')
+    assert not ok_seed('000000000000000000000000000000X')
+
+    assert ok_did('Q4zqM7aXqm7gDQkUVLng9h')
+    assert not ok_did('Q4zqM7aXqm7gDQkUVLng9I')  # 'I' not a base58 char
+    assert not ok_did('Q4zqM7aXqm7gDQkUVLng')  # too short
 
     for value in (None, 'TRUSTEE', 'STEWARD', 'TRUST_ANCHOR', ''):
         assert ok_role(value)
