@@ -770,7 +770,7 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor.auth_encrypt <<< %s', rv)
         return rv
 
-    async def decrypt(self, ciphertext: bytes, sender: str = None) -> bytes:
+    async def decrypt(self, ciphertext: bytes, sender: str = None) -> (bytes, str):
         """
         Decrypt ciphertext and optionally authenticate sender.
 
@@ -779,7 +779,7 @@ class BaseAnchor:
 
         :param ciphertext: ciphertext, as bytes
         :param sender: DID or verification key of sender, None for anonymously encrypted ciphertext
-        :return: decrypted bytes
+        :return: decrypted bytes and sender verification key (None for anonymous decryption)
         """
 
         LOGGER.debug('BaseAnchor.decrypt >>> ciphertext: %s, sender: %s', ciphertext, sender)
@@ -788,10 +788,14 @@ class BaseAnchor:
             LOGGER.debug('BaseAnchor.decrypt <!< Wallet %s is closed', self.name)
             raise WalletState('Wallet {} is closed'.format(self.name))
 
-        verkey = None
+        from_verkey = None
         if sender:
-            verkey = await self._verkey_for(sender)
-        rv = await self.wallet.decrypt(ciphertext, verkey)
+            from_verkey = await self._verkey_for(sender)
+        rv = await self.wallet.decrypt(
+            ciphertext,
+            True if from_verkey else None,
+            to_verkey=None,
+            from_verkey=from_verkey)
 
         LOGGER.debug('BaseAnchor.decrypt <<< %s', rv)
         return rv

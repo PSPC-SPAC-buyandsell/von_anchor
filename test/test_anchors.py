@@ -3138,33 +3138,35 @@ async def test_crypto(
         # SRI anchor anonymously encrypts and decrypts to and from itself, implicitly and explicitly
         plain = 'Hello World'.encode()
         encr = await san.encrypt(plain)
-        decr = await san.decrypt(encr)
+        (decr, key) = await san.decrypt(encr)
         assert decr == plain
+        assert key is None
         encr = await san.encrypt(plain, False, san.did)
-        decr = await san.decrypt(encr)
+        (decr, _) = await san.decrypt(encr)
         assert decr == plain
         encr = await san.encrypt(plain, False, san.verkey)
-        decr = await san.decrypt(encr)
+        (decr, _) = await san.decrypt(encr)
         assert decr == plain
         print('\n\n== 2 == SRI anchor auto-encrypted then decrypted: {}'.format(decr.decode()))
 
         # SRI anchor auth-encrypts and decrypts to and from itself, implicitly and explicitly by DID and verkey
         encr = await san.encrypt(plain, True)
-        decr = await san.decrypt(encr, san.did)
+        (decr, key) = await san.decrypt(encr, san.did)
         assert decr == plain
-        decr = await san.decrypt(encr, san.verkey)
-        assert decr == plain
-        encr = await san.encrypt(plain, True, san.did)
-        decr = await san.decrypt(encr, san.did)
-        assert decr == plain
-        encr = await san.encrypt(plain, True, san.verkey)
-        decr = await san.decrypt(encr, san.did)
+        assert key == san.verkey
+        (decr, _) = await san.decrypt(encr, san.verkey)
         assert decr == plain
         encr = await san.encrypt(plain, True, san.did)
-        decr = await san.decrypt(encr, san.verkey)
+        (decr, _) = await san.decrypt(encr, san.did)
         assert decr == plain
         encr = await san.encrypt(plain, True, san.verkey)
-        decr = await san.decrypt(encr, san.verkey)
+        (decr, _) = await san.decrypt(encr, san.did)
+        assert decr == plain
+        encr = await san.encrypt(plain, True, san.did)
+        (decr, _) = await san.decrypt(encr, san.verkey)
+        assert decr == plain
+        encr = await san.encrypt(plain, True, san.verkey)
+        (decr, _) = await san.decrypt(encr, san.verkey)
         assert decr == plain
         print('\n\n== 3 == SRI anchor auto-auth-encrypted then auth-decrypted: {}'.format(decr.decode()))
 
@@ -3183,25 +3185,26 @@ async def test_crypto(
 
         # SRI anchor anonymously encrypts to PSPC Org Book anchor, which anonymously decrypts
         encr = await san.encrypt(plain, False, pspcoban.did)
-        decr = await pspcoban.decrypt(encr)
+        (decr, _) = await pspcoban.decrypt(encr)
         assert decr == plain
         encr = await san.encrypt(plain, False, pspcoban.verkey)
-        decr = await pspcoban.decrypt(encr)
+        (decr, _) = await pspcoban.decrypt(encr)
         assert decr == plain
         print('\n\n== 5 == SRI anchor encrypted to PSPC Org Book anchor, which decrypted: {}'.format(decr.decode()))
 
         # SRI anchor auth-encrypts (by DID and verkey) to PSPC Org Book anchor, which auth-decrypts (by DID and verkey)
         encr = await san.encrypt(plain, True, pspcoban.did)
-        decr = await pspcoban.decrypt(encr, san.did)
+        (decr, key) = await pspcoban.decrypt(encr, san.did)
         assert decr == plain
+        assert key == san.verkey
         encr = await san.encrypt(plain, True, pspcoban.did)
-        decr = await pspcoban.decrypt(encr, san.verkey)
+        (decr, _) = await pspcoban.decrypt(encr, san.verkey)
         assert decr == plain
         encr = await san.encrypt(plain, True, pspcoban.verkey)
-        decr = await pspcoban.decrypt(encr, san.did)
+        (decr, _) = await pspcoban.decrypt(encr, san.did)
         assert decr == plain
         encr = await san.encrypt(plain, True, pspcoban.verkey)
-        decr = await pspcoban.decrypt(encr, san.verkey)
+        (decr, _) = await pspcoban.decrypt(encr, san.verkey)
         assert decr == plain
         print('\n\n== 6 == SRI anchor auth-encrypted to PSPC Org Book anchor, which auth-decrypted: {}'.format(
             decr.decode()))
@@ -3233,7 +3236,10 @@ async def test_crypto(
         # SRI anchor self-signs and verifies
         signature = await san.sign(plain)
         assert await san.verify(plain, signature)
-        print('\n\n== 8 == SRI anchor signed then verified {}-byte signature from: {}'.format(len(signature), plain))
+        assert not await san.verify(plain, bytes(0 for b in signature))
+        print('\n\n== 8 == SRI anchor signed then verified {}-byte signature from {}, then failed bad signature'.format(
+            len(signature),
+            plain))
 
         # PSPC Org Book Anchor verifies
         assert await pspcoban.verify(plain, signature, san.did)
@@ -3270,33 +3276,33 @@ async def test_crypto(
         # SRI anchor anonymously encrypts and decrypts to and from itself, implicitly and explicitly
         plain = 'Hello World'.encode()
         encr = await san.encrypt(plain)
-        decr = await san.decrypt(encr)
+        (decr, _) = await san.decrypt(encr)
         assert decr == plain
         encr = await san.encrypt(plain, False, san.did)
-        decr = await san.decrypt(encr)
+        (decr, _) = await san.decrypt(encr)
         assert decr == plain
         encr = await san.encrypt(plain, False, san.verkey)
-        decr = await san.decrypt(encr)
+        (decr, _) = await san.decrypt(encr)
         assert decr == plain
         print('\n\n== 12 == SRI anchor auto-encrypted then decrypted: {}'.format(decr.decode()))
 
         # SRI anchor auth-encrypts and decrypts to and from itself, implicitly and explicitly by DID and verkey
         encr = await san.encrypt(plain, True)
-        decr = await san.decrypt(encr, san.did)
+        (decr, _) = await san.decrypt(encr, san.did)
         assert decr == plain
-        decr = await san.decrypt(encr, san.verkey)
-        assert decr == plain
-        encr = await san.encrypt(plain, True, san.did)
-        decr = await san.decrypt(encr, san.did)
-        assert decr == plain
-        encr = await san.encrypt(plain, True, san.verkey)
-        decr = await san.decrypt(encr, san.did)
+        (decr, _) = await san.decrypt(encr, san.verkey)
         assert decr == plain
         encr = await san.encrypt(plain, True, san.did)
-        decr = await san.decrypt(encr, san.verkey)
+        (decr, _) = await san.decrypt(encr, san.did)
         assert decr == plain
         encr = await san.encrypt(plain, True, san.verkey)
-        decr = await san.decrypt(encr, san.verkey)
+        (decr, _) = await san.decrypt(encr, san.did)
+        assert decr == plain
+        encr = await san.encrypt(plain, True, san.did)
+        (decr, _) = await san.decrypt(encr, san.verkey)
+        assert decr == plain
+        encr = await san.encrypt(plain, True, san.verkey)
+        (decr, _) = await san.decrypt(encr, san.verkey)
         assert decr == plain
         print('\n\n== 13 == SRI anchor auto-auth-encrypted then auth-decrypted: {}'.format(decr.decode()))
 
@@ -3317,10 +3323,10 @@ async def test_crypto(
         if not await san.wallet.get_pairwise(pspcoban.did):
             await san.wallet.write_pairwise(pspcoban.did, pspcoban.verkey)
         encr = await san.encrypt(plain, False, pspcoban.did)
-        decr = await pspcoban.decrypt(encr)
+        (decr, _) = await pspcoban.decrypt(encr)
         assert decr == plain
         encr = await san.encrypt(plain, False, pspcoban.verkey)
-        decr = await pspcoban.decrypt(encr)
+        (decr, _) = await pspcoban.decrypt(encr)
         assert decr == plain
         print('\n\n== 15 == SRI anchor encrypted to PSPC Org Book anchor, which decrypted: {}'.format(decr.decode()))
 
@@ -3328,21 +3334,21 @@ async def test_crypto(
         encr = await san.encrypt(plain, True, pspcoban.did)
         assert not await pspcoban.wallet.get_pairwise(san.did)
         try:
-            decr = await pspcoban.decrypt(encr, san.did)
+            await pspcoban.decrypt(encr, san.did)
             assert False
         except AbsentPool:  # cannot resolve did - no such pairwise in (reset) wallet, no pool available
             pass
         await pspcoban.wallet.write_pairwise(san.did, san.verkey)
-        decr = await pspcoban.decrypt(encr, san.did)
+        (decr, _) = await pspcoban.decrypt(encr, san.did)
         assert decr == plain
         encr = await san.encrypt(plain, True, pspcoban.did)
-        decr = await pspcoban.decrypt(encr, san.verkey)
+        (decr, _) = await pspcoban.decrypt(encr, san.verkey)
         assert decr == plain
         encr = await san.encrypt(plain, True, pspcoban.verkey)
-        decr = await pspcoban.decrypt(encr, san.did)
+        (decr, _) = await pspcoban.decrypt(encr, san.did)
         assert decr == plain
         encr = await san.encrypt(plain, True, pspcoban.verkey)
-        decr = await pspcoban.decrypt(encr, san.verkey)
+        (decr, _) = await pspcoban.decrypt(encr, san.verkey)
         assert decr == plain
         print('\n\n== 16 == SRI anchor auth-encrypted to PSPC Org Book anchor, which auth-decrypted: {}'.format(
             decr.decode()))

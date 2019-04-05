@@ -18,7 +18,8 @@ The initializer takes and retains default configuration values to use in creatin
 
 * ``storage_type``: storage type (default None for indy-sdk default)
 * ``freshness_time``: freshness time (default 0 for infinite)
-* ``auto_remove``: auto-remove on first wallet close (default False)
+* ``auto_create``: automatically create on first wallet open
+* ``auto_remove``: automatically remove on first wallet close (default False)
 * ``key``: access credentials value (default ``key``).
 
 Accessors
@@ -34,7 +35,8 @@ The ``create()`` method takes configuration (overriding Wallet Manager instance 
 * ``id``: the wallet name
 * ``storage_type``, ``freshness_time``: indy-sdk configuration items
 * ``did``, ``seed``: optional DID an seed to use
-* ``auto_remove``: auto-remove behaviour on first wallet close
+* ``auto_create``: automatic creation behaviour on first wallet close
+* ``auto_remove``: automatic removal behaviour on first wallet close
 * ``link_secret_label``: optional link secret label to use to create link secret.
 
 The implementation creates the indy-sdk wallet, sets the anchor DID and verification key (using the seed and DID if provided), and creates the link secret if the configuration specifies its label.
@@ -71,14 +73,15 @@ The initializer takes:
 
 * a configuration dict with indy-sdk wallet configuration keys and values
 * the wallet access credentials value
-* auto-remove (behaviour) boolean.
+* auto_create (behaviour) boolean.
+* auto_remove (behaviour) boolean.
 
 Its operation stores input parameters or sensible defaults, in waiting for further calls to create the wallet in storage or to open it for indy-sdk operations.
 
 Accessors
 ++++++++++++++++++++++++++++
 
-The class exposes accessors for the wallet name, indy-sdk handle, configuration, auto-remove status, access credentials, storage type, anchor DID, and (public) verification key.
+The class exposes accessors for the wallet name, indy-sdk handle, configuration, automatic creation and remove status, access credentials, storage type, anchor DID, and (public) verification key.
 
 .. _wallet-create:
 
@@ -107,7 +110,7 @@ For the case where a wallet does not correspond to an anchor on the ledger, the 
 Removal
 ++++++++++++++++++++++++++++
 
-The ``remove()`` method removes the wallet from persistent storage if it exists.
+The ``remove()`` method attempts to remove the wallet from persistent storage if it exists. It raises ``WalletState`` if the wallet is open; otherwise it returns True on success and False on error (e.g., currently specified access credentials value is not valid for wallet in persistent storage).
 
 .. _did-management:
 
@@ -200,6 +203,11 @@ Fetching
 
 Method ``get_local_dids()`` returns a list with a ``DIDInfo`` (:ref:`did-info`) object corresponding to every local DID in the wallet. Method ``get_local_did()`` takes a DID or verification key and returns a ``DIDInfo`` for the corresponding local DID, raising ``AbsentRecord`` if none exists.
 
+Replacing Metadata
+..................
+
+Method ``replace_local_did_metadata()`` takes a local DID and metadata. Its operation sets the input metadata for the local DID, raising ``AbsentRecord`` if none exists.
+
 Pairwise DID Operations
 -----------------------
 
@@ -211,7 +219,7 @@ Writing
 Method ``write_pairwise()`` takes:
 
 * a remote DID
-* a remote verification key
+* an optional remote verification key (operation replaces default value from existing pairwise record by remote DID or raises ``AbsentRecord``)
 * an optional local DID
 * an optional metadata for the pairwise relation
 * an optional flag to replace, rather than (default) augment and overwrite, any existing metadata for the pairwise relation.
@@ -243,26 +251,10 @@ The ``pack()`` method takes a message, recipient verification key or keys (defau
 
 The ``unpack()`` method takes JWE ciphertext and delegates to indy-sdk to unpack it. It returns a triple with the message, the recipient verification key, and the sender verification key (``None`` for anonymous encryption).
 
-Supporting Classes
+Supporting Info Classes
 ###################################
 
 The ``von_anchor/wallet`` subpackage holds several classes for wallet records and pairwise relation abstractions.
-
-.. _key-info:
-
-KeyInfo
-+++++++++++++++++++++++++++++++++++
-
-The ``von_anchor/wallet/keyinfo.py`` source file contains the ``KeyInfo`` class, which bundles information for a key (pair) in a wallet. It aggregates a verification key and metadata.
-
-.. _non-secret:
-
-.. _did-info:
-
-DIDInfo
-+++++++++++++++++++++++++++++++++++
-
-The ``von_anchor/wallet/didinfo.py`` source file contains the ``DIDInfo`` class, which bundles information for a local DID in a wallet. It aggregates a DID, verification key, and metadata.
 
 .. _non-secret:
 
@@ -277,16 +269,32 @@ The static ``ok_tags()`` method validates the fitness of tags for use with non-s
 
 The ``type`` and ``id`` properties are read-only once set. The ``value`` and ``tags`` properties are read-write. The ``clear_tags`` and ``encr_tags`` conveniences act as read-only properties to return clear and encrypted tags respectively, as demarcated with a leading tilde (or not).
 
+.. _key-info:
+
+KeyInfo
++++++++++++++++++++++++++++++++++++
+
+The ``KeyInfo`` named tuple of file ``info.py`` bundles information for a key (pair) in a wallet. It aggregates a verification key and metadata.
+
+.. _did-info:
+
+DIDInfo
++++++++++++++++++++++++++++++++++++
+
+The ``DIDInfo`` class of file ``info.py`` bundles information for a local DID in a wallet. It aggregates a DID, verification key, and metadata.
+
 .. _pairwise-info:
 
 PairwiseInfo
 +++++++++++++++++++++++++++++++++++
 
-Source file ``von_anchor/wallet/pairwise.py`` houses the ``PairwiseInfo`` class and the ``non_secret2pairwise_info()`` utility.
+The ``info.py`` file holds class ``PairwiseInfo`` and utilities.
 
 The ``PairwiseInfo`` class bundles information for a pairwise DID to store via the indy-sdk non-secrets API in the wallet. It aggregates a remote DID and verification key, a local DID and verification key, and metadata. VON Anchor operation intermediates to direct indy-sdk to store such metadata unencrypted, canonicalizing tags accordingly as per :ref:`canon-util`, to maximize WQL search capacity.
 
 The ``non_secret2pairwise_info()`` free function creates a ``PairwiseInfo`` instance from a ``NonSecret`` that a non-secrets API search returns.
+
+The ``pairwise_info2tags()`` free function takes a ``PairwiseInfo`` instance and maps its metadata to non-secrets tags, canonicalized for unencrypted storage to enable full WQL queries.
 
 .. _endpoint-info:
 

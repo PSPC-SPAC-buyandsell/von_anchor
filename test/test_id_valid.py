@@ -26,7 +26,6 @@ from von_anchor.util import (
     ok_rev_reg_id,
     ok_role,
     ok_schema_id,
-    ok_seed,
     ok_wallet_reft)
 
 
@@ -37,11 +36,6 @@ async def test_ids():
     assert ok_wallet_reft('49ad0727-8663-45ae-a115-12b09860f9c6')
     assert not ok_wallet_reft('Q4zqM7aXqm7gDQkUVLng9I')
     assert not ok_wallet_reft('49ad0727-45ae-a115-12b09860f9c6')
-
-    assert ok_seed('00000000000000000000000000000000')
-    assert ok_seed('                                ')
-    assert not ok_seed('00000000000000000000000000000000X')
-    assert not ok_seed('000000000000000000000000000000X')
 
     assert ok_did('Q4zqM7aXqm7gDQkUVLng9h')
     assert not ok_did('Q4zqM7aXqm7gDQkUVLng9I')  # 'I' not a base58 char

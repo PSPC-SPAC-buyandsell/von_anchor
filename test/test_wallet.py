@@ -40,7 +40,7 @@ async def get_wallets(wallet_data, open_all, auto_remove=False):
         creation_data = {'seed', 'did'} & {n for n in wallet_data[name]}  # create for tests when seed or did specifies
         if creation_data:
             config = {
-                'id': name,
+                ('id' if len(wallet_data) > 1 else 'name'): name,  # jerry-rig coverage of 'name'/'id' equivalents
                 **{k: wallet_data[name][k] for k in creation_data},
                 'auto_remove': auto_remove
             }
@@ -156,16 +156,51 @@ async def test_wallet(path_home):
         x = await w_mgr.get({'id': name})
         async with x:
             assert False
-    except IndyError as x_indy:
-        assert x_indy.error_code == ErrorCode.WalletAccessFailed
+    except BadAccess:
+        print('\n\n== 5 == Wallet does not open for bad access credentials')
 
     ww = await w_mgr.get({'id': name, 'auto_remove': True}, access)
     async with ww:
         assert ww.did == w_did
         assert ww.verkey == w_verkey
+    print('\n\n== 6 == Wallet restores DID and verkey on re-open')
 
     assert not path.exists(), 'Wallet path {} still present'.format(path)
-    print('\n\n== 5 == Re-use extant wallet on good access creds OK, wrong access creds fails as expected')
+    print('\n\n== 7 == Re-use extant wallet on good access creds OK, wrong access creds fails as expected')
+
+    # Auto-create, no auto-remove
+    w = await w_mgr.get({'id': name, 'auto_create': True}, access=access)
+    assert not path.exists(), 'Wallet path {} present'.format(path)
+
+    await w.open()
+    assert path.exists(), 'Wallet path {} present'.format(path)
+    assert w.did
+    assert w.verkey
+    (w_did, w_verkey) = (w.did, w.verkey)
+    await w.close()
+    assert path.exists(), 'Wallet path {} not present'.format(path)
+    print('\n\n== 8 == Wallet auto_create engages OK')
+
+    await w_mgr.remove(w)
+    assert not path.exists(), 'Wallet path {} present'.format(path)
+    print('\n\n== 9 == Wallet manager removes wallet OK')
+
+    # Auto-create, auto-remove
+    w = await w_mgr.get({'id': name, 'auto_create': True, 'auto_remove': True}, access=access)
+    assert not path.exists(), 'Wallet path {} present'.format(path)
+
+    async with w:
+        assert path.exists(), 'Wallet path {} not present'.format(path)
+        assert w.did
+        assert w.verkey
+    assert not path.exists(), 'Wallet path {} present'.format(path)
+
+    async with w:  # do it again, Feynmann-like wallet creating on every open and deleting on every close
+        assert path.exists(), 'Wallet path {} not present'.format(path)
+        assert w.did
+        assert w.verkey
+    assert not path.exists(), 'Wallet path {} present'.format(path)
+    print('\n\n== 10 == Wallet auto_create and auto_remove work together')
 
     # Double-open
     try:
@@ -175,10 +210,8 @@ async def test_wallet(path_home):
                 assert False
     except WalletState:
         pass
-
     assert not path.exists(), 'Wallet path {} still present'.format(path)
-
-    print('\n\n== 6 == Double-open case encounters error as expected')
+    print('\n\n== 11 == Double-open case encounters error as expected')
 
     #  Rekey operation tested via anchor, in test_anchors.py
 
@@ -273,7 +306,7 @@ async def test_signing_key():
         assert key_info != await w.get_signing_key(key_info.verkey)
 
         try:
-            x_key = key_info.verkey.replace(key_info.verkey[0], chr(ord(key_info.verkey[0]) + 1))  # probably absent
+            x_key = key_info.verkey.replace(key_info.verkey[0], chr(ord(key_info.verkey[0]) + 1))  # surely absent
             await w.get_signing_key(x_key)
             assert False
         except AbsentRecord:
@@ -370,8 +403,8 @@ async def test_pairwise():
             ppjson({k: vars(records[k]) for k in records})))
         assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'epoch', 'clearance'}
 
-        # Replace metadata; get by DID
-        metadata = {'secrecy': 'hover cover'}
+        # Replace metadata on explicit pairwise info; get by DID
+        metadata = {'phone': 'shoe'}
         await w.write_pairwise(
             pairwises['agent-86'].their_did,
             pairwises['agent-86'].their_verkey,
@@ -379,11 +412,29 @@ async def test_pairwise():
             metadata,
             replace_meta=True)
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
-        print('\n\n== 5 == Replaced metadata and got {} record{} for agent-86: {}'.format(
+        print('\n\n== 5 == Replaced metadata and got {} record{} for agent-86 by explicit pairwise info: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'phone'}
+
+        # Replace metadata on implicit pairwise info; get by DID
+        metadata = {'secrecy': 'hover cover'}
+        await w.write_pairwise(pairwises['agent-86'].their_did, metadata=metadata, replace_meta=True)
+        records = await w.get_pairwise(pairwises['agent-86'].their_did)
+        print('\n\n== 6 == Replaced metadata and got {} record{} for agent-86 by remote DID: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
         assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'secrecy'}
+
+        # Exercise AbsentRecord on (non-)update of missing pairwise DID
+        try:
+            x_did = 'X' * 22
+            await w.write_pairwise(x_did, metadata=metadata)
+            assert False
+        except AbsentRecord:
+            print('\n\n== 7 == Refused to update missing pairwise DID on as expected')
 
         # Update metadata with ~tags, exercise equivalence; get by DID
         metadata = {'~clearance': 'cosmic'}
@@ -393,7 +444,7 @@ async def test_pairwise():
             wallets['multipass'].did,
             metadata)  # update metadata should overwrite prior (clearance) attr on ~
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
-        print('\n\n== 6 == Updated metadata on ~tags and got {} record{} for agent-86: {}'.format(
+        print('\n\n== 8 == Updated metadata on ~tags and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -409,7 +460,7 @@ async def test_pairwise():
             metadata,
             replace_meta=True)
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
-        print('\n\n== 7 == Replaced metadata on ~tags and got {} record{} for agent-86: {}'.format(
+        print('\n\n== 9 == Replaced metadata on ~tags and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -421,7 +472,7 @@ async def test_pairwise():
             pairwises['agent-86'].their_verkey,
             wallets['multipass'].did)
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
-        print('\n\n== 8 == Wrote non-delta and got {} record{} for agent-86: {}'.format(
+        print('\n\n== 10 == Wrote non-delta and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -436,7 +487,7 @@ async def test_pairwise():
             metadata,
             replace_meta=True)
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
-        print('\n\n== 9 == Cleared metadata and got {} record{} for agent-86: {}'.format(
+        print('\n\n== 11 == Cleared metadata and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -451,7 +502,7 @@ async def test_pairwise():
             metadata,
             replace_meta=True)
         records = await w.get_pairwise()
-        print('\n\n== 10 == Got {} record{} from get-all: {}'.format(
+        print('\n\n== 12 == Got {} record{} from get-all: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -465,7 +516,7 @@ async def test_pairwise():
                 '$neq': pairwises['agent-99'].their_verkey
             }
         }))
-        print('\n\n== 11 == Got {} record{} from by WQL on $neq: {}'.format(
+        print('\n\n== 13 == Got {} record{} from by WQL on $neq: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -478,7 +529,7 @@ async def test_pairwise():
                 '$in': [pairwises[name].their_verkey for name in pairwises]
             }
         }))
-        print('\n\n== 12 == Got {} record{} from by WQL on $in: {}'.format(
+        print('\n\n== 14 == Got {} record{} from by WQL on $in: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -497,7 +548,7 @@ async def test_pairwise():
                 }
             ]
         }))
-        print('\n\n== 13 == Got {} record{} from by WQL on $or: {}'.format(
+        print('\n\n== 15 == Got {} record{} from by WQL on $or: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -511,7 +562,7 @@ async def test_pairwise():
                 '$neq': pairwises['agent-99'].their_verkey
             }
         }))
-        print('\n\n== 14 == Got {} record{} from by WQL on $neq: {}'.format(
+        print('\n\n== 16 == Got {} record{} from by WQL on $neq: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -524,7 +575,7 @@ async def test_pairwise():
                 '$lte': int(time())
             }
         }))
-        print('\n\n== 15 == Got {} record{} from by WQL on $lte: {}'.format(
+        print('\n\n== 17 == Got {} record{} from by WQL on $lte: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -538,7 +589,7 @@ async def test_pairwise():
                 '$like': '{}%'.format(pairwises['agent-86'].their_did)
             }
         }))
-        print('\n\n== 16 == Got {} record{} from by WQL on $like: {}'.format(
+        print('\n\n== 18 == Got {} record{} from by WQL on $like: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -549,7 +600,7 @@ async def test_pairwise():
         records = await w.get_pairwise(json.dumps({
             'their_did': pairwises['agent-86'].their_did
         }))
-        print('\n\n== 17 == Got {} record{} from by WQL on equality: {}'.format(
+        print('\n\n== 19 == Got {} record{} from by WQL on equality: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -571,7 +622,7 @@ async def test_pairwise():
                 }
             ]
         }))
-        print('\n\n== 18 == Got {} record{} from by nested $or-$like WQL: {}'.format(
+        print('\n\n== 20 == Got {} record{} from by nested $or-$like WQL: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -605,7 +656,7 @@ async def test_pairwise():
                 }
             ]
         }))
-        print('\n\n== 19 == Got {} record{} from by nested WQL: {}'.format(
+        print('\n\n== 21 == Got {} record{} from by nested WQL: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -616,7 +667,7 @@ async def test_pairwise():
         # Delete
         await w.delete_pairwise(pairwises['agent-86'].their_did)
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
-        print('\n\n== 20 == Deleted agent-86 record and checked its absence')
+        print('\n\n== 22 == Deleted agent-86 record and checked its absence')
         assert not records
 
         # Exercise the above writes without specifying local DID; ensure operation creates new local DIDs and verkeys
@@ -631,7 +682,7 @@ async def test_pairwise():
             pairwises['agent-86'].their_did,
             pairwises['agent-86'].their_verkey)
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
-        print('\n\n== 21 == Stored and got {} record{} for agent-86: {}'.format(
+        print('\n\n== 23 == Stored and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -648,7 +699,7 @@ async def test_pairwise():
             None,
             metadata)
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
-        print('\n\n== 22 == Stored metadata and got {} record{} for agent-86: {}'.format(
+        print('\n\n== 24 == Stored metadata and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -666,14 +717,14 @@ async def test_pairwise():
             None,
             metadata)
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
-        print('\n\n== 23 == Stored metadata and got {} record{} for agent-86: {}'.format(
+        print('\n\n== 25 == Stored metadata and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
         assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'epoch', 'clearance'}
 
         # Replace metadata; get by DID
-        metadata = {'secrecy': 'hover cover'}
+        metadata = {'phone': 'shoe'}
         await w.write_pairwise(
             pairwises['agent-86'].their_did,
             pairwises['agent-86'].their_verkey,
@@ -681,11 +732,29 @@ async def test_pairwise():
             metadata,
             replace_meta=True)
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
-        print('\n\n== 24 == Replaced metadata and got {} record{} for agent-86: {}'.format(
+        print('\n\n== 26 == Replaced metadata and got {} record{} for agent-86 by explicit pairwise info: {}'.format(
+            len(records or {}),
+            '' if len(records or {}) == 1 else 's',
+            ppjson({k: vars(records[k]) for k in records})))
+        assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'phone'}
+
+        # Replace metadata on implicit pairwise info; get by DID
+        metadata = {'secrecy': 'hover cover'}
+        await w.write_pairwise(pairwises['agent-86'].their_did, metadata=metadata, replace_meta=True)
+        records = await w.get_pairwise(pairwises['agent-86'].their_did)
+        print('\n\n== 27 == Replaced metadata and got {} record{} for agent-86 by remote DID: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
         assert {k for k in records[pairwises['agent-86'].their_did].metadata} == baseline_meta | {'secrecy'}
+
+        # Exercise AbsentRecord on (non-)update of missing pairwise DID
+        try:
+            x_did = 'X' * 22
+            await w.write_pairwise(x_did, metadata=metadata)
+            assert False
+        except AbsentRecord:
+            print('\n\n== 28 == Refused to update missing pairwise DID on as expected')
 
         # Update metadata with ~tags, exercise equivalence; get by DID
         metadata = {'~clearance': 'cosmic'}
@@ -695,7 +764,7 @@ async def test_pairwise():
             None,
             metadata)  # update metadata should overwrite prior (clearance) attr on ~
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
-        print('\n\n== 25 == Updated metadata on ~tags and got {} record{} for agent-86: {}'.format(
+        print('\n\n== 29 == Updated metadata on ~tags and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -711,7 +780,7 @@ async def test_pairwise():
             metadata,
             replace_meta=True)
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
-        print('\n\n== 26 == Replaced metadata on ~tags and got {} record{} for agent-86: {}'.format(
+        print('\n\n== 30 == Replaced metadata on ~tags and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -722,7 +791,7 @@ async def test_pairwise():
             pairwises['agent-86'].their_did,
             pairwises['agent-86'].their_verkey)
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
-        print('\n\n== 27 == Wrote non-delta and got {} record{} for agent-86: {}'.format(
+        print('\n\n== 31 == Wrote non-delta and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -737,7 +806,7 @@ async def test_pairwise():
             metadata,
             replace_meta=True)
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
-        print('\n\n== 28 == Cleared metadata and got {} record{} for agent-86: {}'.format(
+        print('\n\n== 32 == Cleared metadata and got {} record{} for agent-86: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -752,7 +821,7 @@ async def test_pairwise():
             metadata,
             replace_meta=True)
         records = await w.get_pairwise()
-        print('\n\n== 29 == Got {} record{} from get-all: {}'.format(
+        print('\n\n== 33 == Got {} record{} from get-all: {}'.format(
             len(records or {}),
             '' if len(records or {}) == 1 else 's',
             ppjson({k: vars(records[k]) for k in records})))
@@ -763,7 +832,7 @@ async def test_pairwise():
         # Delete
         await w.delete_pairwise(pairwises['agent-86'].their_did)
         records = await w.get_pairwise(pairwises['agent-86'].their_did)
-        print('\n\n== 30 == Deleted agent-86 record and checked its absence')
+        print('\n\n== 34 == Deleted agent-86 record and checked its absence')
         assert not records
 
 

@@ -19,7 +19,7 @@ import json
 import logging
 
 from time import time
-from typing import Callable, List, Sequence, Union
+from typing import Callable, Sequence, Union
 
 from indy import anoncreds, crypto, did, non_secrets, wallet
 from indy.error import IndyError, ErrorCode
@@ -29,10 +29,12 @@ from von_anchor.error import (
     AbsentRecord,
     AbsentMessage,
     AbsentWallet,
+    BadAccess,
     BadKey,
     BadIdentifier,
     BadRecord,
     ExtantRecord,
+    ExtantWallet,
     WalletState)
 from von_anchor.util import ok_did
 from von_anchor.wallet import DIDInfo, KeyInfo, non_secret2pairwise_info, PairwiseInfo, pairwise_info2tags
@@ -49,23 +51,30 @@ class Wallet:
 
     DEFAULT_CHUNK = 256  # chunk size in searching credentials
 
-    def __init__(self, indy_config: dict, access: str, auto_remove: bool = False) -> None:
+    def __init__(self, indy_config: dict, von_config: dict) -> None:
         """
         Initializer for wallet that WalletManager created. Store configuration and access credentials value.
 
-        Actuators should prefer WalletManager.get() to calling this initializer directly.
+        Actuators should prefer WalletManager.get() to calling this initializer directly - the wallet manager
+        filters wallet configuration through preset defaults.
 
         :param indy_config: configuration for indy-sdk wallet
-        :param access: wallet access credentials value
-        :param auto_remove: whether to remove wallet on next close
+        :param von_config: VON wallet configuration particulars:
+
+            - 'seed': (optional) seed to use on creation
+            - 'did': (optional) anchor DID to use on creation
+            - 'link_secret_label': (optional) label to use to create link secret
+            - 'auto_create': whether to create wallet automatically on first open
+            - 'auto_remove': whether to remove wallet automatically on next close
+            - 'access': wallet access credentials value
+
         """
 
-        LOGGER.debug('Wallet.__init__ >>> indy_config %s, access %s, auto_remove %s', indy_config, access, auto_remove)
+        LOGGER.debug('Wallet.__init__ >>> indy_config %s, von_config %s', indy_config, von_config)
 
         self._handle = None
-        self._config = {**indy_config}  # make a copy
-        self._auto_remove = auto_remove
-        self._access = access
+        self._indy_config = {**indy_config}  # make a copy
+        self._von_config = {**von_config}
         self._did = None
         self._verkey = None
 
@@ -109,27 +118,47 @@ class Wallet:
         :return: wallet config
         """
 
-        return self._config
+        return self._indy_config
+
+    @property
+    def auto_create(self) -> bool:
+        """
+        Accessor for auto_create wallet config setting.
+
+        :return: auto_create wallet config setting
+        """
+
+        return self._von_config['auto_create']
+
+    @auto_create.setter
+    def auto_create(self, value: bool) -> None:
+        """
+        Set auto_create wallet config behaviour.
+
+        :param value: auto_create
+        """
+
+        self._von_config['auto_create'] = value
 
     @property
     def auto_remove(self) -> bool:
         """
-        Accessor for auto-remove wallet config setting.
+        Accessor for auto_remove wallet config setting.
 
-        :return: auto-remove wallet config setting
+        :return: auto_remove wallet config setting
         """
 
-        return self._auto_remove
+        return self._von_config['auto_remove']
 
     @auto_remove.setter
     def auto_remove(self, value: bool) -> None:
         """
-        Set auto-remove wallet config behaviour.
+        Set auto_remove wallet config behaviour.
 
-        :param value: auto-remove
+        :param value: auto_remove
         """
 
-        self._auto_remove = value
+        self._von_config['auto_remove'] = value
 
     @property
     def access_creds(self) -> dict:
@@ -139,7 +168,7 @@ class Wallet:
         :return: wallet access credentials
         """
 
-        return {'key': self._access}
+        return {'key': self._von_config['access']}
 
     @property
     def access(self) -> str:
@@ -149,7 +178,7 @@ class Wallet:
         :return: wallet access credentials value
         """
 
-        return self._access
+        return self._von_config['access']
 
     @property
     def storage_type(self) -> str:
@@ -217,7 +246,7 @@ class Wallet:
         if not self.handle:
             LOGGER.debug('Wallet.create_signing_key <!< Wallet %s is closed', self.name)
             raise WalletState('Wallet {} is closed'.format(self.name))
-            
+
         try:
             verkey = await crypto.create_key(self.handle, json.dumps({'seed': seed} if seed else {}))
         except IndyError as x_indy:
@@ -248,7 +277,7 @@ class Wallet:
         if not self.handle:
             LOGGER.debug('Wallet.get_signing_key <!< Wallet %s is closed', self.name)
             raise WalletState('Wallet {} is closed'.format(self.name))
-            
+
         try:
             metadata = await crypto.get_key_metadata(self.handle, verkey)
         except IndyError as x_indy:
@@ -272,25 +301,28 @@ class Wallet:
         :metadata: new metadata to store
         """
 
-        LOGGER.debug('Wallet.replace_signing_key >>> seed: [SEED], verkey: %s, metadata: %s', verkey, metadata)
+        LOGGER.debug('Wallet.replace_signing_key_metadata >>> verkey: %s, metadata: %s', verkey, metadata)
 
         if not self.handle:
-            LOGGER.debug('Wallet.get_signing_key <!< Wallet %s is closed', self.name)
+            LOGGER.debug('Wallet.replace_signing_key_metadata <!< Wallet %s is closed', self.name)
             raise WalletState('Wallet {} is closed'.format(self.name))
-            
+
         try:
             metadata = await crypto.get_key_metadata(self.handle, verkey)
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.WalletItemNotFound:
-                LOGGER.debug('Wallet.get_signing_key <!< Verification key %s not in wallet %s', verkey, self.name)
+                LOGGER.debug(
+                    'Wallet.replace_signing_key_metadata <!< Verification key %s not in wallet %s',
+                    verkey,
+                    self.name)
                 raise AbsentRecord('Verification key not in wallet {}'.format(self.name))
-            LOGGER.debug('Wallet.get_signing_key <!< indy-sdk raised error %s', x_indy.error_code)
+            LOGGER.debug('Wallet.replace_signing_key_metadata <!< indy-sdk raised error %s', x_indy.error_code)
             raise
 
         await self.get_signing_key(verkey)  # raises if no such verification key
         await crypto.set_key_metadata(self.handle, verkey, json.dumps(metadata or {}))
 
-        LOGGER.debug('Wallet.replace_signing_key <<<')
+        LOGGER.debug('Wallet.replace_signing_key_metadata <<<')
 
     async def create_local_did(self, seed: str = None, loc_did: str = None, metadata: dict = None) -> DIDInfo:
         """
@@ -331,7 +363,28 @@ class Wallet:
         LOGGER.debug('Wallet.create_local_did <<< %s', rv)
         return rv
 
-    async def get_local_dids(self) -> List[DIDInfo]:
+    async def replace_local_did_metadata(self, loc_did: str, metadata: dict) -> None:
+        """
+        Replace the metadata associated with a local DID.
+
+        Raise WalletState if wallet is closed, AbsentRecord for no such local DID.
+
+        :param: local DID of interest
+        :metadata: new metadata to store
+        """
+
+        LOGGER.debug('Wallet.replace_local_did_metadata >>> loc_did: %s, metadata: %s', loc_did, metadata)
+
+        self.get_local_did(loc_did)  # raises exceptions if applicable
+        try:
+            did.set_did_metadata(self.handle, loc_did, json.dumps(metadata or {}))
+        except IndyError as x_indy:
+            LOGGER.debug('Wallet.replace_local_did_metadata <!< indy-sdk raised error %s', x_indy.error_code)
+            raise
+
+        LOGGER.debug('Wallet.replace_local_did_metadata <<<')
+
+    async def get_local_dids(self) -> Sequence[DIDInfo]:
         """
         Get list of DIDInfos for local DIDs.
 
@@ -530,20 +583,34 @@ class Wallet:
 
         LOGGER.debug('Wallet.open >>>')
 
-        try:
-            self._handle = await wallet.open_wallet(
-                json.dumps(self.config),
-                json.dumps(self.access_creds))
-            LOGGER.info('Opened wallet %s on handle %s', self.name, self.handle)
-        except IndyError as x_indy:
-            if x_indy.error_code == ErrorCode.WalletNotFoundError:
-                LOGGER.info('Wallet %s does not exist', self.name)
-                raise AbsentWallet('Wallet {} does not exist'.format(self.name))
-            if x_indy.error_code == ErrorCode.WalletAlreadyOpenedError:
-                LOGGER.info('Wallet %s is already open', self.name)
-                raise WalletState('Wallet {} is already open'.format(self.name))
-            LOGGER.info('Wallet %s open raised indy error %s', self.name, x_indy.error_code)
-            raise
+        created = False
+        while True:
+            try:
+                self._handle = await wallet.open_wallet(
+                    json.dumps(self.config),
+                    json.dumps(self.access_creds))
+                LOGGER.info('Opened wallet %s on handle %s', self.name, self.handle)
+                break
+            except IndyError as x_indy:
+                if x_indy.error_code == ErrorCode.WalletNotFoundError:
+                    if created:
+                        LOGGER.debug('Wallet.open() <!< Wallet %s not found after creation', self.name)
+                        raise AbsentWallet('Wallet {} not found after creation'.format(self.name))
+                    if self.auto_create:
+                        await self.create()
+                        continue
+                    else:
+                        LOGGER.debug('Wallet.open() <!< Wallet %s not found', self.name)
+                        raise AbsentWallet('Wallet {} not found'.format(self.name))
+                elif x_indy.error_code == ErrorCode.WalletAlreadyOpenedError:
+                    LOGGER.debug('Wallet.open() <!< Wallet %s is already open', self.name)
+                    raise WalletState('Wallet {} is already open'.format(self.name))
+                elif x_indy.error_code == ErrorCode.WalletAccessFailed:
+                    LOGGER.debug('Wallet.open() <!< Bad access credentials value for wallet %s', self.name)
+                    raise BadAccess('Bad access credentials value for wallet {}'.format(self.name))
+
+                LOGGER.debug('Wallet %s open raised indy error %s', self.name, x_indy.error_code)
+                raise
 
         self.did = await self.get_anchor_did()
         self.verkey = await did.key_for_local_did(self.handle, self.did) if self.did else None
@@ -551,6 +618,46 @@ class Wallet:
 
         LOGGER.debug('Wallet.open <<<')
         return self
+
+    async def create(self) -> None:
+        """
+        Persist the wallet. Raise ExtantWallet if it already exists.
+
+        Actuators should prefer WalletManager.create() to calling this method directly - the wallet manager
+        filters wallet configuration through preset defaults.
+        """
+
+        LOGGER.debug('Wallet.create >>>')
+
+        try:
+            await wallet.create_wallet(
+                config=json.dumps(self.config),
+                credentials=json.dumps(self.access_creds))
+            LOGGER.info('Created wallet %s', self.name)
+        except IndyError as x_indy:
+            if x_indy.error_code == ErrorCode.WalletAlreadyExistsError:
+                LOGGER.debug('Wallet.create <!< Wallet %s already exists', self.name)
+                raise ExtantWallet('Wallet {} already exists'.format(self.name))
+            LOGGER.debug(
+                'Wallet.create <!< indy error code %s on creation of wallet %s',
+                x_indy.error_code,
+                self.name)
+            raise
+
+        auto_remove = self.auto_remove
+        self.auto_remove = False  # defer past this creation process
+        async with self:
+            did_info = await self.create_local_did(
+                self._von_config.get('seed', None),
+                self._von_config.get('did', None),
+                {'anchor': True})
+            self.did = did_info.did
+            self.verkey = did_info.verkey
+            if 'link_secret_label' in self._von_config:
+                await self.create_link_secret(self._von_config['link_secret_label'])
+        self.auto_remove = auto_remove
+
+        LOGGER.debug('Wallet.create <<<')
 
     async def __aexit__(self, exc_type, exc, traceback) -> None:
         """
@@ -571,7 +678,6 @@ class Wallet:
     async def close(self) -> None:
         """
         Explicit exit. Close wallet (and delete if so configured).
-        For use when keeping wallet open across multiple calls.
         """
 
         LOGGER.debug('Wallet.close >>>')
@@ -583,15 +689,20 @@ class Wallet:
             await wallet.close_wallet(self.handle)
             self._handle = None
             if self.auto_remove:
-                LOGGER.info('Auto-removing wallet %s', self.name)
+                LOGGER.info('Automatically removing wallet %s', self.name)
                 await self.remove()
         self._handle = None
 
         LOGGER.debug('Wallet.close <<<')
 
-    async def remove(self) -> None:
+    async def remove(self) -> bool:
         """
-        Remove serialized wallet if it exists. Raise WalletState if wallet is open.
+        Remove serialized wallet, best effort, if it exists. Return whether wallet absent after operation
+        (removal successful or else not present a priori).
+
+        Raise WalletState if wallet is open.
+
+        :return: whether wallet gone from persistent storage
         """
 
         LOGGER.debug('Wallet.remove >>>')
@@ -600,20 +711,26 @@ class Wallet:
             LOGGER.debug('Wallet.remove <!< Wallet %s is open', self.name)
             raise WalletState('Wallet {} is open'.format(self.name))
 
+        rv = True
         try:
-            LOGGER.info('Removing wallet: %s', self.name)
+            LOGGER.info('Attempting to remove wallet: %s', self.name)
             await wallet.delete_wallet(
                 json.dumps(self.config),
                 json.dumps(self.access_creds))
         except IndyError as x_indy:
-            LOGGER.info('Abstaining from wallet %s removal; indy-sdk error code %s', self.name, x_indy.error_code)
+            if x_indy.error_code == ErrorCode.WalletNotFoundError:
+                LOGGER.info('Wallet %s not present; abstaining from removal', self.name)
+            else:
+                LOGGER.info('Failed wallet %s removal; indy-sdk error code %s', self.name, x_indy.error_code)
+                rv = False
 
-        LOGGER.debug('Wallet.remove <<<')
+        LOGGER.debug('Wallet.remove <<< %s', rv)
+        return rv
 
     async def write_pairwise(
             self,
             their_did: str,
-            their_verkey: str,
+            their_verkey: str = None,
             my_did: str = None,
             metadata: dict = None,
             replace_meta: bool = False) -> PairwiseInfo:
@@ -625,8 +742,10 @@ class Wallet:
         relation if one already exists in the wallet. Always include local and remote DIDs and keys in
         metadata to allow for WQL search.
 
+        Raise AbsentRecord on call to update a non-existent record.
+
         :param their_did: remote DID
-        :param their_verkey: remote verification key
+        :param their_verkey: remote verification key (default None is OK if updating an existing pairwise DID)
         :param my_did: local DID
         :param metadata: metadata for pairwise connection
         :param replace_meta: whether to (True) replace or (False) augment and overwrite existing metadata
@@ -640,6 +759,16 @@ class Wallet:
             my_did,
             metadata,
             replace_meta)
+
+        if their_verkey is None:
+            match = await self.get_pairwise(their_did)
+            if not match:
+                LOGGER.debug(
+                    'Wallet.write_pairwise <!< Wallet %s has no pairwise DID on %s to update',
+                    self.name,
+                    their_did)
+                raise AbsentRecord('Wallet {} has no pairwise DID on {} to update'.format(self.name, their_did))
+            their_verkey = [pwise for pwise in match.values()][0].their_verkey
 
         try:
             await did.store_their_did(self.handle, json.dumps({'did': their_did, 'verkey': their_verkey}))
@@ -890,18 +1019,29 @@ class Wallet:
         LOGGER.debug('Wallet.get_non_secret <<< %s', rv)
         return rv
 
-    async def encrypt(self, message: bytes, authn: bool = False, verkey: str = None) -> bytes:
+    async def encrypt(
+            self,
+            message: bytes,
+            authn: bool = False,
+            to_verkey: str = None,
+            from_verkey: str = None) -> bytes:
         """
         Encrypt plaintext for owner of DID, anonymously or via authenticated encryption scheme.
         Raise AbsentMessage for missing message, or WalletState if wallet is closed.
 
         :param message: plaintext, as bytes
         :param authn: whether to use authenticated encryption scheme
-        :param verkey: verification key of recipient, None for anchor's own
+        :param to_verkey: verification key of recipient, None for anchor's own
+        :param from_verkey: verification key of sender for authenticated encryption, None for anchor's own
         :return: ciphertext, as bytes
         """
 
-        LOGGER.debug('Wallet.encrypt >>> message: %s, authn: %s, verkey: %s', message, authn, verkey)
+        LOGGER.debug(
+            'Wallet.encrypt >>> message: %s, authn: %s, to_verkey: %s, from_verkey: %s',
+            message,
+            authn,
+            to_verkey,
+            from_verkey)
 
         if not message:
             LOGGER.debug('Wallet.encrypt <!< No message to encrypt')
@@ -912,27 +1052,42 @@ class Wallet:
             raise WalletState('Wallet {} is closed'.format(self.name))
 
         if authn:
-            rv = await crypto.auth_crypt(self.handle, self.verkey, verkey or self.verkey, message)
+            rv = await crypto.auth_crypt(self.handle, from_verkey or self.verkey, to_verkey or self.verkey, message)
         else:
-            rv = await crypto.anon_crypt(verkey or self.verkey, message)
+            rv = await crypto.anon_crypt(to_verkey or self.verkey, message)
 
         LOGGER.debug('Wallet.auth_encrypt <<< %s', rv)
         return rv
 
-    async def decrypt(self, ciphertext: bytes, verkey: str = None) -> bytes:
+    async def decrypt(
+            self,
+            ciphertext: bytes,
+            authn_check: bool = None,
+            to_verkey: str = None,
+            from_verkey: str = None) -> (bytes, str):
         """
         Decrypt ciphertext and optionally authenticate sender.
 
-        Raise BadKey if authentication operation reveals sender key distinct from input
-        verification key.  Raise AbsentMessage for missing ciphertext, or WalletState if
+        Raise BadKey if authentication operation checks and reveals sender key distinct from input
+        sender verification key.  Raise AbsentMessage for missing ciphertext, or WalletState if
         wallet is closed.
 
         :param ciphertext: ciphertext, as bytes
-        :param verkey: sender's verification, or None for anonymously encrypted ciphertext
-        :return: decrypted bytes
+        :param authn_check: True to authenticate and check sender verification key,
+            False to authenticate and return sender verification key for client to decide fitness, or
+            None to use anonymous decryption
+        :param to_verkey: recipient verification key, default anchor's own
+        :param from_verkey: sender verification key, ignored for anonymous decryption,
+            default anchor's own for authenticated decryption
+        :return: decrypted bytes and sender verification key (None for anonymous decryption)
         """
 
-        LOGGER.debug('Wallet.decrypt >>> ciphertext: %s, verkey: %s', ciphertext, verkey)
+        LOGGER.debug(
+            'Wallet.decrypt >>> ciphertext: %s, authn_check: %s, to_verkey: %s, from_verkey: %s',
+            ciphertext,
+            authn_check,
+            to_verkey,
+            from_verkey)
 
         if not ciphertext:
             LOGGER.debug('Wallet.decrypt <!< No ciphertext to decrypt')
@@ -942,14 +1097,16 @@ class Wallet:
             LOGGER.debug('Wallet.decrypt <!< Wallet %s is closed', self.name)
             raise WalletState('Wallet {} is closed'.format(self.name))
 
-        if verkey:
-            (sender_verkey, rv) = await crypto.auth_decrypt(self.handle, self.verkey, ciphertext)
-            if sender_verkey != verkey:
+        sender_verkey = None
+        if authn_check is None:
+            plaintext = await crypto.anon_decrypt(self.handle, to_verkey or self.verkey, ciphertext)
+        else:
+            (sender_verkey, plaintext) = await crypto.auth_decrypt(self.handle, to_verkey or self.verkey, ciphertext)
+            if authn_check and sender_verkey != (from_verkey or self.verkey):
                 LOGGER.debug('Wallet.decrypt <!< Authentication revealed unexpected sender key on decryption')
                 raise BadKey('Authentication revealed unexpected sender key on decryption')
-        else:
-            rv = await crypto.anon_decrypt(self.handle, self.verkey, ciphertext)
 
+        rv = (plaintext, sender_verkey)
         LOGGER.debug('Wallet.decrypt <<< %s', rv)
         return rv
 
@@ -981,7 +1138,7 @@ class Wallet:
     async def verify(self, message: bytes, signature: bytes, verkey: str = None) -> bool:
         """
         Verify signature against input signer verification key (default anchor's own).
-        Raise AbsentMessage for missing message, or WalletState if wallet is closed.
+        Raise AbsentMessage for missing message or signature, or WalletState if wallet is closed.
 
         :param message: Content to sign, as bytes
         :param signature: signature, as bytes
@@ -994,6 +1151,10 @@ class Wallet:
         if not message:
             LOGGER.debug('Wallet.verify <!< No message to verify')
             raise AbsentMessage('No message to verify')
+
+        if not signature:
+            LOGGER.debug('Wallet.verify <!< No signature to verify')
+            raise AbsentMessage('No signature to verify')
 
         if not self.handle:
             LOGGER.debug('Wallet.verify <!< Wallet %s is closed', self.name)
@@ -1021,7 +1182,7 @@ class Wallet:
             recip_verkeys,
             sender_verkey)
 
-        if not message:
+        if message is None:
             LOGGER.debug('Wallet.pack <!< No message to pack')
             raise AbsentMessage('No message to pack')
 
@@ -1060,7 +1221,6 @@ class Wallet:
             raise
 
         rv = (unpacked['message'], unpacked.get('recipient_verkey', None), unpacked.get('sender_verkey', None))
-
         LOGGER.debug('Wallet.unpack <<< %s', rv)
         return rv
 

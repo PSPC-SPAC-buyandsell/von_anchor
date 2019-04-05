@@ -41,7 +41,8 @@ class WalletManager:
 
             - 'storage_type': storage type (default None)
             - 'freshness_time': freshness time (default indefinite)
-            - 'auto_remove': auto-remove behaviour (default False)
+            - 'auto_create': auto_create behaviour (default False)
+            - 'auto_remove': auto_remove behaviour (default False)
             - 'key': access credentials value (default 'key', for indy wallet access credentials {'key': 'key'}).
 
         :param defaults: default values to use as above
@@ -52,6 +53,7 @@ class WalletManager:
         self._defaults = {
             'storage_type': (defaults or {}).get('storage_type', None),
             'freshness_time': int((defaults or {}).get('freshness_time', 0)),
+            'auto_create': bool((defaults or {}).get('auto_create', False)),
             'auto_remove': bool((defaults or {}).get('auto_remove', False)),
             'access_creds': {'key': (defaults or {}).get('key', 'key')}
         }
@@ -79,11 +81,21 @@ class WalletManager:
         return self._defaults['freshness_time']
 
     @property
+    def default_auto_create(self) -> bool:
+        """
+        Accessor for default auto_create behaviour.
+
+        :return: default auto_create behaviour
+        """
+
+        return self._defaults['auto_create']
+
+    @property
     def default_auto_remove(self) -> bool:
         """
-        Accessor for default auto-remove behaviour.
+        Accessor for default auto_remove behaviour.
 
-        :return: default auto-remove behaviour
+        :return: default auto_remove behaviour
         """
 
         return self._defaults['auto_remove']
@@ -107,27 +119,48 @@ class WalletManager:
         :return: configuration dict for indy wallet
         """
 
+        assert {'name', 'id'} & {k for k in config}
         return {
-            'id': config['id'],
+            'id': config.get('name', config.get('id')),
             'storage_type': config.get('storage_type', self.default_storage_type),
             'freshness_time': config.get('freshness_time', self.default_freshness_time)
         }
+
+    def _config2von(self, config: dict, access: str = None) -> dict:
+        """
+        Given a configuration dict with indy and possibly more configuration values, return the
+        corresponding VON wallet configuration dict from current default and input values.
+
+        :param config: input configuration
+        :param access: access credentials value
+        :return: configuration dict for VON wallet with VON-specific entries
+        """
+
+        rv = {k: config.get(k, self._defaults[k]) for k in ('auto_create', 'auto_remove')}
+        rv['access'] = access or self.default_access
+        for key in ('seed', 'did', 'link_secret_label'):
+            if key in config:
+                rv[key] = config[key]
+        return rv
 
     async def create(self, config: dict = None, access: str = None, replace: bool = False) -> Wallet:
         """
         Create wallet on input name with given configuration and access credential value.
 
         Raise ExtantWallet if wallet on input name exists already and replace parameter is False.
+        Raise BadAccess on replacement for bad access credentials value.
 
         FAIR WARNING: specifying replace=True attempts to remove any matching wallet before proceeding; to
         succeed, the existing wallet must use the same access credentials that the input configuration has.
 
         :param config: configuration data for both indy-sdk and VON anchor wallet:
 
-            - 'id': wallet name
-            - 'storage_type', 'freshness_time': indy-sdk configuration items
+            - 'name' or 'id': wallet name
+            - 'storage_type': storage type
+            - 'freshness_time': freshness time
             - 'did': (optional) DID to use
             - 'seed': (optional) seed to use
+            - 'auto_create': whether to create the wallet on first open (persists past close, can work with auto_remove)
             - 'auto_remove': whether to remove the wallet on next close
             - 'link_secret_label': (optional) link secret label to use to create link secret
 
@@ -138,36 +171,18 @@ class WalletManager:
 
         LOGGER.debug('WalletManager.create >>> config %s, access %s, replace %s', config, access, replace)
 
-        wallet_name = config['id']
+        assert {'name', 'id'} & {k for k in config}
+        wallet_name = config.get('name', config.get('id'))
         if replace:
             von_wallet = await self.get(config, access)
-            await von_wallet.remove()
+            if not await von_wallet.remove():
+                LOGGER.debug('WalletManager.create <!< Failed to remove wallet %s for replacement', wallet_name)
+                raise ExtantWallet('Failed to remove wallet {} for replacement'.format(wallet_name))
 
         indy_config = self._config2indy(config)
-        try:
-            await wallet.create_wallet(
-                config=json.dumps(indy_config),
-                credentials=json.dumps({'key': access or self.default_access}))
-            LOGGER.info('Created wallet %s', wallet_name)
-        except IndyError as x_indy:
-            if x_indy.error_code == ErrorCode.WalletAlreadyExistsError:
-                LOGGER.info('Wallet %s already exists', wallet_name)
-                raise ExtantWallet('Wallet {} already exists'.format(wallet_name))
-            LOGGER.debug(
-                'WalletManager.create <!< indy error code %s on creation of wallet %s',
-                x_indy.error_code,
-                wallet_name)
-            raise
-
-        rv = Wallet(indy_config, access or self.default_access)  # defer setting auto-remove until past config
-        async with rv:
-            did_info = await rv.create_local_did(config.get('seed', None), config.get('did', None), {'anchor': True})
-            rv.did = did_info.did
-            rv.verkey = did_info.verkey
-            if 'link_secret_label' in config:
-                await rv.create_link_secret(config['link_secret_label'])
-
-        rv.auto_remove = config.get('auto_remove', self.default_auto_remove)
+        von_config = self._config2von(config, access)
+        rv = Wallet(indy_config, von_config)
+        await rv.create()
         LOGGER.debug('WalletManager.create <<< %s', rv)
         return rv
 
@@ -178,9 +193,14 @@ class WalletManager:
 
         :param config: configuration data for both indy-sdk and VON anchor wallet:
 
-            - 'id': wallet name
-            - 'storage_type', 'freshness_time': indy-sdk configuration items
+            - 'name' or 'id': wallet name
+            - 'storage_type': storage type
+            - 'freshness_time': freshness time
+            - 'did': (optional) DID to use
+            - 'seed': (optional) seed to use
+            - 'auto_create': whether to create the wallet on first open (persists past close, can work with auto_remove)
             - 'auto_remove': whether to remove the wallet on next close
+            - 'link_secret_label': (optional) link secret label to use to create link secret
 
         :param access: indy access credentials value
         :return: VON anchor wallet
@@ -190,8 +210,7 @@ class WalletManager:
 
         rv = Wallet(
             self._config2indy(config),
-            access or self.default_access,
-            config.get('auto_remove', self.default_auto_remove))
+            self._config2von(config, access))
 
         LOGGER.debug('WalletManager.get <<< %s', rv)
         return rv
@@ -299,6 +318,7 @@ class WalletManager:
         w_config = von_wallet.config  # wallet under reset, no need to make copy
         w_config['did'] = von_wallet.did
         w_config['seed'] = seed
+        w_config['auto_create'] = von_wallet.auto_create  # in case both auto_remove+auto_create set (create every open)
         w_config['auto_remove'] = von_wallet.auto_remove
 
         label = await von_wallet.get_link_secret_label()
@@ -309,7 +329,7 @@ class WalletManager:
         if not von_wallet.auto_remove:
             await self.remove(von_wallet)
 
-        rv = await self.create(w_config, von_wallet.access_creds['key'])
+        rv = await self.create(w_config, von_wallet.access)
         await rv.open()
 
         LOGGER.debug('WalletManager.reset <<< %s', rv)

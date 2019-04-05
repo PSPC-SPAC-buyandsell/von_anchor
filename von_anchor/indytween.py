@@ -26,7 +26,6 @@ from von_anchor.canon import raw
 SchemaKey = namedtuple('SchemaKey', 'origin_did name version')
 Relation = namedtuple('Relation', 'fortran wql math yes no')
 
-
 I32_BOUND = 2**31
 
 

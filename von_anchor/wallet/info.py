@@ -15,8 +15,167 @@ limitations under the License.
 """
 
 
+from collections import namedtuple
+
 from von_anchor.canon import raw, canon_pairwise_tag
-from von_anchor.wallet import NonSecret
+from von_anchor.wallet.nonsecret import NonSecret
+
+
+KeyInfo = namedtuple('KeyInfo', 'verkey metadata')
+
+
+class DIDInfo:
+    """
+    Bundle for DID, verification key, and metadata.
+    """
+
+    def __init__(self, did: str, verkey: str, metadata: dict = None) -> None:
+        """
+        Initialize DID, verification key, metadata.
+
+        :param did: DID to store
+        :param verkey: verification key to store
+        :param metadata: metadata associated with current DID
+        """
+
+        self._did = did
+        self._verkey = verkey
+        self._metadata = metadata
+
+    @property
+    def did(self) -> str:
+        """
+        Accessor for DID
+
+        :return: DID
+        """
+
+        return self._did
+
+    @property
+    def verkey(self) -> str:
+        """
+        Accessor for verification key
+
+        :return: verification key
+        """
+
+        return self._verkey
+
+    @property
+    def metadata(self) -> dict:
+        """
+        Accessor for metadata
+
+        :return: metadata
+        """
+
+        return self._metadata
+
+    @metadata.setter
+    def metadata(self, value: dict) -> None:
+        """
+        Accessor for metadata
+
+        :param value: metadata dict
+        """
+
+        self._metadata = value
+
+    def __eq__(self, other: 'DIDInfo') -> bool:
+        """
+        Equivalence operator. Two DIDInfos are equivalent when their attributes are.
+
+        :param other: DIDInfo to test for equivalence
+        :return: whether DIDInfos are equivalent
+        """
+
+        return self.did == other.did and self.verkey == other.verkey and self.metadata == other.metadata
+
+    def __repr__(self) -> str:
+        """
+        Return representation.
+
+        :return: string representation evaluating to construction call
+        """
+
+        return 'DIDInfo({}, {}, {})'.format(self.did, self.verkey, self.metadata)
+
+
+class EndpointInfo:
+    """
+    Bundle for endpoint and (transport) verification key.
+    """
+
+    def __init__(self, endpoint: str, verkey: str) -> None:
+        """
+        Initialize endpoint, verification key.
+
+        :param endpoint: endpoint to store ('<ip-address>:<port>')
+        :param verkey: verification key to store
+        """
+
+        self._endpoint = endpoint
+        self._verkey = verkey
+
+    @property
+    def endpoint(self) -> str:
+        """
+        Accessor for endpoint
+
+        :return: endpoint
+        """
+
+        return self._endpoint
+
+    @property
+    def ip_addr(self) -> str:
+        """
+        Accessor for endpoint IP address
+
+        :return: endpoint IP address
+        """
+
+        return self._endpoint.split(':')[0]
+
+    @property
+    def port(self) -> int:
+        """
+        Accessor for endpoint port
+
+        :return: endpoint port
+        """
+
+        return int(self._endpoint.split(':')[-1])
+
+    @property
+    def verkey(self) -> str:
+        """
+        Accessor for verification key
+
+        :return: verification key
+        """
+
+        return self._verkey
+
+    def __eq__(self, other: 'EndpointInfo') -> bool:
+        """
+        Equivalence operator. Two EndpointInfos are equivalent when their attributes are.
+
+        :param other: EndpointInfo to test for equivalence
+        :return: whether EndpointInfos are equivalent
+        """
+
+        return self.endpoint == other.endpoint and self.verkey == other.verkey
+
+    def __repr__(self) -> str:
+        """
+        Return representation.
+
+        :return: string representation evaluating to construction call
+        """
+
+        return 'EndpointInfo({}, {})'.format(self.endpoint, self.verkey)
 
 
 class PairwiseInfo:
