@@ -37,8 +37,8 @@ from von_anchor.error import (
     ExtantWallet,
     WalletState)
 from von_anchor.util import ok_did
-from von_anchor.wallet import DIDInfo, KeyInfo, non_secret2pairwise_info, PairwiseInfo, pairwise_info2tags
-from von_anchor.wallet.nonsecret import NonSecret, TYPE_PAIRWISE, TYPE_LINK_SECRET_LABEL
+from von_anchor.wallet import DIDInfo, KeyInfo, storage_record2pairwise_info, PairwiseInfo, pairwise_info2tags
+from von_anchor.wallet.record import StorageRecord, TYPE_PAIRWISE, TYPE_LINK_SECRET_LABEL
 
 
 LOGGER = logging.getLogger(__name__)
@@ -516,7 +516,7 @@ class Wallet:
 
     async def _write_link_secret_label(self, label) -> None:
         """
-        Update non-secrets record with link secret label.
+        Update non-secret storage record with link secret label.
 
         :param label: link secret label
         """
@@ -526,18 +526,19 @@ class Wallet:
         if await self.get_link_secret_label() == label:
             LOGGER.info('Wallet._write_link_secret_label abstaining - already current')
         else:
-            await self.write_non_secret(NonSecret(
+            await self.write_non_secret(StorageRecord(
                 TYPE_LINK_SECRET_LABEL,
-                str(int(time())),  # indy requires str
-                label))
+                label,
+                tags=None,
+                ident=str(int(time()))))  # indy requires str
 
         LOGGER.debug('Wallet._write_link_secret_label <<<')
 
     async def get_link_secret_label(self) -> str:
         """
-        Get current link secret label from non-secret records; return None for no match.
+        Get current link secret label from non-secret storage records; return None for no match.
 
-        :return: latest non-secret record for link secret label
+        :return: latest non-secret storage record for link secret label
         """
 
         LOGGER.debug('Wallet.get_link_secret_label >>>')
@@ -789,11 +790,11 @@ class Wallet:
             my_did_info = await self.create_local_did(None, None, {'pairwise_for': their_did})
 
         pairwise = PairwiseInfo(their_did, their_verkey, my_did_info.did, my_did_info.verkey, metadata)
-        non_sec = await self.write_non_secret(
-            NonSecret(TYPE_PAIRWISE, their_did, their_verkey, pairwise_info2tags(pairwise)),
+        storec = await self.write_non_secret(
+            StorageRecord(TYPE_PAIRWISE, their_verkey, tags=pairwise_info2tags(pairwise), ident=their_did),
             replace_meta)
 
-        rv = non_secret2pairwise_info(non_sec)
+        rv = storage_record2pairwise_info(storec)
         LOGGER.debug('Wallet.write_pairwise <<< %s', rv)
         return rv
 
@@ -830,79 +831,84 @@ class Wallet:
             LOGGER.debug('Wallet.get_pairwise <!< Wallet %s is closed', self.name)
             raise WalletState('Wallet {} is closed'.format(self.name))
 
-        non_secs = await self.get_non_secret(
+        storecs = await self.get_non_secret(
             TYPE_PAIRWISE,
             pairwise_filt if ok_did(pairwise_filt) or not pairwise_filt else json.loads(pairwise_filt),
             canon_pairwise_wql)
-        rv = {k: non_secret2pairwise_info(non_secs[k]) for k in non_secs}  # touch up tags, mute leading ~
+        rv = {k: storage_record2pairwise_info(storecs[k]) for k in storecs}  # touch up tags, mute leading ~
 
         LOGGER.debug('Wallet.get_pairwise <<< %s', rv)
         return rv
 
-    async def write_non_secret(self, non_secret: NonSecret, replace_meta: bool = False) -> NonSecret:
+    async def write_non_secret(self, storec: StorageRecord, replace_meta: bool = False) -> StorageRecord:
         """
-        Add or update non-secret record to the wallet; return resulting wallet non-secret record.
+        Add or update non-secret storage record to the wallet; return resulting wallet non-secret record.
 
-        :param non_secret: non-secret record
-        :return: non-secret record as it appears in the wallet after write
+        :param storec: non-secret storage record
+        :param replace_meta: whether to replace any existing metadata on matching record or to augment it
+        :return: non-secret storage record as it appears in the wallet after write
         """
 
-        LOGGER.debug('Wallet.write_non_secret >>> non_secret: %s, replace_meta: %s', non_secret, replace_meta)
+        LOGGER.debug('Wallet.write_non_secret >>> storec: %s, replace_meta: %s', storec, replace_meta)
 
-        if not NonSecret.ok_tags(non_secret.tags):
-            LOGGER.debug('Wallet.write_non_secret <!< bad non_secret tags %s; use flat {str: str} dict', non_secret)
-            raise BadRecord('Bad non_secret tags {}; use flat {{str:str}} dict'.format(non_secret))
+        if not self.handle:
+            LOGGER.debug('Wallet.write_non_secret <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+
+        if not StorageRecord.ok_tags(storec.tags):
+            LOGGER.debug('Wallet.write_non_secret <!< bad storage record tags %s; use flat {str: str} dict', storec)
+            raise BadRecord('Bad storage record tags {}; use flat {{str:str}} dict'.format(storec))
 
         try:
             record = json.loads(await non_secrets.get_wallet_record(
                 self.handle,
-                non_secret.type,
-                non_secret.id,
+                storec.type,
+                storec.id,
                 json.dumps({
                     'retrieveType': False,
                     'retrieveValue': True,
                     'retrieveTags': True
                 })))
-            if record['value'] != non_secret.value:
+            if record['value'] != storec.value:
                 await non_secrets.update_wallet_record_value(
                     self.handle,
-                    non_secret.type,
-                    non_secret.id,
-                    non_secret.value)
+                    storec.type,
+                    storec.id,
+                    storec.value)
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.WalletItemNotFound:
                 await non_secrets.add_wallet_record(
                     self.handle,
-                    non_secret.type,
-                    non_secret.id,
-                    non_secret.value,
-                    json.dumps(non_secret.tags) if non_secret.tags else None)
+                    storec.type,
+                    storec.id,
+                    storec.value,
+                    json.dumps(storec.tags) if storec.tags else None)
             else:
                 LOGGER.debug(
                     'Wallet.write_non_secret <!< Wallet lookup raised indy error code %s',
                     x_indy.error_code)
                 raise
         else:
-            if (record['tags'] or None) != non_secret.tags:  # record maps no tags to {}, not None
-                tags = (non_secret.tags or {}) if replace_meta else {**record['tags'], **(non_secret.tags or {})}
+            if (record['tags'] or None) != storec.tags:  # record maps no tags to {}, not None
+                tags = (storec.tags or {}) if replace_meta else {**record['tags'], **(storec.tags or {})}
 
                 await non_secrets.update_wallet_record_tags(
                     self.handle,
-                    non_secret.type,
-                    non_secret.id,
+                    storec.type,
+                    storec.id,
                     json.dumps(tags))  # indy-sdk takes '{}' instead of None for null tags
 
         record = json.loads(await non_secrets.get_wallet_record(
             self.handle,
-            non_secret.type,
-            non_secret.id,
+            storec.type,
+            storec.id,
             json.dumps({
                 'retrieveType': False,
                 'retrieveValue': True,
                 'retrieveTags': True
             })))
 
-        rv = NonSecret(non_secret.type, record['id'], record['value'], record.get('tags', None))
+        rv = StorageRecord(storec.type, record['value'], tags=record.get('tags', None), ident=record['id'])
         LOGGER.debug('Wallet.write_non_secret <<< %s', rv)
         return rv
 
@@ -911,8 +917,8 @@ class Wallet:
         Remove a non-secret record by its type and identifier. Silently return if no such record is present.
         Raise WalletState for closed wallet.
 
-        :param typ: non-secret record type
-        :param ident: non-secret record identifier
+        :param typ: non-secret storage record type
+        :param ident: non-secret storage record identifier
         """
 
         LOGGER.debug('Wallet.delete_non_secret >>> typ: %s, ident: %s', typ, ident)
@@ -943,14 +949,14 @@ class Wallet:
             canon_wql: Callable[[dict], dict] = None,
             limit: int = None) -> dict:
         """
-        Return dict mapping each non-secret record of interest by identifier or,
+        Return dict mapping each non-secret storage record of interest by identifier or,
         for no filter specified, mapping them all. If wallet has no such item, return empty dict.
 
-        :param typ: non-secret record type
-        :param filt: non-secret record identifier or WQL json (default all)
-        :param canon_wql: WQL canonicalization function (default wallet.nonsecret.canon_non_secret_wql())
+        :param typ: non-secret storage record type
+        :param filt: non-secret storage record identifier or WQL json (default all)
+        :param canon_wql: WQL canonicalization function (default von_anchor.canon.canon_non_secret_wql())
         :param limit: maximum number of results to return (default no limit)
-        :return: dict mapping identifiers to non-secret records
+        :return: dict mapping identifiers to non-secret storage records
         """
 
         LOGGER.debug('Wallet.get_non_secret >>> typ: %s, filt: %s, canon_wql: %s', typ, filt, canon_wql)
@@ -1015,7 +1021,7 @@ class Wallet:
             finally:
                 await non_secrets.close_wallet_search(s_handle)
 
-        rv = {record['id']: NonSecret(typ, record['id'], record['value'], record['tags']) for record in records}
+        rv = {record['id']: StorageRecord(typ, record['value'], record['tags'], record['id']) for record in records}
         LOGGER.debug('Wallet.get_non_secret <<< %s', rv)
         return rv
 

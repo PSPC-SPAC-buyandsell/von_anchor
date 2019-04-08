@@ -18,7 +18,7 @@ limitations under the License.
 from collections import namedtuple
 
 from von_anchor.canon import raw, canon_pairwise_tag
-from von_anchor.wallet.nonsecret import NonSecret
+from von_anchor.wallet.record import StorageRecord
 
 
 KeyInfo = namedtuple('KeyInfo', 'verkey metadata')
@@ -311,19 +311,19 @@ def pairwise_info2tags(pairwise: PairwiseInfo) -> dict:
     return rv
 
 
-def non_secret2pairwise_info(non_secret: NonSecret) -> PairwiseInfo:
+def storage_record2pairwise_info(storec: StorageRecord) -> PairwiseInfo:
     """
-    Given indy-sdk non_secrets pairwise record dict, return corresponding PairwiseInfo.
+    Given indy-sdk non_secrets implementation of pairwise storage record dict, return corresponding PairwiseInfo.
 
-    :param non_secret: non-secret to convert to PairwiseInfo
-    :return: PairwiseInfo on non_secrets pairwise record DIDs, verkeys, metadata
+    :param storec: (non-secret) storage record to convert to PairwiseInfo
+    :return: PairwiseInfo on record DIDs, verkeys, metadata
     """
 
     return PairwiseInfo(
-        non_secret.id,  # = their did
-        non_secret.value,  # = their verkey
-        non_secret.tags['~my_did'],
-        non_secret.tags['~my_verkey'],
+        storec.id,  # = their did
+        storec.value,  # = their verkey
+        storec.tags['~my_did'],
+        storec.tags['~my_verkey'],
         {
-            tag[tag.startswith('~'):]: non_secret.tags[tag] for tag in (non_secret.tags or {})  # strip any leading '~'
+            tag[tag.startswith('~'):]: storec.tags[tag] for tag in (storec.tags or {})  # strip any leading '~'
         })

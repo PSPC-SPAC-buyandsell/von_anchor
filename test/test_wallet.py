@@ -29,7 +29,7 @@ from indy.error import ErrorCode
 
 from von_anchor.error import AbsentRecord, BadAccess, BadRecord, ExtantWallet, JSONValidation, WalletState
 from von_anchor.frill import Ink, ppjson
-from von_anchor.wallet import NonSecret, PairwiseInfo, Wallet, WalletManager
+from von_anchor.wallet import StorageRecord, PairwiseInfo, Wallet, WalletManager
 
 
 async def get_wallets(wallet_data, open_all, auto_remove=False):
@@ -857,16 +857,17 @@ async def test_non_secrets():
         assert await w.get_non_secret('a-type', 'id0') == {}
 
         try: # exercise tag value type checking
-            NonSecret('a-type', 'id0', 'value', {'a_tag': 123})
+            StorageRecord('a-type', 'value', {'a_tag': 123}, 'id0')
             assert False
         except BadRecord:
             pass
 
         # Store non-secret records
         ns = [
-            NonSecret('a-type', '0', 'value 0'),
-            NonSecret('a-type', '1', 'value 1', {'epoch': str(int(time()))})
+            StorageRecord('a-type', 'value 0'),
+            StorageRecord('a-type', 'value 1', {'epoch': str(int(time()))}, '1')
         ]
+        assert ns[0].id  # exercise default identifier
         assert ns[0] != ns[1]
 
         await w.write_non_secret(ns[0])
@@ -914,7 +915,7 @@ async def test_non_secrets():
         assert recs[ns[1].id].tags == None and recs[ns[1].id].value == 'value 0'
         print('\n\n== 4 == Record replacement OK')
 
-        nsb = NonSecret('b-type', ns[1].id, ns[1].value, ns[1].tags)
+        nsb = StorageRecord('b-type', ns[1].value, ns[1].tags, ns[1].id)
         await w.write_non_secret(nsb)
         recs = await w.get_non_secret(nsb.type, nsb.id)
         assert recs[nsb.id].type == 'b-type' and recs[nsb.id].tags == None and recs[nsb.id].value == 'value 0'
@@ -926,14 +927,14 @@ async def test_non_secrets():
         ns = []
         epoch = int(time())
         for i in range(5):
-            await w.write_non_secret(NonSecret(
+            await w.write_non_secret(StorageRecord(
                 'searchable',
-                str(i),
                 str(i),
                 {
                     '~epoch': str(epoch),
                     'encr': str(i)
-                }))
+                },
+                str(i)))
 
         # Get by WQL $neq
         recs = await w.get_non_secret(
@@ -1053,7 +1054,7 @@ async def test_non_secrets():
         # Exercise WQL search pagination
         cardinality = Wallet.DEFAULT_CHUNK + 16
         nsw = [
-            NonSecret('wql', str(i), 'value {}'.format(i), {'~meta': str(i)}) for i in range(cardinality)
+            StorageRecord('wql', 'value {}'.format(i), {'~meta': str(i)}, str(i)) for i in range(cardinality)
         ]
 
         for i in range(cardinality):

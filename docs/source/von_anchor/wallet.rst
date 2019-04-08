@@ -62,7 +62,7 @@ The static method ``register_storage_library()`` registers a wallet storage plug
 VON Anchor Wallet
 #######################
 
-The VON Anchor wallet provides functionality for VON anchors to use indy-sdk wallets to manage keyed and non-secret records. It resides in ``von_anchor/wallet/wallet.py``.
+The VON Anchor wallet provides functionality for VON anchors to use indy-sdk wallets to manage keyed and non-secret storage records. It resides in ``von_anchor/wallet/wallet.py``.
 
 Initialization
 ++++++++++++++++++++++++++++
@@ -114,41 +114,41 @@ The ``remove()`` method attempts to remove the wallet from persistent storage if
 
 .. _did-management:
 
-Non-Secret Record Operations
-----------------------------
+Non-Secret Storage Record Operations
+------------------------------------
 
-This section discusses operations within the wallet for non-secret record management. The implementation delegates to the indy-sdk non-secrets storage API to manage pairwise DIDs.
+This section discusses operations within the wallet for non-secret storage record management. The implementation delegates to the indy-sdk non-secrets storage API to manage pairwise DIDs.
 
 Writing
 ...............
 
 Method ``write_non_secrets()`` takes:
 
-* a ``NonSecret`` object as per :ref:`non-secret`
-* an optional flag to replace, rather than (default) augment and overwrite, any existing metadata for an existing non-secret record (by non-secret type and identifier).
+* a ``StorageRecord`` object as per :ref:`storage-record`
+* an optional flag to replace, rather than (default) augment and overwrite, any existing metadata for an existing non-secret storage record (by type and identifier).
 
-Its operation checks input metdata tags and delegates to indy-sdk non-secrets API calls to write or update content according to input parameters. It returns the non-secret record as the wallet has added or updated it.
+Its operation checks input metdata tags and delegates to indy-sdk ``non_secret`` API calls to write or update content according to input parameters. It returns the non-secret storage record as the wallet has added or updated it.
 
 Fetching
 ...............
 
-The ``get_non_secret()`` method takes a non-secret record type, a filter, and a canonicalization function (defaulting to ``canon_non_secret_wql()`` as per :ref:`canon-util`. If the filter is a string, it uses it as an identifier with the record type to perform a straightforward lookup via the indy-sdk non-secrets API. Otherwise, the operation interprets the filter as WQL (default None, which canonicalizes to a query to get all on input record type). The processing uses the input canonicalization function to canonicalize the query, then delegates to indy-sdk to fetch all matching records. Finally the method returns a dict mapping identifiers to corresponding ``NonSecrets`` instances, or an empty dict for no match.
+The ``get_non_secret()`` method takes a non-secret storage record type, a filter, and a canonicalization function (defaulting to ``canon_non_secret_wql()`` as per :ref:`canon-util`. If the filter is a string, it uses it as an identifier with the record type to perform a straightforward lookup via the indy-sdk ``non_secret`` API. Otherwise, the operation interprets the filter as WQL (default None, which canonicalizes to a query to get all on input record type). The processing uses the input canonicalization function to canonicalize the query, then delegates to indy-sdk to fetch all matching records. Finally the method returns a dict mapping identifiers to corresponding ``StorageRecord`` instances, or an empty dict for no match.
 
 Deleting
 ...............
 
-The ``delete_non_secret()`` method takes a non-secret record type identifier, which uniquely identifies a non-secret record in the wallet, and removes it if present. If absent, it logs at level ``INFO`` and carries on.
+The ``delete_non_secret()`` method takes a non-secret storage record type identifier, which uniquely identifies a non-secret storage record in the wallet, and removes it if present. If absent, it logs at level ``INFO`` and carries on.
 
 Link Secret Management
 ++++++++++++++++++++++++++++
 
-The wallet uses non-secret records to retain link secret labels.
+The wallet uses non-secret storage records to retain link secret labels.
 
-On creating a link secret, the wallet operation writes a corresponding non-secret record with its label. When the operation needs a link secret, it fetches it using its most recent label. In this way the wallet obviates the need to recall and (attempt to) re-create the link secret on every subsequent open.
+On creating a link secret, the wallet operation writes a corresponding non-secret storage record with its label. When the operation needs a link secret, it fetches it using its most recent label. In this way the wallet obviates the need to recall and (attempt to) re-create the link secret on every subsequent open.
 
-The ``create_link_secret()`` creates a link secret on the input label, logging instead if it duplicates the current link secret. It adds a corresponding non-secret record with the link secret label.
+The ``create_link_secret()`` creates a link secret on the input label, logging instead if it duplicates the current link secret. It adds a corresponding non-secret storage record with the link secret label.
 
-The ``get_link_secret_label()`` method retrieves the current link secret label from non-secret records.
+The ``get_link_secret_label()`` method retrieves the current link secret label from non-secret storage records.
 
 DID Management
 ++++++++++++++++++++++++++++
@@ -159,7 +159,7 @@ An **anchor DID** is a DID in current or past use for the VON anchor using the w
 
 A **local DID** is a DID in use for communication between an agent using the current wallet (typically, via a VON anchor) and another agent. A local DID forms part of a pairwise DID. The wallet implementation uses ``DIDInfo`` objects (see :ref:`did-info`) to associate local DIDs with their verification keys and metadata.
 
-A **pairwise DID** groups a DID and verification key from both local ('my') and remote ('their') sides of an agent-to-agent ('pairwise') relation. The wallet implementation uses ``PairwiseInfo`` objects (see :ref:`pairwise-info`) to associate these data plus any metadata for the relation. The wallet's pairwise DID processing stores pairwise DIDs via the indy-sdk non-secrets API, allowing updates and searches on such records.
+A **pairwise DID** groups a DID and verification key from both local ('my') and remote ('their') sides of an agent-to-agent ('pairwise') relation. The wallet implementation uses ``PairwiseInfo`` objects (see :ref:`pairwise-info`) to associate these data plus any metadata for the relation. The wallet's pairwise DID processing stores pairwise DIDs via the indy-sdk ``non_secret`` API, allowing updates and searches on such records.
 
 Anchor DID Operations
 ---------------------
@@ -211,7 +211,7 @@ Method ``replace_local_did_metadata()`` takes a local DID and metadata. Its oper
 Pairwise DID Operations
 -----------------------
 
-This section discusses pairwise DID operations within the wallet. The implementation uses the ``Wallet`` class's native non-secrets methods, which delegate to the indy-sdk non-secrets storage API to manage pairwise DIDs.
+This section discusses pairwise DID operations within the wallet. The implementation uses the ``Wallet`` class's native non-secrets methods, which delegate to the indy-sdk non_secret storage API to manage pairwise DIDs.
 
 Writing
 ...............
@@ -224,12 +224,12 @@ Method ``write_pairwise()`` takes:
 * an optional metadata for the pairwise relation
 * an optional flag to replace, rather than (default) augment and overwrite, any existing metadata for the pairwise relation.
 
-Its operation retrieves a local ``DIDInfo`` (:ref:`did-info`) and verification key corresponding to the input local DID, or creates a new one if the caller does not specify such. It assembles the remote and local DIDs and verification keys into a ``PairwiseInfo`` (:ref:`pairwise-info`), plus metadata passed in to replace or augment and overwrite any existing such metadata as the flag directs. The operation canonicalizes metadata to indy-sdk ``non_secrets`` API tags (marking them for unencrypted storage as per :ref:`canon-util`) and adds remote and local DIDs and verification keys, enabling WQL search. Finally, the operation creates a ``NonSecret`` object from the ``PairwiseInfo`` and delegates to the ``write_non_secret()`` method to write the content to the wallet.
+Its operation retrieves a local ``DIDInfo`` (:ref:`did-info`) and verification key corresponding to the input local DID, or creates a new one if the caller does not specify such. It assembles the remote and local DIDs and verification keys into a ``PairwiseInfo`` (:ref:`pairwise-info`), plus metadata passed in to replace or augment and overwrite any existing such metadata as the flag directs. The operation canonicalizes metadata to indy-sdk ``non_secrets`` API tags (marking them for unencrypted storage as per :ref:`canon-util`) and adds remote and local DIDs and verification keys, enabling WQL search. Finally, the operation creates a ``StorageRecord`` object from the ``PairwiseInfo`` and delegates to the ``write_non_secret()`` method to write the content to the wallet.
 
 Fetching
 ...............
 
-The ``get_pairwise()`` method takes a remote DID or WQL json query (default None, which canonicalizes to a query to get all pairwise relations). Its operation uses the wallet's ``get_non_secret()`` method to fetch all matching non-secret records of the pairwise type, and returns a dict mapping remote DIDs to corresponding ``PairwiseInfo`` instances, or an empty dict for no match.
+The ``get_pairwise()`` method takes a remote DID or WQL json query (default None, which canonicalizes to a query to get all pairwise relations). Its operation uses the wallet's ``get_non_secret()`` method to fetch all matching non-secret storage records of the pairwise type, and returns a dict mapping remote DIDs to corresponding ``PairwiseInfo`` instances, or an empty dict for no match.
 
 Deleting
 ...............
@@ -256,16 +256,16 @@ Supporting Info Classes
 
 The ``von_anchor/wallet`` subpackage holds several classes for wallet records and pairwise relation abstractions.
 
-.. _non-secret:
+.. _storage-record:
 
-NonSecret
+StorageRecord
 +++++++++++++++++++++++++++++++++++
 
-The ``von_anchor/wallet/nonsecret.py`` source file houses the ``NonSecret`` class to represent general non-secret records for use with wallets.
+The ``von_anchor/wallet/record.py`` source file houses the ``StorageRecord`` class to represent general non-secret storage records for use with wallets.
 
 Its initializer takes a type, identifier, value, and a tags dict. Non-secret tags, where present, must be a flat dict mapping strings to strings. Keys in the tags dict starting with a tilde (``~``) correspond to values to store in the clear in the wallet; otherwise, the indy-sdk implementation stores such values encrypted. Where tags are encrypted, indy-sdk supports only a limited subset of WQL search (equality and inequality) as per https://github.com/hyperledger/indy-sdk/tree/master/docs/design/011-wallet-query-language.
 
-The static ``ok_tags()`` method validates the fitness of tags for use with non-secret records. The class operation calls this method where possible, but note that a perverse operator can hot-swap invalid tags onto a ``NonSecret`` object.
+The static ``ok_tags()`` method validates the fitness of tags for use with non-secret storage records. The class operation calls this method where possible, but note that a perverse operator can hot-swap invalid tags onto a ``StorageRecord`` object.
 
 The ``type`` and ``id`` properties are read-only once set. The ``value`` and ``tags`` properties are read-write. The ``clear_tags`` and ``encr_tags`` conveniences act as read-only properties to return clear and encrypted tags respectively, as demarcated with a leading tilde (or not).
 
@@ -290,11 +290,11 @@ PairwiseInfo
 
 The ``info.py`` file holds class ``PairwiseInfo`` and utilities.
 
-The ``PairwiseInfo`` class bundles information for a pairwise DID to store via the indy-sdk non-secrets API in the wallet. It aggregates a remote DID and verification key, a local DID and verification key, and metadata. VON Anchor operation intermediates to direct indy-sdk to store such metadata unencrypted, canonicalizing tags accordingly as per :ref:`canon-util`, to maximize WQL search capacity.
+The ``PairwiseInfo`` class bundles information for a pairwise DID to store via the indy-sdk ``non_secret`` API in the wallet. It aggregates a remote DID and verification key, a local DID and verification key, and metadata. VON Anchor operation intermediates to direct indy-sdk to store such metadata unencrypted, canonicalizing tags accordingly as per :ref:`canon-util`, to maximize WQL search capacity.
 
-The ``non_secret2pairwise_info()`` free function creates a ``PairwiseInfo`` instance from a ``NonSecret`` that a non-secrets API search returns.
+The ``storage_record2pairwise_info()`` free function creates a ``PairwiseInfo`` instance from a ``StorageRecord`` that a ``non_secret`` API search returns.
 
-The ``pairwise_info2tags()`` free function takes a ``PairwiseInfo`` instance and maps its metadata to non-secrets tags, canonicalized for unencrypted storage to enable full WQL queries.
+The ``pairwise_info2tags()`` free function takes a ``PairwiseInfo`` instance and maps its metadata to non-secret storage record tags, canonicalized for unencrypted storage to enable full WQL queries.
 
 .. _endpoint-info:
 
