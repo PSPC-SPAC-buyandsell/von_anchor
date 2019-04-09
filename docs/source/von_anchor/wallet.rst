@@ -249,7 +249,7 @@ The ``verify()`` method takes a message and putative signature plus a verificati
 
 The ``pack()`` method takes a message, recipient verification key or keys (default value of current verification key for anchor DID), and sender verification key (default ``None`` for anonymous encryption). Its operation delegates to the indy-sdk to pack a JWE of https://tools.ietf.org/html/rfc7516, which it returns.
 
-The ``unpack()`` method takes JWE ciphertext and delegates to indy-sdk to unpack it. It returns a triple with the message, the recipient verification key, and the sender verification key (``None`` for anonymous encryption).
+The ``unpack()`` method takes JWE ciphertext and delegates to indy-sdk to unpack it. It returns a triple with the message, the sender verification key, and the recipient verification key (``None`` for anonymous encryption).
 
 Supporting Info Classes
 ###################################

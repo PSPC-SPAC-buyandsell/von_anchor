@@ -743,7 +743,8 @@ class Wallet:
         relation if one already exists in the wallet. Always include local and remote DIDs and keys in
         metadata to allow for WQL search.
 
-        Raise AbsentRecord on call to update a non-existent record.
+        Raise AbsentRecord on call to update a non-existent record. Raise BadRecord if metadata does not
+        coerce into non-secrets API tags specification {str:str}.
 
         :param their_did: remote DID
         :param their_verkey: remote verification key (default None is OK if updating an existing pairwise DID)
@@ -790,9 +791,15 @@ class Wallet:
             my_did_info = await self.create_local_did(None, None, {'pairwise_for': their_did})
 
         pairwise = PairwiseInfo(their_did, their_verkey, my_did_info.did, my_did_info.verkey, metadata)
-        storec = await self.write_non_secret(
-            StorageRecord(TYPE_PAIRWISE, their_verkey, tags=pairwise_info2tags(pairwise), ident=their_did),
-            replace_meta)
+        try:
+            storec = await self.write_non_secret(
+                StorageRecord(TYPE_PAIRWISE, their_verkey, tags=pairwise_info2tags(pairwise), ident=their_did),
+                replace_meta)
+        except BadRecord:
+            LOGGER.debug(
+                'Wallet.write_pairwise <!< Pairwise metadata {} does not coerce into flat {str:str} tags dict',
+                pairwise.metadata)
+            raise
 
         rv = storage_record2pairwise_info(storec)
         LOGGER.debug('Wallet.write_pairwise <<< %s', rv)
@@ -1171,7 +1178,11 @@ class Wallet:
         LOGGER.debug('Wallet.verify <<< %s', rv)
         return rv
 
-    async def pack(self, message: str, recip_verkeys: Sequence[str] = None, sender_verkey: str = None) -> bytes:
+    async def pack(
+            self,
+            message: str,
+            recip_verkeys: Union[str, Sequence[str]] = None,
+            sender_verkey: str = None) -> bytes:
         """
         Pack a message for one or more recipients (default anchor only).
         Raise AbsentMessage for missing message, or WalletState if wallet is closed.
@@ -1226,7 +1237,7 @@ class Wallet:
             LOGGER.debug('Wallet.unpack <!< Wallet %s unpack() raised indy error code {}', x_indy.error_code)
             raise
 
-        rv = (unpacked['message'], unpacked.get('recipient_verkey', None), unpacked.get('sender_verkey', None))
+        rv = (unpacked['message'], unpacked.get('sender_verkey', None), unpacked.get('recipient_verkey', None))
         LOGGER.debug('Wallet.unpack <<< %s', rv)
         return rv
 

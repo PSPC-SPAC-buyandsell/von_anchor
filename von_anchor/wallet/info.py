@@ -18,6 +18,7 @@ limitations under the License.
 from collections import namedtuple
 
 from von_anchor.canon import raw, canon_pairwise_tag
+from von_anchor.error import BadRecord
 from von_anchor.wallet.record import StorageRecord
 
 
@@ -297,6 +298,8 @@ def pairwise_info2tags(pairwise: PairwiseInfo) -> dict:
     unencrypted (for WQL search options).  Canonicalize metadata values to strings via
     raw() for WQL fitness.
 
+    Raise BadRecord if metadata does not coerce into non_secrets API tags spec of {str:str}.
+
     :param pairwise: pairwise info with metadata dict mapping tags to values
     :return: corresponding non_secrets tags dict marked for unencrypted storage
     """
@@ -308,6 +311,10 @@ def pairwise_info2tags(pairwise: PairwiseInfo) -> dict:
     rv['~their_verkey'] = pairwise.their_verkey
     rv['~my_did'] = pairwise.my_did
     rv['~my_verkey'] = pairwise.my_verkey
+
+    if not StorageRecord.ok_tags(rv):
+        raise BadRecord('Pairwise metadata {} must map strings to strings'.format(rv))
+
     return rv
 
 

@@ -130,7 +130,7 @@ def canon_pairwise_tag(tag: str) -> str:
     :return: tag prefixed with '~' if not already
     """
 
-    return '{}{}'.format('' if tag.startswith('~') else '~', tag)
+    return '{}{}'.format('' if str(tag).startswith('~') else '~', tag)
 
 
 def canon_pairwise_wql(query: dict = None) -> dict:
