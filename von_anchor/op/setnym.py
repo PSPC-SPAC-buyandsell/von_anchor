@@ -102,7 +102,7 @@ async def _set_wallets(an_data: dict) -> dict:
                 await w_mgr.create(w_cfg, access=an_data[profile].wallet_access)
             except ExtantWallet:
                 pass
-        rv[profile] = await w_mgr.get(w_cfg, access=an_data[profile].wallet_access)
+        rv[profile] = w_mgr.get(w_cfg, access=an_data[profile].wallet_access)
 
     return rv
 

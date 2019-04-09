@@ -417,7 +417,7 @@ async def main(wallet_name: str) -> None:
     for path_log in start_data['logging']['paths']:
         logging.getLogger(__name__).addHandler(logging.FileHandler(path_log))
 
-    wallet = await WalletManager().get(
+    wallet = WalletManager().get(
         {
             'id': wallet_name,
             'storage_type': start_data['wallet']['storage_type'],

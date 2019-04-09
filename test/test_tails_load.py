@@ -93,7 +93,7 @@ async def test_anchors_tails_load(
                 'seed': wdata['seed']
             })
         except ExtantWallet:
-            wdata['wallet'] = await w_mgr.get({'id': name})
+            wdata['wallet'] = w_mgr.get({'id': name})
         finally:
             await wdata['wallet'].open()
 

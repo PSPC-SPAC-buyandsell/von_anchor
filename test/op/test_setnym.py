@@ -45,7 +45,7 @@ async def get_wallets(wallet_data, open_all, auto_remove=False):
                 },
                 replace=True)
         else:
-            w = await w_mgr.get({'id': name, 'auto_remove': auto_remove})
+            w = w_mgr.get({'id': name, 'auto_remove': auto_remove})
         if open_all:
             await w.open()
         assert w.did

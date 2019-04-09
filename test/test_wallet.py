@@ -50,7 +50,7 @@ async def get_wallets(wallet_data, open_all, auto_remove=False):
                 config,
                 replace=True)
         else:
-            w = await w_mgr.get({'id': name, 'auto_remove': auto_remove})
+            w = w_mgr.get({'id': name, 'auto_remove': auto_remove})
         if open_all:
             await w.open()
         assert w.did
@@ -71,7 +71,7 @@ async def test_manager():
     assert w_mgr.default_auto_remove == False
     assert w_mgr.default_access == 'key'
 
-    w = await w_mgr.get({'id': 'test', 'auto_remove': True}, access='open-sesame')
+    w = w_mgr.get({'id': 'test', 'auto_remove': True}, access='open-sesame')
     assert w.auto_remove == True
     assert w.name == 'test'
     assert w.storage_type is None
@@ -80,7 +80,7 @@ async def test_manager():
 
     w_mgr = WalletManager({'key': 'up-down-left-right-a-b-c'})
     assert w_mgr.default_access == 'up-down-left-right-a-b-c'
-    w = await w_mgr.get({'id': 'test', 'auto_remove': True})
+    w = w_mgr.get({'id': 'test', 'auto_remove': True})
     assert w.access == 'up-down-left-right-a-b-c'
     assert w.access_creds['key'] == 'up-down-left-right-a-b-c'
 
@@ -100,7 +100,7 @@ async def test_wallet(path_home):
     w_mgr = WalletManager()
 
     # Get VON wallet
-    x_wallet =  await w_mgr.get({'id': 'no-such-wallet-{}'.format(str(int(time())))})
+    x_wallet =  w_mgr.get({'id': 'no-such-wallet-{}'.format(str(int(time())))})
     assert x_wallet is not None
 
     # Configuration with auto-remove set
@@ -153,13 +153,13 @@ async def test_wallet(path_home):
         pass
 
     try:
-        x = await w_mgr.get({'id': name})
+        x = w_mgr.get({'id': name})
         async with x:
             assert False
     except BadAccess:
         print('\n\n== 5 == Wallet does not open for bad access credentials')
 
-    ww = await w_mgr.get({'id': name, 'auto_remove': True}, access)
+    ww = w_mgr.get({'id': name, 'auto_remove': True}, access)
     async with ww:
         assert ww.did == w_did
         assert ww.verkey == w_verkey
@@ -169,7 +169,7 @@ async def test_wallet(path_home):
     print('\n\n== 7 == Re-use extant wallet on good access creds OK, wrong access creds fails as expected')
 
     # Auto-create, no auto-remove
-    w = await w_mgr.get({'id': name, 'auto_create': True}, access=access)
+    w = w_mgr.get({'id': name, 'auto_create': True}, access=access)
     assert not path.exists(), 'Wallet path {} present'.format(path)
 
     await w.open()
@@ -186,7 +186,7 @@ async def test_wallet(path_home):
     print('\n\n== 9 == Wallet manager removes wallet OK')
 
     # Auto-create, auto-remove
-    w = await w_mgr.get({'id': name, 'auto_create': True, 'auto_remove': True}, access=access)
+    w = w_mgr.get({'id': name, 'auto_create': True, 'auto_remove': True}, access=access)
     assert not path.exists(), 'Wallet path {} present'.format(path)
 
     async with w:
@@ -1215,7 +1215,7 @@ async def test_export_import(path_home):
     assert path_import.exists()
     print('\n\n== 3 == Imported wallet from path {}'.format(path_export))
 
-    async with await w_mgr.get({'id': w_name}) as w:
+    async with w_mgr.get({'id': w_name}) as w:
         loc = await w.get_local_did(loc_did)
         print('\n\n== 4.1 == Local DID imported OK: {}'.format(loc))
         import_label = await w.get_link_secret_label()
@@ -1264,7 +1264,7 @@ async def test_export_import(path_home):
     assert path_import.exists()
     print('\n\n== 8 == Imported wallet from path {}'.format(path_export))
 
-    async with await w_mgr.get({'id': w_name, 'auto_remove': True}, access) as w:
+    async with w_mgr.get({'id': w_name, 'auto_remove': True}, access) as w:
         loc = await w.get_local_did(loc_did)
         print('\n\n== 9.1 == Local DID imported OK: {}'.format(loc))
         import_label = await w.get_link_secret_label()

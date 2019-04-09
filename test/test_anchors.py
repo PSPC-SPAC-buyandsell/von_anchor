@@ -165,9 +165,9 @@ async def get_wallets(wallet_data, open_all, auto_remove=False):
                 assert w.did
                 assert w.verkey
             except ExtantWallet:
-                w = await w_mgr.get({'id': name, 'auto_remove': auto_remove})
+                w = w_mgr.get({'id': name, 'auto_remove': auto_remove})
         else:
-            w = await w_mgr.get({'id': name, 'auto_remove': auto_remove})
+            w = w_mgr.get({'id': name, 'auto_remove': auto_remove})
         if open_all:
             await w.open()
             assert w.did
@@ -231,7 +231,7 @@ async def test_anchors_api(
     p = p_mgr.get(pool_name)
 
     try:  # exercise non-creation on nonexistent wallet
-        SRIAnchor(await w_mgr.get({'id': 'xxx', 'auto_remove': True}), p, rrbx=False)
+        SRIAnchor(w_mgr.get({'id': 'xxx', 'auto_remove': True}), p, rrbx=False)
     except AbsentWallet:
         pass
 
@@ -255,7 +255,7 @@ async def test_anchors_api(
     wallets.pop('x-anchor')
 
     async with p: # exercise get-own-did with wallet in all states
-        xwallet = await w_mgr.get({'id': 'xxx', 'auto_remove': True})
+        xwallet = w_mgr.get({'id': 'xxx', 'auto_remove': True})
         await xwallet.remove()  # could still be there from prior abend; silently fails if not present
         xan = NominalAnchor(xwallet, p)
         try:
@@ -2324,7 +2324,7 @@ async def test_anchor_reseed(
             rsan.verkey))
 
     # Re-open and check auto-remove setting survival on reset
-    w_rsob = await w_mgr.get({'id': 'reseed-org-book', 'auto_remove': True})
+    w_rsob = w_mgr.get({'id': 'reseed-org-book', 'auto_remove': True})
     await w_rsob.open()  # avoid context manager open for wallet, since resetting closes it and switches it
     async with NodePool(pool_name) as p, OrgBookAnchor(w_rsob, p) as rsan:
         assert p.handle

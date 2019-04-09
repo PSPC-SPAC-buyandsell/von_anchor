@@ -174,7 +174,7 @@ class WalletManager:
         assert {'name', 'id'} & {k for k in config}
         wallet_name = config.get('name', config.get('id'))
         if replace:
-            von_wallet = await self.get(config, access)
+            von_wallet = self.get(config, access)
             if not await von_wallet.remove():
                 LOGGER.debug('WalletManager.create <!< Failed to remove wallet %s for replacement', wallet_name)
                 raise ExtantWallet('Failed to remove wallet {} for replacement'.format(wallet_name))
@@ -186,7 +186,7 @@ class WalletManager:
         LOGGER.debug('WalletManager.create <<< %s', rv)
         return rv
 
-    async def get(self, config: dict, access: str = None) -> Wallet:
+    def get(self, config: dict, access: str = None) -> Wallet:
         """
         Instantiate and return VON anchor wallet object on given configuration, respecting wallet manager
         default configuration values.
