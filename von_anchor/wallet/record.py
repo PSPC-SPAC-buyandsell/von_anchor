@@ -91,6 +91,16 @@ class StorageRecord:
 
         return self._id
 
+    @id.setter
+    def id(self, val: str) -> None:
+        """
+        Accessor for record identifier.
+
+        :param val: identifier value
+        """
+
+        self._id = val
+
     @property
     def value(self) -> str:
         """
@@ -102,14 +112,14 @@ class StorageRecord:
         return self._value
 
     @value.setter
-    def value(self, value: str) -> None:
+    def value(self, val: str) -> None:
         """
         Accessor for record value.
 
-        :param value: record value
+        :param val: record value
         """
 
-        self._value = value
+        self._value = val
 
     @property
     def tags(self) -> dict:
@@ -122,18 +132,18 @@ class StorageRecord:
         return self._tags or None  # store trivial tags as empty (for iteration), return as None
 
     @tags.setter
-    def tags(self, value: str) -> None:
+    def tags(self, val: str) -> None:
         """
         Accessor for record tags (metadata).
 
-        :param value: record tags
+        :param val: record tags
         """
 
-        if not StorageRecord.ok_tags(value):
-            LOGGER.debug('StorageRecord.__init__ <!< Tags %s must map strings to strings', value)
-            raise BadRecord('Tags {} must map strings to strings'.format(value))
+        if not StorageRecord.ok_tags(val):
+            LOGGER.debug('StorageRecord.__init__ <!< Tags %s must map strings to strings', val)
+            raise BadRecord('Tags {} must map strings to strings'.format(val))
 
-        self._tags = value or {}
+        self._tags = val or {}
 
     @property
     def clear_tags(self) -> dict:

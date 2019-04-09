@@ -162,7 +162,7 @@ class DIDInfo {
     +metadata
 }
 
-class NonSecret {
+class StorageRecord {
     {static} +ok_tags()
     +type
     +id
@@ -422,7 +422,7 @@ WalletManager .left.> Wallet
 Wallet --> KeyInfo
 Wallet --> DIDInfo
 Wallet --> PairwiseInfo
-Wallet --> NonSecret
+Wallet --> StorageRecord
 
 BaseAnchor --> EndpointInfo
 
