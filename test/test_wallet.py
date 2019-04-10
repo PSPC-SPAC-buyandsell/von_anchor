@@ -235,13 +235,13 @@ async def test_local_dids():
     async with wallets['multipass'] as w:
         did_info = await w.create_local_did(None, '55GkHamhTU1ZbTbV2ab9DE')
         print('\n\n== 1 == Created local known DID: {}'.format(did_info))
-        assert did_info.did and did_info.verkey and len(did_info.metadata) == 1  # 'since'
+        assert did_info.did and did_info.verkey and len(did_info.metadata) == 2  # 'since', 'modified'
         assert did_info == await w.get_local_did(did_info.did)
         assert did_info == await w.get_local_did(did_info.verkey)
 
         did_info = await w.create_local_did()
         print('\n\n== 2 == Created random local DID: {}'.format(did_info))
-        assert did_info.did and did_info.verkey and len(did_info.metadata) == 1
+        assert did_info.did and did_info.verkey and len(did_info.metadata) == 2  # 'since', 'modified'
         assert did_info == await w.get_local_did(did_info.did)
         assert did_info == await w.get_local_did(did_info.verkey)
 
@@ -253,13 +253,20 @@ async def test_local_dids():
 
         did_info = await w.create_local_did(metadata={'hello': 'world'})
         print('\n\n== 4 == Created random local DID with metadata: {}'.format(did_info))
-        assert did_info.did and did_info.verkey and len(did_info.metadata) == 2
+        assert did_info.did and did_info.verkey and len(did_info.metadata) == 3
         assert did_info == await w.get_local_did(did_info.did)
         assert did_info == await w.get_local_did(did_info.verkey)
 
         did_info = await w.create_local_did('Agent-13-00000000000000000000000', metadata={'hello': 'world'})
         print('\n\n== 5 == Created local DID on seed with metadata: {}'.format(did_info))
-        assert did_info.did and did_info.verkey and len(did_info.metadata) == 2
+        assert did_info.did and did_info.verkey and len(did_info.metadata) == 3
+        assert did_info == await w.get_local_did(did_info.did)
+        assert did_info == await w.get_local_did(did_info.verkey)
+
+        did_info = await w.replace_local_did_metadata(did_info.did, metadata={'no': 'sale'})
+        print('\n\n== 6 == Replaced local DID {} metadata'.format(did_info.did))
+        assert did_info.did and did_info.verkey and len(did_info.metadata) == 3
+        assert did_info.metadata['no'] == 'sale'
         assert did_info == await w.get_local_did(did_info.did)
         assert did_info == await w.get_local_did(did_info.verkey)
 
@@ -302,8 +309,10 @@ async def test_signing_key():
 
         metadata={'allo': 'tout le monde', 'hola': 'todos'}
         await w.replace_signing_key_metadata(key_info.verkey, metadata=metadata)
-        print('\n\n== 5 == Replaced signing key {} metadata with: {}'.format(key_info.verkey, metadata))
-        assert key_info != await w.get_signing_key(key_info.verkey)
+        repl = await w.get_signing_key(key_info.verkey)
+        print('\n\n== 5 == Replaced signing key {} metadata with: {}'.format(key_info.verkey, repl.metadata))
+        assert key_info != repl
+        assert repl.metadata == metadata
 
         try:
             x_key = key_info.verkey.replace(key_info.verkey[0], chr(ord(key_info.verkey[0]) + 1))  # surely absent
@@ -1205,7 +1214,7 @@ async def test_export_import(path_home):
     # Open wallet and operate, default access
     async with wallets[w_name] as w:
         did_info = await w.create_local_did(None, loc_did)
-        assert did_info.did and did_info.verkey and len(did_info.metadata) == 1  # 'since'
+        assert did_info.did and did_info.verkey and len(did_info.metadata) == 2  # 'since', 'modified'
         assert did_info == await w.get_local_did(did_info.did)
         assert did_info == await w.get_local_did(did_info.verkey)
 
@@ -1247,7 +1256,7 @@ async def test_export_import(path_home):
 
     async with w:
         did_info = await w.create_local_did(None, loc_did)
-        assert did_info.did and did_info.verkey and len(did_info.metadata) == 1  # 'since'
+        assert did_info.did and did_info.verkey and len(did_info.metadata) == 2  # 'since', 'modified'
         assert did_info == await w.get_local_did(did_info.did)
         assert did_info == await w.get_local_did(did_info.verkey)
 

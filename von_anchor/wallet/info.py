@@ -22,8 +22,70 @@ from von_anchor.error import BadRecord
 from von_anchor.wallet.record import StorageRecord
 
 
-KeyInfo = namedtuple('KeyInfo', 'verkey metadata')
+class KeyInfo:
+    """
+    Bundle for verification key and metadata.
+    """
 
+    def __init__(self, verkey: str, metadata: dict = None) -> None:
+        """
+        Initialize verification key, metadata.
+
+        :param verkey: verification key to store
+        :param metadata: metadata associated with current DID
+        """
+
+        self._verkey = verkey
+        self._metadata = metadata or {}  # store trivial metadata as empty (for iteration), return as None
+
+    @property
+    def verkey(self) -> str:
+        """
+        Accessor for verification key
+
+        :return: verification key
+        """
+
+        return self._verkey
+
+    @property
+    def metadata(self) -> dict:
+        """
+        Accessor for metadata
+
+        :return: metadata
+        """
+
+        return self._metadata or None  # store trivial metadata as empty (for iteration), return as None
+
+    @metadata.setter
+    def metadata(self, value: dict) -> None:
+        """
+        Accessor for metadata
+
+        :param value: metadata dict
+        """
+
+        self._metadata = value or {}  # store trivial metadata as empty (for iteration), return as None
+
+    def __eq__(self, other: 'KeyInfo') -> bool:
+        """
+        Equivalence operator. Two KeyInfos are equivalent when their attributes are.
+
+        :param other: KeyInfo to test for equivalence
+        :return: whether KeyInfos are equivalent
+        """
+
+        return self.verkey == other.verkey and self.metadata == other.metadata
+
+    def __repr__(self) -> str:
+        """
+        Return representation.
+
+        :return: string representation evaluating to construction call
+        """
+
+        return 'KeyInfo({}, {})'.format(self.verkey, self.metadata)
 
 class DIDInfo:
     """
@@ -41,7 +103,7 @@ class DIDInfo:
 
         self._did = did
         self._verkey = verkey
-        self._metadata = metadata
+        self._metadata = metadata or {}  # store trivial metadata as empty (for iteration), return as None
 
     @property
     def did(self) -> str:
@@ -71,7 +133,7 @@ class DIDInfo:
         :return: metadata
         """
 
-        return self._metadata
+        return self._metadata or None  # store trivial metadata as empty (for iteration), return as None
 
     @metadata.setter
     def metadata(self, value: dict) -> None:
@@ -81,7 +143,7 @@ class DIDInfo:
         :param value: metadata dict
         """
 
-        self._metadata = value
+        self._metadata = value or {}  # store trivial metadata as empty (for iteration), return as None
 
     def __eq__(self, other: 'DIDInfo') -> bool:
         """

@@ -291,14 +291,15 @@ class Wallet:
         LOGGER.debug('Wallet.get_signing_key <<< %s', rv)
         return rv
 
-    async def replace_signing_key_metadata(self, verkey: str, metadata: dict) -> None:
+    async def replace_signing_key_metadata(self, verkey: str, metadata: dict) -> KeyInfo:
         """
         Replace the metadata associated with a signing key pair.
 
         Raise WalletState if wallet is closed, AbsentRecord for no such key pair.
 
-        :param: verification key of key pair
-        :metadata: new metadata to store
+        :param verkey: verification key of key pair
+        :param metadata: new metadata to store
+        :return: resulting KeyInfo for key pair
         """
 
         LOGGER.debug('Wallet.replace_signing_key_metadata >>> verkey: %s, metadata: %s', verkey, metadata)
@@ -308,7 +309,7 @@ class Wallet:
             raise WalletState('Wallet {} is closed'.format(self.name))
 
         try:
-            metadata = await crypto.get_key_metadata(self.handle, verkey)
+            await crypto.get_key_metadata(self.handle, verkey)
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.WalletItemNotFound:
                 LOGGER.debug(
@@ -319,10 +320,11 @@ class Wallet:
             LOGGER.debug('Wallet.replace_signing_key_metadata <!< indy-sdk raised error %s', x_indy.error_code)
             raise
 
-        await self.get_signing_key(verkey)  # raises if no such verification key
         await crypto.set_key_metadata(self.handle, verkey, json.dumps(metadata or {}))
 
-        LOGGER.debug('Wallet.replace_signing_key_metadata <<<')
+        rv = await self.get_signing_key(verkey)
+        LOGGER.debug('Wallet.replace_signing_key_metadata <<< %s', rv)
+        return rv
 
     async def create_local_did(self, seed: str = None, loc_did: str = None, metadata: dict = None) -> DIDInfo:
         """
@@ -330,7 +332,8 @@ class Wallet:
 
         :param seed: seed from which to create (default random)
         :param loc_did: local DID value (default None to let indy-sdk generate)
-        :param metadata: metadata to associate with the local DID (operation always sets 'since' epoch timestamp)
+        :param metadata: metadata to associate with the local DID
+            (operation always sets 'since', 'modified' epoch timestamps)
         :return: DIDInfo for new local DID
         """
 
@@ -355,7 +358,8 @@ class Wallet:
             LOGGER.debug('Wallet.create_local_did <!< indy-sdk raised error %s', x_indy.error_code)
             raise
 
-        loc_did_metadata = {**(metadata or {}), 'since': int(time())}
+        now = int(time())
+        loc_did_metadata = {**(metadata or {}), 'since': int(time()), 'modified': int(time())}
         await did.set_did_metadata(self.handle, created_did, json.dumps(loc_did_metadata))
 
         rv = DIDInfo(created_did, verkey, loc_did_metadata)
@@ -363,26 +367,31 @@ class Wallet:
         LOGGER.debug('Wallet.create_local_did <<< %s', rv)
         return rv
 
-    async def replace_local_did_metadata(self, loc_did: str, metadata: dict) -> None:
+    async def replace_local_did_metadata(self, loc_did: str, metadata: dict) -> DIDInfo:
         """
         Replace the metadata associated with a local DID.
 
         Raise WalletState if wallet is closed, AbsentRecord for no such local DID.
 
-        :param: local DID of interest
-        :metadata: new metadata to store
+        :param loc_did: local DID of interest
+        :param metadata: new metadata to store
+        :return: DIDInfo for local DID after write
         """
 
         LOGGER.debug('Wallet.replace_local_did_metadata >>> loc_did: %s, metadata: %s', loc_did, metadata)
 
-        self.get_local_did(loc_did)  # raises exceptions if applicable
+        old = await self.get_local_did(loc_did)  # raises exceptions if applicable
+        now = int(time())
+        loc_did_metadata = {**(metadata or {}), 'since': (old.metadata or {}).get('since', now), 'modified': now}
         try:
-            did.set_did_metadata(self.handle, loc_did, json.dumps(metadata or {}))
+            await did.set_did_metadata(self.handle, loc_did, json.dumps(loc_did_metadata))
         except IndyError as x_indy:
             LOGGER.debug('Wallet.replace_local_did_metadata <!< indy-sdk raised error %s', x_indy.error_code)
             raise
 
-        LOGGER.debug('Wallet.replace_local_did_metadata <<<')
+        rv = await self.get_local_did(loc_did)
+        LOGGER.debug('Wallet.replace_local_did_metadata <<< {}'.format(rv))
+        return rv
 
     async def get_local_dids(self) -> Sequence[DIDInfo]:
         """
@@ -1275,13 +1284,8 @@ class Wallet:
 
         await did.replace_keys_apply(self.handle, self.did)
         self.verkey = await did.key_for_local_did(self.handle, self.did)
-        rv = DIDInfo(
-            self.did,
-            self.verkey,
-            {
-                'anchor': True,
-                'since': int(time())
-            })
+        now = int(time())
+        rv = DIDInfo(self.did, self.verkey, {'anchor': True, 'since': now, 'modified': now})
         await did.set_did_metadata(self.handle, self.did, json.dumps(rv.metadata))
 
         LOGGER.info('Wallet %s set seed hash metadata for DID %s', self.name, self.did)
