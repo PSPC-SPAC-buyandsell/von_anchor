@@ -18,7 +18,8 @@ limitations under the License.
 import json
 import pytest
 
-from von_anchor.a2a.diddoc import DIDDoc
+from von_anchor.a2a import DIDDoc, PublicKey, PublicKeyType, Service
+from von_anchor.a2a.docutil import canon_ref
 from von_anchor.error import AbsentDIDDocItem
 from von_anchor.frill import Ink, ppjson
 
@@ -295,6 +296,31 @@ async def test_a2a():
     print('\n\n== 6 == DID Doc on mixed service routing and recipient keys: {}'.format(
         ppjson(dd_out)))
 
+    pk = PublicKey(
+        dd.did,
+        '99',
+        '~AAAAAAAAAAAAAAAA',
+        PublicKeyType.ED25519_SIG_2018,
+        dd.did,
+        True)
+    dd.set(pk)
+    assert len(dd.pubkey) == 2 + len(dd_in['publicKey'])
+    assert canon_ref(dd.did, '99', '#') in dd.pubkey
+    assert len(dd.authnkey) == 1
+
+    service = Service(
+        dd.did,
+        'abc',
+        'IndyAgent',
+        [pk],
+        [pk],
+        'http://www.abc.ca/123'
+    )
+    dd.set(service)
+    assert len(dd.service) == 4
+    assert canon_ref(dd.did, 'abc', ';') in dd.service
+    print('\n\n== 7 == DID Doc adds public key and service via set() OK')
+
     # Exercise missing service recipient key
     dd_in = {
         '@context': 'https://w3id.org/did/v1',
@@ -325,4 +351,4 @@ async def test_a2a():
         assert False
     except AbsentDIDDocItem:
         pass
-    print('\n\n== 7 == DID Doc on underspecified service key fails as expected')
+    print('\n\n== 8 == DID Doc on underspecified service key fails as expected')

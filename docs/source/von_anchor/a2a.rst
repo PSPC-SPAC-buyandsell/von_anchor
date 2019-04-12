@@ -17,7 +17,7 @@ The ``DIDDoc.CONTEXT`` class constant contains the context link for JSON-LD outp
 
 The initializer takes only the DID that is the subject for the DID document. Note that in the context of the DID document, this is an ``id``.
 
-The caller must use the accessor methods to populate (public) verification keys and endpoints.
+The caller must use the accessor methods or ``set()`` to populate (verification) public keys and services.
 
 The ``serialize()`` and ``to_json()`` methods output the DID document in its current state as a dict or as JSON-LD respectively. The class ``deserialize()`` and ``from_json()`` methods return a ``DIDDoc`` object from an input dict or JSON-LD DID document respectively.
 
@@ -61,6 +61,8 @@ Each such service requires:
 * the DID of the DID document embedding the service
 * an identifier
 * a service type
+* recipient public keys
+* routing public keys
 * a service endpoint.
 
 The implementation stores the DID document subject DID in raw base58 sovrin format, geared toward

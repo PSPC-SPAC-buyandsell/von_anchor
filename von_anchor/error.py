@@ -67,6 +67,7 @@ class ErrorCode(IntEnum):
 
     # Errors in DID Doc processing
     AbsentDIDDocItem = 6000
+    BadDIDDocItem = 6001
 
     # JSON validation
     JSONValidation = 9000
@@ -514,7 +515,7 @@ class BadRecord(VonAnchorError):
 
 class BadAccess(VonAnchorError):
     """
-    Wallet access key value is incorrect.
+    Wallet access credentials value is incorrect.
     """
 
     def __init__(self, message: str):
@@ -604,7 +605,7 @@ class CacheIndex(VonAnchorError):
 
 class AbsentDIDDocItem(VonAnchorError):
     """
-    Absent identifier in DID document.
+    Absent item in DID document.
     """
 
     def __init__(self, message: str):
@@ -615,6 +616,21 @@ class AbsentDIDDocItem(VonAnchorError):
         """
 
         super().__init__(ErrorCode.AbsentDIDDocItem, message)
+
+
+class BadDIDDocItem(VonAnchorError):
+    """
+    Bad item in DID document processing.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.BadDIDDocItem, message)
 
 
 class JSONValidation(VonAnchorError):

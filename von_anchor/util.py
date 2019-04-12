@@ -580,7 +580,7 @@ def creds_display(creds: Union[dict, Sequence[dict]], filt: dict = None, filt_df
             ...
         }
 
-    :param: filt_dflt_incl: whether to include (True) all attributes for schema that filter does not identify
+    :param filt_dflt_incl: whether to include (True) all attributes for schema that filter does not identify
         or to exclude (False) all such attributes
     :return: human-legible dict mapping credential identifiers to human-readable credential briefs
         (not proper indy-sdk creds structures) for creds matching input filter
@@ -911,7 +911,7 @@ def revealed_attrs(proof: dict) -> dict:
     Fetch revealed attributes from input proof and return dict mapping credential definition identifiers
     to dicts, each dict mapping attribute names to (raw) values, for processing in further creds downstream.
 
-    :param: indy-sdk proof as dict
+    :param proof: indy-sdk proof as dict
     :return: dict mapping cred-ids to dicts, each mapping revealed attribute names to (raw) values
     """
 

@@ -23,7 +23,7 @@ from typing import List, Sequence, Union
 from von_anchor.a2a.docutil import canon_did, canon_ref, resource
 from von_anchor.a2a.publickey import PublicKey, PublicKeyType
 from von_anchor.a2a.service import Service
-from von_anchor.error import AbsentDIDDocItem
+from von_anchor.error import AbsentDIDDocItem, BadDIDDocItem
 from von_anchor.util import ok_did
 
 
@@ -92,6 +92,23 @@ class DIDDoc:
         """
 
         return self._service
+
+    def set(self, item: Union[Service, PublicKey]) -> 'DIDDoc':
+        """
+        Add or replace service or public key; return current DIDDoc.
+
+        Raise BadDIDDocItem if input item is neither service nor public key.
+
+        :param item: service or public key to set
+        :return: current DIDDoc
+        """
+
+        if isinstance(item, Service):
+            self.service[item.id] = item
+        elif isinstance(item, PublicKey):
+            self.pubkey[item.id] = item
+        else:
+            raise BadDIDDocItem('Cannot add item {} to DIDDoc on DID {}'.format(item, self.did))
 
     def serialize(self) -> str:
         """

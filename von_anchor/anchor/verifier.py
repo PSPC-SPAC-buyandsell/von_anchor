@@ -28,8 +28,14 @@ from indy.error import IndyError
 from von_anchor.anchor.base import BaseAnchor
 from von_anchor.cache import ArchivableCaches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.canon import canon
-from von_anchor.error import AbsentPool, AbsentRevReg, AbsentSchema, BadIdentifier, BadRevStateTime, ClosedPool
-from von_anchor.indytween import Predicate, Role
+from von_anchor.error import (
+    AbsentPool,
+    AbsentRevReg,
+    AbsentSchema,
+    BadIdentifier,
+    BadRevStateTime,
+    ClosedPool)
+from von_anchor.indytween import encode, Predicate, Role
 from von_anchor.nodepool import NodePool
 from von_anchor.util import cred_def_id2seq_no, ok_cred_def_id, ok_rev_reg_id, ok_schema_id
 from von_anchor.validcfg import validate_config
@@ -404,6 +410,52 @@ class Verifier(BaseAnchor):
 
         LOGGER.debug('Verifier.close <<<')
 
+    @staticmethod
+    def check_encoding(proof_req: dict, proof: dict) -> bool:
+        """
+        Return whether the proof's raw values correspond to their encodings
+        as cross-referenced against proof request.
+
+        :param proof request: proof request
+        :param proof: corresponding proof to check
+        :return: True if OK, False for encoding mismatch
+        """
+
+        LOGGER.debug('Verifier.check_encoding <<< proof_req: %s, proof: %s', proof_req, proof)
+
+        cd_id2proof_id = {}  # invert proof['identifiers'] per cd_id
+        p_preds = {}  # cd_id and attr to bound
+        for idx in range(len(proof['identifiers'])):
+            cd_id = proof['identifiers'][idx]['cred_def_id']
+            cd_id2proof_id[cd_id] = idx  # since at most 1 cred per cred def
+            p_preds[cd_id] = {
+                ge_proof['predicate']['attr_name']: ge_proof['predicate']['value']
+                for ge_proof in proof['proof']['proofs'][idx]['primary_proof']['ge_proofs']
+            }
+
+        for (uuid, req_attr) in proof_req['requested_attributes'].items():  # proof req xref proof per revealed attr
+            canon_attr = canon(req_attr['name'])
+            proof_ident_idx = cd_id2proof_id[req_attr['restrictions'][0]['cred_def_id']]
+            enco = proof['proof']['proofs'][proof_ident_idx]['primary_proof']['eq_proof']['revealed_attrs'].get(
+                canon_attr)
+            if not enco:
+                continue  # requested but declined from revelation in proof: must appear in a predicate
+            if enco != proof['requested_proof']['revealed_attrs'][uuid]['encoded']:
+                LOGGER.debug('Verifier.check_proof_encoding <<< False')
+                return False
+            if enco != encode(proof['requested_proof']['revealed_attrs'][uuid]['raw']):
+                LOGGER.debug('Verifier.check_proof_encoding <<< False')
+                return False
+
+        for (uuid, req_pred) in proof_req['requested_predicates'].items():  # proof req xref proof per pred
+            canon_attr = canon(req_pred['name'])
+            if p_preds[req_pred['restrictions'][0]['cred_def_id']].get(canon_attr) != req_pred['p_value']:
+                LOGGER.debug('Verifier.check_proof_encoding <<< False')
+                return False
+
+        LOGGER.debug('Verifier.check_proof_encoding <<< True')
+        return True
+
     async def verify_proof(self, proof_req: dict, proof: dict) -> str:
         """
         Verify proof as Verifier. Raise AbsentRevReg if a proof cites a revocation registry
@@ -416,19 +468,18 @@ class Verifier(BaseAnchor):
 
         LOGGER.debug('Verifier.verify_proof >>> proof_req: %s, proof: %s', proof_req, proof)
 
-        s_id2schema = {}
-        cd_id2cred_def = {}
-        rr_id2rr_def = {}
-        rr_id2rr = {}
-        proof_ids = proof['identifiers']
+        if not Verifier.check_encoding(proof_req, proof):
+            LOGGER.info(
+                'Proof encoding does not cross-reference with proof request %s: failing verification',
+                proof_req.get('nonce', '(missing nonce)'))
+            LOGGER.debug('Verifier.verify_proof <<< "False"')
+            return json.dumps(False)
 
-        for proof_id in proof_ids:
-            # schema
-            s_id = proof_id['schema_id']
+        async def _set_schema(s_id: str) -> None:
+            nonlocal s_id2schema
             if not ok_schema_id(s_id):
                 LOGGER.debug('Verifier.verify_proof <!< Bad schema id %s', s_id)
                 raise BadIdentifier('Bad schema id {}'.format(s_id))
-
             if s_id not in s_id2schema:
                 schema = json.loads(await self.get_schema(s_id))  # add to cache en passant
                 if not schema:
@@ -438,35 +489,49 @@ class Verifier(BaseAnchor):
                     raise AbsentSchema('Absent schema {}, proof req may be for another ledger'.format(s_id))
                 s_id2schema[s_id] = schema
 
-            # cred def
-            cd_id = proof_id['cred_def_id']
+        async def _set_cred_def(cd_id: str) -> None:
+            nonlocal cd_id2cred_def
             if not ok_cred_def_id(cd_id):
                 LOGGER.debug('Verifier.verify_proof <!< Bad cred def id %s', cd_id)
                 raise BadIdentifier('Bad cred def id {}'.format(cd_id))
-
             if cd_id not in cd_id2cred_def:
-                cred_def = json.loads(await self.get_cred_def(cd_id))  # add to cache en passant
-                cd_id2cred_def[cd_id] = cred_def
+                cd_id2cred_def[cd_id] = json.loads(await self.get_cred_def(cd_id))  # add to cache en passant
 
-            # rev reg def
-            rr_id = proof_id['rev_reg_id']
+        async def _set_rev_reg_def(rr_id: str) -> bool:
+            """
+            Return true to continue to timestamp setting, false to short-circuit
+            """
+            nonlocal rr_id2rr_def
             if not rr_id:
-                continue
+                return False
             if not ok_rev_reg_id(rr_id):
                 LOGGER.debug('Verifier.verify_proof <!< Bad rev reg id %s', rr_id)
                 raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
+            if rr_id not in rr_id2rr_def:
+                rr_id2rr_def[rr_id] = json.loads(await self.get_rev_reg_def(rr_id))
+            return True
 
-            rr_def_json = await self.get_rev_reg_def(rr_id)
-            rr_id2rr_def[rr_id] = json.loads(rr_def_json)
-
-            # timestamp
-            timestamp = proof_id['timestamp']
+        async def _set_timestamp(rr_id: str, timestamp: int) -> None:
+            nonlocal rr_id2rr
             with REVO_CACHE.lock:
                 revo_cache_entry = REVO_CACHE.get(rr_id, None)
                 (rr_json, _) = await revo_cache_entry.get_state_json(self._build_rr_state_json, timestamp, timestamp)
                 if rr_id not in rr_id2rr:
                     rr_id2rr[rr_id] = {}
                 rr_id2rr[rr_id][timestamp] = json.loads(rr_json)
+
+        s_id2schema = {}
+        cd_id2cred_def = {}
+        rr_id2rr_def = {}
+        rr_id2rr = {}
+        proof_ids = proof['identifiers']
+
+        for proof_id in proof_ids:
+            await _set_schema(proof_id['schema_id'])
+            await _set_cred_def(proof_id['cred_def_id'])
+            rr_id = proof_id['rev_reg_id']
+            if await _set_rev_reg_def(rr_id):
+                await _set_timestamp(rr_id, proof_id['timestamp'])
 
         rv = json.dumps(await anoncreds.verifier_verify_proof(
             json.dumps(proof_req),

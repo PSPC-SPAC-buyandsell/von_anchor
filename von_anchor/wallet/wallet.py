@@ -359,7 +359,7 @@ class Wallet:
             raise
 
         now = int(time())
-        loc_did_metadata = {**(metadata or {}), 'since': int(time()), 'modified': int(time())}
+        loc_did_metadata = {**(metadata or {}), 'since': now, 'modified': now}
         await did.set_did_metadata(self.handle, created_did, json.dumps(loc_did_metadata))
 
         rv = DIDInfo(created_did, verkey, loc_did_metadata)
@@ -390,7 +390,7 @@ class Wallet:
             raise
 
         rv = await self.get_local_did(loc_did)
-        LOGGER.debug('Wallet.replace_local_did_metadata <<< {}'.format(rv))
+        LOGGER.debug('Wallet.replace_local_did_metadata <<< %s', rv)
         return rv
 
     async def get_local_dids(self) -> Sequence[DIDInfo]:
@@ -806,7 +806,7 @@ class Wallet:
                 replace_meta)
         except BadRecord:
             LOGGER.debug(
-                'Wallet.write_pairwise <!< Pairwise metadata {} does not coerce into flat {str:str} tags dict',
+                'Wallet.write_pairwise <!< Pairwise metadata %s does not coerce into flat {str:str} tags dict',
                 pairwise.metadata)
             raise
 

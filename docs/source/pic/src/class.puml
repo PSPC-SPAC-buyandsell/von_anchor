@@ -390,11 +390,13 @@ class Service {
 
 class DIDDoc {
     +did
-    +verkeys
-    +authnkeys
-    +services
+    +pubkey
+    +authnkey
+    +service
+    +set()
     +to_json()
     +serialize()
+    +add_service_pubkeys()
     {static} +from_json()
     {static} +deserialize()
 }

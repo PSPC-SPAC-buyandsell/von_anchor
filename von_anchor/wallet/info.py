@@ -15,8 +15,6 @@ limitations under the License.
 """
 
 
-from collections import namedtuple
-
 from von_anchor.canon import raw, canon_pairwise_tag
 from von_anchor.error import BadRecord
 from von_anchor.wallet.record import StorageRecord
