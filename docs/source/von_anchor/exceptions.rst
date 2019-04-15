@@ -37,6 +37,7 @@ This section outlines the Exception descendants that the von_anchor package defi
     "AbsentMessage", "3008", "Message is empty", "Anchor attempts to encrypt empty message"
     "BadRecord", "3009", "Record as specified is not valid for wallet storage", "Non-secrets tags do not comply with indy specification"
     "BadAccess", "3010", "Wallet access credentials value is incorrect", "Anchor attempts to open a wallet with incorrect access credentials value"
+    "BadSearch", "3011", "Non-secret storage record search cannot proceed", "Anchor attempts to fetch the next batch of results from a search that is closed"
     "ClosedPool", "4000", "Pool is closed but operation needs it open", "Anchor attempts to call a node pool for ledger data, but the pool is not open"
     "AbsentPool", "4002", "Operation requires node pool, but none specified", "Anchor attempts ledger transaction but has no node pool"
     "ExtantPool", "4003", "Pool already exists", "Actuator attempts to create configuration for pool that already exists"

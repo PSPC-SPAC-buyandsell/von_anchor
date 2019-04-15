@@ -172,6 +172,18 @@ class StorageRecord {
     +encr_tags
 }
 
+class StorageRecordSearch {
+    {static} +OPTIONS_JSON
+    -_wallet
+    -_type
+    -_query_json
+    -_handle
+    +opened
+    +open()
+    +fetch()
+    +close()
+}
+
 class PairwiseInfo {
     +their_did
     +their_verkey
@@ -425,6 +437,8 @@ Wallet --> KeyInfo
 Wallet --> DIDInfo
 Wallet --> PairwiseInfo
 Wallet --> StorageRecord
+
+StorageRecordSearch *-- Wallet
 
 BaseAnchor --> EndpointInfo
 

@@ -56,6 +56,7 @@ class ErrorCode(IntEnum):
     AbsentMessage = 3008
     BadRecord = 3009
     BadAccess = 3010
+    BadSearch = 3011
 
     # Errors to do with node pool management and operation
     ClosedPool = 4000
@@ -526,6 +527,21 @@ class BadAccess(VonAnchorError):
         """
 
         super().__init__(ErrorCode.BadAccess, message)
+
+
+class BadSearch(VonAnchorError):
+    """
+    Search operation failed.
+    """
+
+    def __init__(self, message: str):
+        """
+        Initialize on message.
+
+        :param message: error message
+        """
+
+        super().__init__(ErrorCode.BadSearch, message)
 
 
 class ClosedPool(VonAnchorError):

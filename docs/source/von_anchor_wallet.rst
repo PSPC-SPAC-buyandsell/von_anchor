@@ -17,34 +17,26 @@ von\_anchor.wallet.wallet
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.wallet.didinfo
+von\_anchor.wallet.info
 -------------------------------
 
-.. automodule:: von_anchor.wallet.didinfo
+.. automodule:: von_anchor.wallet.info
     :members:
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.wallet.endpointinfo
+von\_anchor.wallet.record
 -------------------------------
 
-.. automodule:: von_anchor.wallet.endpointinfo
+.. automodule:: von_anchor.wallet.record
     :members:
     :undoc-members:
     :show-inheritance:
 
-von\_anchor.wallet.nonsecret
+von\_anchor.wallet.search
 -------------------------------
 
-.. automodule:: von_anchor.wallet.nonsecret
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-von\_anchor.wallet.pairwise
--------------------------------
-
-.. automodule:: von_anchor.wallet.pairwise
+.. automodule:: von_anchor.wallet.search
     :members:
     :undoc-members:
     :show-inheritance:

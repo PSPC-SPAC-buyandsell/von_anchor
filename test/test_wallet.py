@@ -29,7 +29,7 @@ from indy.error import ErrorCode
 
 from von_anchor.error import AbsentRecord, BadAccess, BadRecord, ExtantWallet, JSONValidation, WalletState
 from von_anchor.frill import Ink, ppjson
-from von_anchor.wallet import StorageRecord, PairwiseInfo, Wallet, WalletManager
+from von_anchor.wallet import StorageRecord, PairwiseInfo, StorageRecordSearch, Wallet, WalletManager
 
 
 async def get_wallets(wallet_data, open_all, auto_remove=False):
@@ -855,9 +855,9 @@ async def test_pairwise():
 
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
-async def test_non_secrets():
+async def test_non_secret_storage_records():
 
-    print(Ink.YELLOW('\n\n== Testing non-secrets operations =='))
+    print(Ink.YELLOW('\n\n== Testing non-secret storage record operations =='))
 
     wallets = await get_wallets(
         {
@@ -1117,6 +1117,34 @@ async def test_non_secrets():
         await w.create_link_secret('test-another-secret')
         assert await w.get_link_secret_label() == 'test-another-secret'
         print('\n\n== 16 == Link secret writes sync with non-secret label records OK')
+
+        # Storage record search
+        S_TYPE = 'searchable'
+        NUM_RECS = Wallet.DEFAULT_CHUNK * 2 + 24  # two chunks and some extra
+        for i in range(NUM_RECS):
+            await w.write_non_secret(StorageRecord(S_TYPE, str(i), {'~value': str(i)}, str(i)))
+        storec_search = StorageRecordSearch(
+            w,
+            S_TYPE,
+            {
+                '~value': {
+                    '$neq': 0 # exercise canonicalization (to string)
+                }
+            })
+        found = []
+        async with storec_search:
+            while True:
+                chunk = await storec_search.fetch()
+                if not chunk:
+                    break
+                found.extend([int(storec.value) for storec in chunk])
+        assert not storec_search.opened
+        assert sorted(found, key=int) == [i for i in range(NUM_RECS) if i]
+        print('\n\n== 17 == Stored and found non-secret {} storage records via batch-wise search'.format(S_TYPE))
+
+        for i in range(NUM_RECS):
+            await w.delete_non_secret(S_TYPE, str(i))
+        print('\n\n== 18 == Deleted {} records'.format(S_TYPE))
 
 
 @pytest.mark.skipif(False, reason='short-circuiting')

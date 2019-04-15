@@ -132,7 +132,11 @@ Its operation checks input metdata tags and delegates to indy-sdk ``non_secret``
 Fetching
 ...............
 
-The ``get_non_secret()`` method takes a non-secret storage record type, a filter, and a canonicalization function (defaulting to ``canon_non_secret_wql()`` as per :ref:`canon-util`. If the filter is a string, it uses it as an identifier with the record type to perform a straightforward lookup via the indy-sdk ``non_secret`` API. Otherwise, the operation interprets the filter as WQL (default None, which canonicalizes to a query to get all on input record type). The processing uses the input canonicalization function to canonicalize the query, then delegates to indy-sdk to fetch all matching records. Finally the method returns a dict mapping identifiers to corresponding ``StorageRecord`` instances, or an empty dict for no match.
+The ``get_non_secret()`` method takes a non-secret storage record type, a filter, and a canonicalization function (defaulting to ``canon_non_secret_wql()`` as per :ref:`canon-util`.
+
+If the filter is a string, it uses it as an identifier with the record type to perform a straightforward lookup via the indy-sdk ``non_secret`` API.
+
+Otherwise, the operation interprets the filter as WQL (default None, which canonicalizes to a query to get all on input record type). The processing uses the input canonicalization function to canonicalize the query, then delegates to indy-sdk to fetch all matching records. Finally the method returns a dict mapping identifiers to corresponding ``StorageRecord`` instances, or an empty dict for no match. This method fetches all results before returning; note that an actuator can use :ref:`storage-record-search` to perform an interactive batch-wise search, in the expectation of a larger result set.
 
 Deleting
 ...............
@@ -268,6 +272,19 @@ Its initializer takes a type, identifier, value, and a tags dict. Non-secret tag
 The static ``ok_tags()`` method validates the fitness of tags for use with non-secret storage records. The class operation calls this method where possible, but note that a perverse operator can hot-swap invalid tags onto a ``StorageRecord`` object.
 
 The ``type`` and ``id`` properties are read-only once set. The ``value`` and ``tags`` properties are read-write. The ``clear_tags`` and ``encr_tags`` conveniences act as read-only properties to return clear and encrypted tags respectively, as demarcated with a leading tilde (or not).
+
+.. _storage-record-search:
+
+StorageRecordSearch
++++++++++++++++++++++++++++++++++++
+
+The ``von_anchor/wallet/search.py`` source file houses the ``StorageRecordSearch`` class to broker an interactive batch-wise indy-sdk wallet search over non-secret storage records.
+
+Its initializer takes a wallet, a non-secret storage record type marking records to search, and a WQL query to invoke. On storage, the initializer canonicalizes the query, stringifying any numeric content (recall however that WQL operators are lexicographical, not numeric; e.g., WQL '9' > '10').
+
+The class provides an access to return whether the search is open or not, plus context manager and monolithic openers and closers for the search.
+
+Finally, the ``fetch()`` method returns the next batch of results in the search, with an optional limit on their number (default is ``Wallet.DEFAULT_CHUNK``, currently 256).
 
 .. _key-info:
 

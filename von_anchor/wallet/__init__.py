@@ -17,5 +17,6 @@ limitations under the License.
 
 from .info import DIDInfo, EndpointInfo, KeyInfo, PairwiseInfo, pairwise_info2tags, storage_record2pairwise_info
 from .record import StorageRecord
+from .search import StorageRecordSearch
 from .wallet import Wallet
 from .manager import WalletManager

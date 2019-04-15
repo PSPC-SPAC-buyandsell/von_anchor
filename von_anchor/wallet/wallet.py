@@ -49,7 +49,7 @@ class Wallet:
     Class encapsulating indy-sdk wallet.
     """
 
-    DEFAULT_CHUNK = 256  # chunk size in searching credentials
+    DEFAULT_CHUNK = 256  # chunk size in searching credentials, non-secret storage records
 
     def __init__(self, indy_config: dict, von_config: dict) -> None:
         """
@@ -566,7 +566,7 @@ class Wallet:
 
     async def __aenter__(self) -> 'Wallet':
         """
-        Context manager entry. Open (created) wallet as configured, for closure on context manager exit.
+        Context manager entry. Open wallet as configured, for closure on context manager exit.
         For use in monolithic call opening, using, and closing wallet.
 
         Raise any IndyError causing failure to open wallet, or AbsentWallet on attempt to enter wallet
@@ -585,6 +585,7 @@ class Wallet:
         """
         Explicit entry. Open wallet as configured, for later closure via close().
         For use when keeping wallet open across multiple calls.
+
         Raise any IndyError causing failure to open wallet, WalletState if wallet already open,
         or AbsentWallet on attempt to enter wallet not yet created.
 
