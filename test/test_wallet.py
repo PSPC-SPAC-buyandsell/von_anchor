@@ -27,7 +27,7 @@ import pytest
 from indy import IndyError
 from indy.error import ErrorCode
 
-from von_anchor.error import AbsentRecord, BadAccess, BadRecord, ExtantWallet, JSONValidation, WalletState
+from von_anchor.error import AbsentRecord, BadAccess, BadRecord, BadSearch, ExtantWallet, JSONValidation, WalletState
 from von_anchor.frill import Ink, ppjson
 from von_anchor.wallet import StorageRecord, PairwiseInfo, StorageRecordSearch, Wallet, WalletManager
 
@@ -1142,10 +1142,19 @@ async def test_non_secret_storage_records():
         assert sorted(found, key=int) == [i for i in range(NUM_RECS) if i]
         print('\n\n== 17 == Stored and found non-secret {} storage records via batch-wise search'.format(S_TYPE))
 
+        # Exercise double-open exception
+        x_search = StorageRecordSearch(w, S_TYPE, {'~value': -1})
+        async with x_search:
+            try:
+                async with x_search:
+                    assert False
+            except BadSearch:
+                pass
+        print('\n\n== 18 == Refused to double-open search as expected')
+
         for i in range(NUM_RECS):
             await w.delete_non_secret(S_TYPE, str(i))
-        print('\n\n== 18 == Deleted {} records'.format(S_TYPE))
-
+        print('\n\n== 19 == Deleted {} records'.format(S_TYPE))
 
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio

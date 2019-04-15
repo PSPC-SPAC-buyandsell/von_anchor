@@ -62,11 +62,21 @@ class StorageRecordSearch:
         LOGGER.debug('StorageRecordSearch.__init__ <<<')
 
     @property
+    def handle(self) -> int:
+        """
+        Accessor for search handle.
+
+        :return: search handle
+        """
+
+        return self._handle
+
+    @property
     def opened(self) -> bool:
         """
         Accessor for search state.
 
-        :return: whether search is open.
+        :return: whether search is open
         """
 
         return self._handle is not None
@@ -89,11 +99,23 @@ class StorageRecordSearch:
         Begin the search operation.
         """
 
+        LOGGER.debug('StorageRecordSearch.open >>>')
+
+        if self.opened:
+            LOGGER.debug('StorageRecordSearch.open <!< Search is already opened')
+            raise BadSearch('Search is already opened')
+
+        if not self._wallet.opened:
+            LOGGER.debug('StorageRecordSearch.open <!< Wallet %s is closed', self._wallet.name)
+            raise WalletState('Wallet {} is closed'.format(self._wallet.name))
+
         self._handle = await non_secrets.open_wallet_search(
             self._wallet.handle,
             self._type,
             self._query_json,
             StorageRecordSearch.OPTIONS_JSON)
+
+        LOGGER.debug('StorageRecordSearch.open <<<')
 
     async def fetch(self, limit: int = None) -> Sequence[StorageRecord]:
         """
@@ -117,7 +139,7 @@ class StorageRecordSearch:
 
         records = json.loads(await non_secrets.fetch_wallet_search_next_records(
             self._wallet.handle,
-            self._handle,
+            self.handle,
             limit or Wallet.DEFAULT_CHUNK))['records'] or []  # at exhaustion results['records'] = None
 
         rv = [StorageRecord(typ=rec['type'], value=rec['value'], tags=rec['tags'], ident=rec['id']) for rec in records]
@@ -147,7 +169,7 @@ class StorageRecordSearch:
         LOGGER.debug('StorageRecordSearch.close >>>')
 
         if self._handle:
-            await non_secrets.close_wallet_search(self._handle)
+            await non_secrets.close_wallet_search(self.handle)
             self._handle = None
 
         LOGGER.debug('StorageRecordSearch.close <<<')
