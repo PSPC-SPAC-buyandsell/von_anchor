@@ -456,6 +456,73 @@ class HolderProver(BaseAnchor):
         LOGGER.debug('HolderProver.create_cred_req <<< %s', rv)
         return rv
 
+    async def set_cred_attr_tag_policy(
+            self,
+            cred_def_id: str,
+            taggables: Union[str, Sequence[str]],
+            retroactive: bool = False) -> None:
+        """
+        Set credential attribute tagging policy (in the wallet) by credential definition identifier.
+
+        If taggables is None, clear the policy (restore to default, tagging all attributes).
+        If taggables is an empty sequence, set the policy to tag no attributes.
+        If retroactive, visit all existing credentials and adjust their tags to comply with incoming policy.
+
+        Raise WalletState if wallet is closed.
+
+        :param cred_def_id: credential definition identifier
+        :param taggables: attributes to mark taggable on credential storage: empty sequence for none, None for all
+        :param retroactive: whether to reset tags for all existing credentials on input cred def id to specified policy.
+        """
+
+        LOGGER.debug(
+            'HolderProver.set_cred_attr_tag_policy >>> cred_def_id: %s, taggables: %s, retroactive: %s',
+            cred_def_id,
+            taggables,
+            retroactive)
+
+        if not self.wallet.handle:
+            LOGGER.debug('HolderProver.set_cred_attr_tag_policy <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+
+        taggables_json = None
+        if isinstance(taggables, str):
+            taggables_json = json.dumps([taggables])  # singular
+        elif isinstance(taggables, list):
+            taggables_json = json.dumps(taggables)
+        elif taggables is not None:
+            taggables_json = json.dumps([t for t in taggables])  # coerce to list for JSON
+
+        await anoncreds.prover_set_credential_attr_tag_policy(
+            self.wallet.handle,
+            cred_def_id,
+            taggables_json,
+            retroactive)
+
+        LOGGER.debug('HolderProver.set_cred_attr_tag_policy <<<')
+
+    async def get_cred_attr_tag_policy(self, cred_def_id: str) -> str:
+        """
+        Get credential attribute tagging policy (in the wallet) as JSON list (JSON null for default)
+        by credential definition identifier.
+
+        Raise WalletState if wallet is closed.
+
+        :param cred_def_id: credential definition identifier
+        :return: JSON list of attributes that policy marks taggable, JSON null for no policy (all attributes taggable)
+        """
+
+        LOGGER.debug('HolderProver.get_cred_attr_tag_policy >>> cred_def_id: %s', cred_def_id)
+
+        if not self.wallet.handle:
+            LOGGER.debug('HolderProver.get_cred_attr_tag_policy <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+
+        rv = await anoncreds.prover_get_credential_attr_tag_policy(self.wallet.handle, cred_def_id)
+
+        LOGGER.debug('HolderProver.get_cred_attr_tag_policy <<< %s', rv)
+        return rv
+
     async def store_cred(self, cred_json: str, cred_req_metadata_json: str) -> str:
         """
         Store cred in wallet as HolderProver, return its credential identifier as created in wallet.
@@ -598,8 +665,10 @@ class HolderProver(BaseAnchor):
                 un_rr_ids.add(rr_id)
         rr_ids -= un_rr_ids
 
-        cd_ids = {cd_id for cd_id in listdir(self._dir_tails)
-            if isdir(join(self._dir_tails, cd_id)) and ok_cred_def_id(cd_id)}
+        cd_ids = {
+            cd_id for cd_id in listdir(self._dir_tails)
+            if isdir(join(self._dir_tails, cd_id)) and ok_cred_def_id(cd_id)
+        }
         s_ids = set()
         for cd_id in cd_ids:
             s_ids.add(json.loads(await self.get_schema(cred_def_id2seq_no(cd_id)))['id'])
@@ -769,6 +838,39 @@ class HolderProver(BaseAnchor):
         rv_json = await anoncreds.prover_get_credentials(self.wallet.handle, json.dumps(filt or {}))
         LOGGER.debug('HolderProver.get_cred_infos_by_filter <<< %s', rv_json)
         return rv_json
+
+    async def delete_cred(self, cred_id: str) -> None:
+        """
+        Delete credential by wallet credential identifier.
+
+        Raise AbsentCred for no such credential. Raise WalletState if the wallet is closed.
+
+        :param cred_id: credential identifier of interest
+        """
+
+        LOGGER.debug('HolderProver.delete_cred >>> cred_id: %s', cred_id)
+
+        if not self.wallet.handle:
+            LOGGER.debug('HolderProver.delete_cred <!< Wallet %s is closed', self.name)
+            raise WalletState('Wallet {} is closed'.format(self.name))
+
+        try:
+            await anoncreds.prover_delete_credential(self.wallet.handle, cred_id)
+        except IndyError as x_indy:  # no such cred
+            if x_indy.error_code == ErrorCode.WalletItemNotFound:
+                LOGGER.debug(
+                    'HolderProver.delete_cred <!< no cred in wallet %s for cred id %s',
+                    self.name,
+                    cred_id)
+                raise AbsentCred('No cred in wallet for {}'.format(cred_id))
+            LOGGER.debug(
+                'HolderProver.delete_cred <!< wallet %s, cred id %s: indy error code %s',
+                self.name,
+                cred_id,
+                x_indy.error_code)
+            raise
+
+        LOGGER.debug('HolderProver.delete_cred <<<')
 
     async def get_cred_info_by_id(self, cred_id: str) -> str:
         """

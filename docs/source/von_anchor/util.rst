@@ -215,9 +215,7 @@ The indy-sdk requires all encodings' corresponding integers to fit into 256 bits
 Solution: 32-bit Integer Check and SHA-256
 ++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-The ``encode()`` function leaves (signed) 32-bit integers alone, encoding them to their string representations. For all other content, the implementation uses SHA-256 iteratively until the encoding does not correspond to a 32-bit integer: a prior exhaustive exercise has demonstrated that no 32-bit integer hashes to any 32-bit integer, proving that this operation terminates in O(n) time.
-
-The operation treats booleans and stringified 32-bit integers, but not floating point numbers, as 32-bit integers.
+The ``encode()`` function leaves (signed) 32-bit integers alone, encoding them to their string representations. For all other content, the implementation stringifies, then uses SHA-256 and big-endian byte ordering and stringification again to build a stringified large integer. Note that indy-sdk requires only that 32-bit integers (and only 32-bit integers) encode to their own stringified representations.
 
 Role
 ***********************************

@@ -230,7 +230,9 @@ Methods Implementing Operations with Credential-Like Data
 
 Its  ``create_cred_req()`` method creates a credential request for an input credential offer and credential definition. It returns the credential request and its  associated metadata.
 
-Its  ``store_cred()`` method stores a credential in the wallet. It returns the credential identifier as it appears in the wallet.
+Its  ``store_cred()`` method stores a credential in the wallet. It returns the credential identifier as it appears in the wallet. Note that the credential attribute tagging policy :ref:`catpol` specifies the credential attributes for which the indy-sdk builds WQL searchable tags in the wallet on storage.
+
+Its  ``delete_cred()`` method deletes a credential in the wallet by its wallet credential identifier.
 
 Its ``build_req_creds_json()`` helper builds an indy-sdk requested credentials structure. It takes an indy-sdk credentials structure and an optional filter to apply, plus an additional optional boolean specifying default behaviour for that filter as follows:
 
@@ -253,6 +255,17 @@ Its  ``get_cred_info_by_id()`` method takes a wallet credential identifier and r
 Its  ``get_cred_briefs_by_proof_req_q()`` method takes a proof request and a structure of extra [WQL] queries, indexed as a dict by their referents in the proof request (the ``proof_req_attr_referents()`` and ``proof_req2wql_all()`` utilities of :ref:`wranglers` can aid in the construction of this WQL). It uses indy-sdk to search within the wallet to retrieve credential briefs matching the extra WQL queries. It filters the results against any predicates within the proof request before returning. Note however that predicate filtration is relatively expensive, since it occurs outside the wallet: indy-sdk supports only exact attribute matches for (WQL) in-wallet filtration. The method returns a cred-briefs-dict as per :ref:`cred-like-data`.
 
 Note that a credential's revocation status does not affect whether any anchor returns it via the methods above.
+
+.. _catpol:
+
+Methods Operating on Credential Attribute Tagging Policy
+========================================================
+
+Credential attribute tagging policy specifies the attributes to build into WQL searchable tags on credential storage -- the default policy marks all attributes as taggable. For each taggable attribute (by credential definition), the indy-sdk implementation stores a marker tag and a value tag per credential.
+
+The ``set_cred_attr_tag_policy()`` method sets (or clears) a credential attribute tagging policy for a credential definition identifier. If the call specifies retroactive operation, the method directs indy-sdk to visit all existing credentials on the credential definition and rebuild their tags to the specified policy: note that this could be an expensive operation.
+
+The ``get_cred_attr_tag_policy()`` method returns the current policy as a JSON list of attributes marked for tagging. If there is no current policy, it returns a JSON null.
 
 Proof Methods
 ===================================

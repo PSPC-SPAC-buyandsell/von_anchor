@@ -352,3 +352,54 @@ async def test_a2a():
     except AbsentDIDDocItem:
         pass
     print('\n\n== 8 == DID Doc on underspecified service key fails as expected')
+
+    # Minimal as per W3C Example 2, draft 0.12
+    dd_in = {
+        '@context': 'https://w3id.org/did/v1',
+        'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+        'authentication': [
+            {
+                'id': 'LjgpST2rjsoxYegQDRm7EL#keys-1',
+                'type': 'Ed25519VerificationKey2018',
+                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyBase58': '~XXXXXXXXXXXXXXXX'
+            }
+        ],
+        'service': [
+            {
+                'type': 'DidMessaging',
+                'serviceEndpoint': 'https://example.com/endpoint/8377464'
+            }
+        ]
+    }
+
+    dd = DIDDoc.deserialize(dd_in)
+    assert len(dd.pubkey) == 1
+    assert len(dd.authnkey) == 1
+    assert len(dd.service) == 1
+    print('\n\n== 9 == Minimal DID Doc (no pubkey except authentication) as per W3C spec parses OK')
+
+    # Exercise no-identifier case
+    dd_in = {
+        '@context': 'https://w3id.org/did/v1',
+        'authentication': [
+            {
+                'type': 'Ed25519VerificationKey2018',
+                'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyBase58': '~XXXXXXXXXXXXXXXX'
+            }
+        ],
+        'service': [
+            {
+                'type': 'DidMessaging',
+                'serviceEndpoint': 'https://example.com/endpoint/8377464'
+            }
+        ]
+    }
+
+    try:
+        dd = DIDDoc.deserialize(dd_in)
+        assert False
+    except AbsentDIDDocItem:
+        pass
+    print('\n\n== 10 == DID Doc without identifier rejected as expected')

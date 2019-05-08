@@ -23,7 +23,7 @@ from typing import List, Sequence, Union
 from von_anchor.a2a.docutil import canon_did, canon_ref, resource
 from von_anchor.a2a.publickey import PublicKey, PublicKeyType
 from von_anchor.a2a.service import Service
-from von_anchor.error import AbsentDIDDocItem, BadDIDDocItem
+from von_anchor.error import AbsentDIDDocItem, BadDIDDocItem, BadIdentifier
 from von_anchor.util import ok_did
 
 
@@ -186,7 +186,7 @@ class DIDDoc:
         """
         Construct DIDDoc object from dict representation.
 
-        Raise BadIdentifier for bad DID.
+        Raise BadIdentifier for bad DID. Raise AbsentDIDDocItem for missing mandatory item.
 
         :param did_doc: DIDDoc dict reprentation.
         :return: DIDDoc from input json.
@@ -195,20 +195,22 @@ class DIDDoc:
         rv = None
         if 'id' in did_doc:
             rv = DIDDoc(did_doc['id'])
-        else:  # get DID to serve as DID document identifier from first public key
-            if 'publicKey' not in did_doc:
-                LOGGER.debug('DIDDoc.deserialize <!< no identifier in DID document')
-                raise AbsentDIDDocItem('No identifier in DID document')
-            for pubkey in did_doc['publicKey']:
-                pubkey_did = canon_did(resource(pubkey['id']))
-                if ok_did(pubkey_did):
-                    rv = DIDDoc(pubkey_did)
-                    break
-            else:
+        else:  # heuristic: get DID to serve as DID document identifier from first OK-looking public key
+            for section in ('publicKey', 'authentication'):
+                if rv is None and section in did_doc:
+                    for key_spec in did_doc[section]:
+                        try:
+                            pubkey_did = canon_did(resource(key_spec.get('id', '')))
+                            if ok_did(pubkey_did):
+                                rv = DIDDoc(pubkey_did)
+                                break
+                        except BadIdentifier:  # no identifier here, move on to next candidate
+                            break
+            if rv is None:
                 LOGGER.debug('DIDDoc.deserialize <!< no identifier in DID document')
                 raise AbsentDIDDocItem('No identifier in DID document')
 
-        for pubkey in did_doc['publicKey']:  # include public keys and authentication keys by reference
+        for pubkey in did_doc.get('publicKey', {}):  # include all public keys, authentication pubkeys by reference
             pubkey_type = PublicKeyType.get(pubkey['type'])
             authn = any(
                 canon_ref(rv.did, ak.get('publicKey', '')) == canon_ref(rv.did, pubkey['id'])

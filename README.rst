@@ -12,7 +12,7 @@ VON Anchor's abstractions enable the implementation of Indy Agents with various 
 
 In doing so, VON Anchor implements a range of necessary Agent capabilities, including:
 
-- wallet and wallet seed management including creating, reopening and key rotating
+- wallet and cryptographic seed management including creation and key rotation
 - ledger read actions to synchronize an Agent with the Ledger on restart
 - ledger caching to minimize ledger interactions
 - ledger writing of Agent entities - schemata, credential definitions and revocation registries
