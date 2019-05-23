@@ -850,7 +850,7 @@ class Wallet:
 
         storecs = await self.get_non_secret(
             TYPE_PAIRWISE,
-            pairwise_filt if ok_did(pairwise_filt) or not pairwise_filt else json.loads(pairwise_filt),
+            pairwise_filt if not pairwise_filt or ok_did(pairwise_filt) else json.loads(pairwise_filt),
             canon_pairwise_wql)
         rv = {k: storage_record2pairwise_info(storecs[k]) for k in storecs}  # touch up tags, mute leading ~
 

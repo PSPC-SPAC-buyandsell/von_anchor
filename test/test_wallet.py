@@ -29,7 +29,16 @@ from indy.error import ErrorCode
 
 from von_anchor.error import AbsentRecord, BadAccess, BadRecord, BadSearch, ExtantWallet, JSONValidation, WalletState
 from von_anchor.frill import Ink, ppjson
-from von_anchor.wallet import StorageRecord, PairwiseInfo, StorageRecordSearch, Wallet, WalletManager
+from von_anchor.wallet import (
+    DIDInfo,
+    EndpointInfo,
+    KeyInfo,
+    PairwiseInfo,
+    pairwise_info2tags,
+    StorageRecord,
+    StorageRecordSearch,
+    Wallet,
+    WalletManager)
 
 
 async def get_wallets(wallet_data, open_all, auto_remove=False):
@@ -69,6 +78,7 @@ async def test_manager():
     assert w_mgr.default_storage_type is None
     assert w_mgr.default_freshness_time == 0
     assert w_mgr.default_auto_remove == False
+    assert w_mgr.default_auto_create == False
     assert w_mgr.default_access == 'key'
 
     w = w_mgr.get({'id': 'test', 'auto_remove': True}, access='open-sesame')
@@ -157,7 +167,14 @@ async def test_wallet(path_home):
         async with x:
             assert False
     except BadAccess:
-        print('\n\n== 5 == Wallet does not open for bad access credentials')
+        pass
+
+    try:
+        await w_mgr.create({'id': name}, access='incorrect-value', replace=True)
+        assert False
+    except ExtantWallet:
+        pass
+    print('\n\n== 5 == Wallet neither opens nor replaces for bad access credentials')
 
     ww = w_mgr.get({'id': name, 'auto_remove': True}, access)
     async with ww:
@@ -1227,6 +1244,80 @@ async def test_pack():
 
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
+async def test_data_structures(path_home):
+
+    print(Ink.YELLOW('\n\n== Testing various record and info types'))
+
+    w_name = 'multipass'
+    w_mgr = WalletManager()
+    loc_did = '55GkHamhTU1ZbTbV2ab9DE'
+
+    wallets = await get_wallets(
+        {
+            w_name: {
+                'seed': 'Multi-Pass-000000000000000000000',
+                'link_secret_label': 'secret'
+            },
+        },
+        open_all=False,
+        auto_remove=True)
+
+    # Open wallet and operate, default access
+    async with wallets[w_name] as w:
+        endpoint = '1.2.3.4:5678'
+        meta = {'hello': 'world'}
+
+        # DIDInfo
+        did_info = await w.create_local_did(None, loc_did)
+        did_info.metadata = {}
+        assert bool(did_info.verkey)
+        assert did_info.metadata == None
+        print('\n\n== 1 == DIDInfo OK')
+
+        # KeyInfo
+        key_info = KeyInfo(did_info.verkey)
+        assert key_info.metadata == None
+        key_info.metadata = meta
+        assert key_info.metadata == meta
+        print('\n\n== 2 == KeyInfo OK')
+
+        # EndpointInfo
+        endpoint_info = EndpointInfo(endpoint, did_info.verkey)
+        assert endpoint_info.endpoint == endpoint
+        assert endpoint_info.ip_addr == '1.2.3.4'
+        assert endpoint_info.port == 5678
+        assert endpoint_info.verkey == did_info.verkey
+
+        another_endpoint_info = EndpointInfo('1.2.3.4:56', did_info.verkey)
+        assert endpoint_info != another_endpoint_info
+        assert repr(endpoint_info) == 'EndpointInfo({}, {})'.format(endpoint, did_info.verkey)
+        print('\n\n== 3 == EndpointInfo OK')
+
+        # PairwiseInfo
+        pairwise = PairwiseInfo(None, None, None, None)
+        assert pairwise.metadata is None
+        assert pairwise.their_did is None
+        assert pairwise.their_verkey is None
+        assert pairwise.my_did is None
+        assert pairwise.my_verkey is None
+        pairwise.metadata = {'bad': {'metadata': 'too deep'}}
+        try:
+            pairwise_info2tags(pairwise)
+            assert False
+        except BadRecord:
+            pass
+        print('\n\n== 4 == PairwiseInfo OK')
+
+        # StorageRecord
+        storec = StorageRecord(None, None)
+        assert storec.id  # random UUID
+        storec.id = str(1234)
+        assert storec.id == str(1234)
+        print('\n\n== 5 == StorageRecord OK')
+        
+
+@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.asyncio
 async def test_export_import(path_home):
 
     print(Ink.YELLOW('\n\n== Testing export/import =='))
@@ -1313,14 +1404,73 @@ async def test_export_import(path_home):
         assert False
     except BadAccess:
         pass
+    print('\n\n== 8 == Wallet does not import from {} on bad access credential value, as expected'.format(path_export))
 
     await w_mgr.import_wallet({'id': w_name}, str(path_export), access)
     assert path_import.exists()
-    print('\n\n== 8 == Imported wallet from path {}'.format(path_export))
+    print('\n\n== 9 == Imported wallet from path {}'.format(path_export))
 
     async with w_mgr.get({'id': w_name, 'auto_remove': True}, access) as w:
         loc = await w.get_local_did(loc_did)
-        print('\n\n== 9.1 == Local DID imported OK: {}'.format(loc))
+        print('\n\n== 10.1 == Local DID imported OK: {}'.format(loc))
         import_label = await w.get_link_secret_label()
-        print('\n\n== 9.2 == Link secret imported on label: {}'.format(label))
+        print('\n\n== 10.2 == Link secret imported on label: {}'.format(label))
         assert import_label == label
+
+    if path_export.exists():
+        unlink(str(path_export))
+    try:
+        await w_mgr.import_wallet({'id': w_name}, str(path_export), access)
+        assert False
+    except IndyError as x_indy:
+        if x_indy.error_code == ErrorCode.CommonIOError:
+            pass
+        else:
+            assert False
+    print('\n\n== 11 == Wallet does not import from nonexistent path {} as expected'.format(path_export))
+
+
+@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.asyncio
+async def test_reseed_reset(path_home):
+
+    print(Ink.YELLOW('\n\n== Testing wallet reseed-local, reset operations'))
+
+    w_name = 'multipass'
+    w_mgr = WalletManager()
+    loc_did = '55GkHamhTU1ZbTbV2ab9DE'
+
+    wallets = await get_wallets(
+        {
+            w_name: {
+                'seed': 'Multi-Pass-000000000000000000000',
+                'link_secret_label': 'secret'
+            },
+        },
+        open_all=False,
+        auto_remove=False)
+
+    try:
+        await w_mgr.reseed_local(wallets[w_name])
+        assert False
+    except WalletState:
+        pass
+    print('\n\n== 1 == Closed wallet {} reseed fails as expected'.format(w_name))
+
+    try:
+        await w_mgr.reset(wallets[w_name])
+        assert False
+    except WalletState:
+        pass
+    print('\n\n== 2 == Closed wallet {} reset fails as expected'.format(w_name))
+
+    # Open wallet and operate
+    w_reset = None
+    async with wallets[w_name] as w:
+        await w_mgr.reseed_local(wallets[w_name])
+        w_reset = await w_mgr.reset(wallets[w_name])
+        await w_reset.close()
+    print('\n\n== 3 == Wallet {} reseeds (locally) and resets OK'.format(w_name))
+
+    await w_mgr.remove(w_reset)
+    print('\n\n== 4 == Removed wallet {}'.format(w_reset.name))

@@ -15,13 +15,17 @@ limitations under the License.
 """
 
 
+import json
 import pytest
 
 from tempfile import NamedTemporaryFile
 from time import sleep, time
 
-from von_anchor.error import AbsentGenesis, AbsentPool, ExtantPool, JSONValidation
-from von_anchor.frill import Ink
+from indy.error import IndyError, ErrorCode
+
+from von_anchor.error import AbsentPool, ExtantPool, JSONValidation
+from von_anchor.indytween import SchemaKey
+from von_anchor.frill import Ink, ppjson
 from von_anchor.nodepool import NodePool, NodePoolManager, Protocol
 
 
@@ -37,8 +41,80 @@ async def test_protocol():
     assert Protocol.V_16.indy() == Protocol.V_17.indy()
     assert Protocol.V_17.indy() == Protocol.V_18.indy()
     assert Protocol.V_18.indy() == Protocol.DEFAULT.indy()
+    assert Protocol.get('1.8') == Protocol.DEFAULT
+    print('\n\n== 1 == Protocol enum values correspond OK to indy values')
 
-    print('\n\n== 1 == Protocols OK')
+    issuer_did = 'ZqhtaRvibYPQ23456789ee'
+    seq_no = 123
+    assert Protocol.V_13.cred_def_id(issuer_did, seq_no) == '{}:3:CL:{}'.format(issuer_did, seq_no)
+    assert Protocol.DEFAULT.cred_def_id(issuer_did, seq_no) == '{}:3:CL:{}:tag'.format(issuer_did, seq_no)
+
+    assert Protocol.V_13.cd_id_tag(for_box_id=True) == ''
+    assert Protocol.V_13.cd_id_tag(for_box_id=False) == 'tag'  # indy-sdk refuses empty string on issue-cred-def
+    assert Protocol.DEFAULT.cd_id_tag(for_box_id=True) == ':tag'
+    assert Protocol.DEFAULT.cd_id_tag(for_box_id=False) == 'tag'  # indy-sdk refuses empty string on issue-cred-def
+    print('\n\n== 2 == Protocol enum values build cred def id and tags as expected')
+
+    txn_13 = json.loads('''{
+        "op": "REPLY",
+        "result": {
+            "data": {
+                "identifier": "WgWxqztrNooG92RXvxSTWv",
+                "data": {
+                    "name": "green",
+                    "version": "1.0",
+                    "...": "..."
+                },
+                "...": "..."
+            },
+            "txnTime": 1234567890,
+            "...": "..."
+        },
+        "...": "..."
+    }''')
+    assert json.loads(Protocol.V_13.txn2data(txn_13)) == txn_13['result']['data']
+    assert Protocol.V_13.txn2epoch(txn_13) == 1234567890
+    assert Protocol.V_13.txn_data2schema_key(json.loads(Protocol.V_13.txn2data(txn_13))) == SchemaKey(
+        'WgWxqztrNooG92RXvxSTWv',
+        'green',
+        '1.0')
+
+    txn_18 = json.loads('''{
+        "op": "REPLY",
+        "result": {
+            "data": {
+                "txn": {
+                    "data": {
+                        "data": {
+                            "name": "green",
+                            "version": "1.0",
+                            "...": "..."
+                        }
+                    },
+                    "metadata": {
+                        "from": "WgWxqztrNooG92RXvxSTWv",
+                        "...": "..."
+                    },
+                    "...": "..."
+                },
+                "...": "..."
+            },
+            "txnMetadata": {
+                "txnTime": 1234567890,
+                "...": "..."
+            },
+            "...": "..."
+        },
+        "...": "..."
+    }''')
+    assert json.loads(Protocol.DEFAULT.txn2data(txn_18)) == txn_18['result']['data']['txn']
+    assert Protocol.DEFAULT.txn2epoch(txn_18) == 1234567890
+    assert Protocol.DEFAULT.txn_data2schema_key(json.loads(Protocol.DEFAULT.txn2data(txn_18))) == SchemaKey(
+        'WgWxqztrNooG92RXvxSTWv',
+        'green',
+        '1.0')
+    print('\n\n== 3 == Protocol enum values extricate transaction data as expected')
+
 
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
@@ -47,74 +123,77 @@ async def test_manager(path_home, pool_genesis_txn_data, pool_ip):
     print(Ink.YELLOW('\n\n== Testing Node Pool Manager vs. IP {} =='.format(pool_ip)))
 
     # Create node pool manager
-    manager = NodePoolManager()
-    assert manager.protocol == Protocol.DEFAULT
+    p_mgr = NodePoolManager()
+    p_mgr.protocol = Protocol.V_18
+    assert p_mgr.protocol == Protocol.DEFAULT
 
     # Create new pool on raw data
     name = 'pool-{}'.format(int(time()))
-    assert name not in await manager.list()
+    assert name not in await p_mgr.list()
     print('\n\n== 1 == Pool {} not initially configured'.format(name))
 
-    await manager.add_config(name, pool_genesis_txn_data)
-    assert name in await manager.list()
+    try:  # exercise bad pool addition
+        await p_mgr.add_config(name, 'Not genesis transaction data')
+        assert False
+    except AbsentPool:
+        pass
+
+    await p_mgr.add_config(name, pool_genesis_txn_data)
+    assert name in await p_mgr.list()
     print('\n\n== 2 == Added pool {} configuration on genesis transaction data'.format(name))
 
     try:
-        await manager.add_config(name, pool_genesis_txn_data)
+        await p_mgr.add_config(name, pool_genesis_txn_data)
         assert False
     except ExtantPool:
         pass
 
     try:
-        pool = manager.get('no-such-pool.{}'.format(int(time())))
+        pool = p_mgr.get('no-such-pool.{}'.format(int(time())))
         await pool.open()
         assert False
     except AbsentPool:
         pass
 
-    pool = manager.get(name)
+    pool = p_mgr.get(name)
     await pool.open()
     await pool.refresh()
     assert pool.handle is not None
     await pool.close()
     print('\n\n== 3 == Opened, refreshed, and closed pool {} on default configuration'.format(name))
 
-    cache_id = pool.cache_id
-    sleep(1)
-    x_name = 'pool-{}'.format(int(time()))
-    await manager.add_config('pool-{}'.format(int(time())), '\n'.join(pool_genesis_txn_data.split('\n')[::-1]))
-    x_pool = manager.get(x_name)
-    assert x_pool.cache_id == cache_id
-    await manager.remove(x_name)
-    print('\n\n== 4 == Confirmed cache id consistency: {}'.format(cache_id))
-
-    pool = manager.get(name, {'timeout': 3600, 'extended_timeout': 7200})
+    pool = p_mgr.get(name, {'timeout': 3600, 'extended_timeout': 7200})
     await pool.open()
     await pool.refresh()
     assert pool.handle is not None
     await pool.close()
-    print('\n\n== 5 == Opened, refreshed, and closed pool {} on explicit configuration'.format(name))
+    print('\n\n== 4 == Opened, refreshed, and closed pool {} on explicit configuration'.format(name))
 
-    await manager.remove(name)
-    assert name not in await manager.list()
-    print('\n\n== 6 == Removed pool {} configuration'.format(name))
+    await p_mgr.remove(name)
+    assert name not in await p_mgr.list()
+    print('\n\n== 5 == Removed pool {} configuration'.format(name))
 
     with NamedTemporaryFile(mode='w+b', buffering=0) as fh_gen:
         fh_gen.write(pool_genesis_txn_data.encode())
-        await manager.add_config(name, fh_gen.name)
-    assert name in await manager.list()
-    print('\n\n== 7 == Added pool {} configuration on genesis transaction file'.format(name))
+        await p_mgr.add_config(name, fh_gen.name)
+    assert name in await p_mgr.list()
+    print('\n\n== 6 == Added pool {} configuration on genesis transaction file'.format(name))
 
-    pool = manager.get(name, {'timeout': 3600, 'extended_timeout': 7200})
+    pool = p_mgr.get(name, {'timeout': 3600, 'extended_timeout': 7200})
     await pool.open()
     await pool.refresh()
     assert pool.handle is not None
+    try:
+        await p_mgr.remove(name)  # exercise non-removal of open pool
+        assert False
+    except ExtantPool:
+        pass
     await pool.close()
-    print('\n\n== 8 == Opened, refreshed, and closed pool {} on explicit configuration'.format(name))
+    print('\n\n== 7 == Opened, refreshed, and closed pool {} on explicit configuration'.format(name))
 
-    await manager.remove(name)
-    assert name not in await manager.list()
-    print('\n\n== 9 == Removed pool {} configuration'.format(name))
+    await p_mgr.remove(name)
+    assert name not in await p_mgr.list()
+    print('\n\n== 8 == Removed pool {} configuration'.format(name))
 
 
 @pytest.mark.skipif(False, reason='short-circuiting')
@@ -130,12 +209,21 @@ async def test_pool_open(path_home, pool_name, pool_genesis_txn_data, pool_ip):
         pass
 
     # Set up node pool ledger config and wallets, open pool, init anchors
-    manager = NodePoolManager()
-    if pool_name not in await manager.list():
-        await manager.add_config(pool_name, pool_genesis_txn_data)
-    pool = manager.get(pool_name)
-    await pool.open()
-    assert pool.handle is not None
-    await pool.close()
+    p_mgr = NodePoolManager()
+    if pool_name not in await p_mgr.list():
+        await p_mgr.add_config(pool_name, pool_genesis_txn_data)
+    pool = p_mgr.get(pool_name)
+    async with pool:
+        assert pool.handle is not None
+    assert pool.handle is None
+    await pool.close()  # exercise double-close: should silently carry on
 
-    print('\n\n== 1 == Pool {} opens and closes OK from existing ledger configuration'.format(pool_name))
+    pool.config['timeout'] = 'should be an integer'
+    try:
+        async with pool:
+            assert False
+    except IndyError as x_indy:
+        assert x_indy.error_code == ErrorCode.CommonInvalidStructure
+    pool.config.pop('timeout')
+
+    print('\n\n== 1 == Pool {} opens and closes OK from existing ledger configuration'.format(pool))

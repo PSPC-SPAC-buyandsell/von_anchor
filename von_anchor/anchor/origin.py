@@ -72,7 +72,7 @@ class Origin(BaseAnchor):
         with SCHEMA_CACHE.lock:
             try:
                 rv_json = await self.get_schema(s_key)
-                LOGGER.error(
+                LOGGER.info(
                     'Schema %s version %s already exists on ledger for origin-did %s: not sending',
                     schema_data['name'],
                     schema_data['version'],

@@ -270,8 +270,8 @@ class Tails:
             LOGGER.debug('Tails.next_tag <!< Bad cred def id %s', cd_id)
             raise BadIdentifier('Bad cred def id {}'.format(cd_id))
 
-        tag = 1 + max([int(rev_reg_id2tag(basename(f)))
-            for f in Tails.links(base_dir) if cd_id in basename(f)] + [-1])  # -1: next tag is '0' if no tags so far
+        # append [-1] first to max existing tags: next tag is '0' if no tags so far
+        tag = 1 + max([int(rev_reg_id2tag(basename(f))) for f in Tails.links(base_dir) if cd_id in basename(f)] + [-1])
         size = min(2**(tag + 6), Tails.MAX_SIZE)
 
         rv = (tag, size)
@@ -297,8 +297,7 @@ class Tails:
             LOGGER.debug('Tails.current_rev_reg_id <!< Bad cred def id %s', cd_id)
             raise BadIdentifier('Bad cred def id {}'.format(cd_id))
 
-        tags = [int(rev_reg_id2tag(basename(f))) for f in Tails.links(base_dir)
-            if cd_id in basename(f)]
+        tags = [int(rev_reg_id2tag(basename(f))) for f in Tails.links(base_dir) if cd_id in basename(f)]
         if not tags:
             raise AbsentTails('No tails files present for cred def id {}'.format(cd_id))
 

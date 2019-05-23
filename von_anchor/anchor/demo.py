@@ -26,7 +26,7 @@ from von_anchor.anchor.origin import Origin
 from von_anchor.anchor.smith import AnchorSmith
 from von_anchor.anchor.verifier import Verifier
 from von_anchor.cache import ArchivableCaches
-from von_anchor.error import ClosedPool
+from von_anchor.error import WalletState
 from von_anchor.indytween import Role
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
@@ -160,7 +160,12 @@ class OrgHubAnchor(Verifier, Origin, Issuer, OrgBookAnchor):
         archive_caches = False
         if self.config.get('archive-holder-prover-caches-on-close', False):
             archive_caches = True
-            await self.load_cache_for_proof(False)
+            try:
+                await self.load_cache_for_proof(False)
+            except WalletState:
+                LOGGER.warning(
+                    'OrgHubAnchor load cache for proof on close required open wallet %s but it was closed',
+                    self.name)
         if self.config.get('archive-verifier-caches-on-close', {}):
             archive_caches = True
             await self.load_cache_for_verification(False)
@@ -169,15 +174,11 @@ class OrgHubAnchor(Verifier, Origin, Issuer, OrgBookAnchor):
             ArchivableCaches.purge_archives(self.dir_cache, True)
 
         # Do not close wallet independently: allow for sharing open wallet over many anchor lifetimes
-        # await self.wallet.close() #1.7.8
         # Do not close pool independently: let relying party decide when to go on-line and off-line
 
         for path_rr_id in Tails.links(self._dir_tails):
             rr_id = basename(path_rr_id)
-            try:
-                await HolderProver._sync_revoc_for_proof(self, rr_id)
-            except ClosedPool:
-                LOGGER.warning('OrgHubAnchor sync-revoc on close required ledger for %s but pool was closed', rr_id)
+            await HolderProver._sync_revoc_for_proof(self, rr_id)  # warns for closed pool
 
         LOGGER.debug('OrgHubAnchor.close <<<')
 

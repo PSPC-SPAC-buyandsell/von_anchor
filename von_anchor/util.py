@@ -21,7 +21,7 @@ import re
 from copy import deepcopy
 from typing import Sequence, Union
 
-from base58 import alphabet
+from base58 import alphabet, b58decode
 
 from von_anchor.error import BadIdentifier
 from von_anchor.nodepool import Protocol
@@ -88,7 +88,10 @@ def ok_did(token: str) -> bool:
     :return: whether input token looks like a valid schema identifier
     """
 
-    return bool(re.match('[{}]{{21,22}}$'.format(B58), token or ''))
+    try:
+        return len(b58decode(token)) == 16 if token else False
+    except ValueError:
+        return False
 
 
 def ok_schema_id(token: str) -> bool:

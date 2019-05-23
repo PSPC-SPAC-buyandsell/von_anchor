@@ -225,10 +225,7 @@ class DIDDoc:
             rv.pubkey[key.id] = key
 
         for akey in did_doc.get('authentication', {}):  # include embedded authentication keys
-            pk_ref = akey.get('publicKey', None)
-            if pk_ref:
-                pass  # got it already with public keys
-            else:
+            if 'publicKey' not in akey:  # not yet got it with public keys
                 pubkey_type = PublicKeyType.get(akey['type'])
                 key = PublicKey(  # initialization canonicalized id
                     rv.did,

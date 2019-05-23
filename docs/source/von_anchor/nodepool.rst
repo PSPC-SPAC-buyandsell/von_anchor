@@ -38,7 +38,7 @@ The ``remove()`` method deletes the ledger configuration for the named pool, mak
 Node Pool
 =================
 
-The node pool class encapsulates the indy node pool. It retains its node protocol, pool name, indy-sdk handle, configuration, and cache identifier. The cache identifier comprises ordered IP addresses and ports of its nodes, so that distinct node pool configurations on the same indy-node pool can index to the same cache content (this is an upcoming design enrichment).
+The node pool class encapsulates the indy node pool. It retains its node protocol, pool name, indy-sdk handle, and configuration.
 
 Initialization
 ++++++++++++++++++

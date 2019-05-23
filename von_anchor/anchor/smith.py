@@ -43,7 +43,7 @@ class AnchorSmith(BaseAnchor):
 
         LOGGER.debug('AnchorSmith.least_role >>>')
 
-        rv = Role.TRUSTEE.token()
+        rv = Role.TRUSTEE
 
         LOGGER.debug('AnchorSmith.least_role <<< %s', rv)
         return rv

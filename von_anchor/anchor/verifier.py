@@ -133,8 +133,8 @@ class Verifier(BaseAnchor):
         :param value: configuration dict
         """
 
+        validate_config('verifier', value or {})
         self._config = value or {}
-        validate_config('verifier', self._config)
 
     @property
     def dir_cache(self) -> str:

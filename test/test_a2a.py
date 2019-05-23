@@ -19,8 +19,8 @@ import json
 import pytest
 
 from von_anchor.a2a import DIDDoc, PublicKey, PublicKeyType, Service
-from von_anchor.a2a.docutil import canon_ref
-from von_anchor.error import AbsentDIDDocItem
+from von_anchor.a2a.docutil import canon_ref, canon_did
+from von_anchor.error import AbsentDIDDocItem, BadDIDDocItem, BadIdentifier
 from von_anchor.frill import Ink, ppjson
 
 
@@ -72,7 +72,30 @@ async def test_a2a():
     assert len(dd.authnkey) == len(dd_in['authentication'])
 
     dd_out = dd.serialize()
-    print('\n\n== 1 == DID Doc on abbreviated identifiers: {}'.format(ppjson(dd_out)))
+    print('\n\n== 1 == DID Doc {} on abbreviated identifiers: {}'.format(dd, ppjson(dd_out)))
+
+    # Exercise JSON, de/serialization
+    dd_json = dd.to_json()
+    dd_copy = dd.from_json(dd_json)
+    assert dd_copy.did == dd.did
+    assert all(dd_copy.authnkey[k].to_dict() == dd.authnkey[k].to_dict() for k in dd_copy.authnkey)
+    assert {k for k in dd_copy.authnkey} == {k for k in dd.authnkey}
+    assert all(dd_copy.pubkey[k].to_dict() == dd.pubkey[k].to_dict() for k in dd_copy.pubkey)
+    assert {k for k in dd_copy.pubkey} == {k for k in dd.pubkey}
+    assert all(dd_copy.service[k].to_dict() == dd.service[k].to_dict() for k in dd_copy.service)
+    assert {k for k in dd_copy.service} == {k for k in dd.service}
+    print('\n\n== 2 == DID Doc de/serialization operates OK:')
+
+    # Exercise accessors
+    dd.did = dd_out['id']
+    assert dd.did == canon_did(dd_out['id'])
+    try:
+        dd.set(['neither a service', 'nor a public key'])
+        assert False
+    except BadDIDDocItem:
+        pass
+    assert dd.service[[k for k in dd.service][0]].did == dd.did
+    print('\n\n== 3 == DID Doc accessors operate OK')
 
     # One authn key embedded, all possible refs canonical
     dd_in = {
@@ -118,7 +141,7 @@ async def test_a2a():
     assert len(dd.authnkey) == len(dd_in['authentication'])
 
     dd_out = dd.serialize()
-    print('\n\n== 2 == DID Doc on mixed reference styles, embedded and ref style authn keys: {}'.format(ppjson(dd_out)))
+    print('\n\n== 4 == DID Doc on mixed reference styles, embedded and ref style authn keys: {}'.format(ppjson(dd_out)))
 
     # All references canonical where possible; one authn key embedded and one by reference
     dd_in = {
@@ -164,7 +187,7 @@ async def test_a2a():
     assert len(dd.authnkey) == len(dd_in['authentication'])
 
     dd_out = dd.serialize()
-    print('\n\n== 3 == DID Doc on canonical refs: {}'.format(ppjson(dd_out)))
+    print('\n\n== 5 == DID Doc on canonical refs: {}'.format(ppjson(dd_out)))
 
     # Minimal as per indy-agent test suite without explicit identifiers
     dd_in = {
@@ -191,7 +214,7 @@ async def test_a2a():
     assert len(dd.authnkey) == 0
 
     dd_out = dd.serialize()
-    print('\n\n== 4 == DID Doc miminal style, implcit DID document identifier: {}'.format(
+    print('\n\n== 6 == DID Doc miminal style, implcit DID document identifier: {}'.format(
         ppjson(dd_out)))
 
     # Minimal + ids as per indy-agent test suite with explicit identifiers; novel service recipient key on raw base58
@@ -222,7 +245,7 @@ async def test_a2a():
     assert len(dd.authnkey) == 0
 
     dd_out = dd.serialize()
-    print('\n\n== 5 == DID Doc miminal style plus explicit idents and novel raw base58 service recip key: {}'.format(
+    print('\n\n== 7 == DID Doc miminal style plus explicit idents and novel raw base58 service recip key: {}'.format(
         ppjson(dd_out)))
 
     # Minimal + ids as per indy-agent test suite with explicit identifiers; novel service recipient key on raw base58
@@ -293,8 +316,7 @@ async def test_a2a():
     assert len(dd.service) == 3
 
     dd_out = dd.serialize()
-    print('\n\n== 6 == DID Doc on mixed service routing and recipient keys: {}'.format(
-        ppjson(dd_out)))
+    print('\n\n== 8 == DID Doc on mixed service routing and recipient keys: {}'.format(ppjson(dd_out)))
 
     pk = PublicKey(
         dd.did,
@@ -319,7 +341,7 @@ async def test_a2a():
     dd.set(service)
     assert len(dd.service) == 4
     assert canon_ref(dd.did, 'abc', ';') in dd.service
-    print('\n\n== 7 == DID Doc adds public key and service via set() OK')
+    print('\n\n== 9 == DID Doc adds public key and service via set() OK')
 
     # Exercise missing service recipient key
     dd_in = {
@@ -351,7 +373,7 @@ async def test_a2a():
         assert False
     except AbsentDIDDocItem:
         pass
-    print('\n\n== 8 == DID Doc on underspecified service key fails as expected')
+    print('\n\n== 10 == DID Doc on underspecified service key fails as expected')
 
     # Minimal as per W3C Example 2, draft 0.12
     dd_in = {
@@ -377,7 +399,10 @@ async def test_a2a():
     assert len(dd.pubkey) == 1
     assert len(dd.authnkey) == 1
     assert len(dd.service) == 1
-    print('\n\n== 9 == Minimal DID Doc (no pubkey except authentication) as per W3C spec parses OK')
+
+    dd_out = dd.serialize()
+    print('\n\n== 11 == Minimal DID Doc (no pubkey except authentication) as per W3C spec parses OK: {}'.format(
+        ppjson(dd_out)))
 
     # Exercise no-identifier case
     dd_in = {
@@ -402,4 +427,32 @@ async def test_a2a():
         assert False
     except AbsentDIDDocItem:
         pass
-    print('\n\n== 10 == DID Doc without identifier rejected as expected')
+    print('\n\n== 12 == DID Doc without identifier rejected as expected')
+
+    # Exercise reference canonicalization, including failure paths
+    try:
+        canon_ref('not-a-DID', ref=dd.did, delimiter='#')
+        assert False
+    except BadIdentifier:
+        pass
+
+    try:
+        canon_ref(dd.did, ref='did:sov:not-a-DID', delimiter='#')
+        assert False
+    except BadIdentifier:
+        pass
+    
+    urlref = 'https://www.clafouti-quasar.ca:8443/supply-management/fruit/index.html'
+    assert canon_ref(dd.did, ref=urlref) == urlref
+    print('\n\n== 13 == Reference canonicalization operates as expected')
+
+    assert PublicKeyType.get('no-such-type') is None
+    pubkey0 = dd.pubkey[[k for k in dd.pubkey][0]]
+    was_authn = pubkey0.authn
+    pubkey0.authn = not was_authn
+    assert pubkey0.authn != was_authn
+    print('\n\n== 14 == Changed authentication setting for DIDDoc {} in public key {}, now {}'.format(
+        pubkey0.did,
+        pubkey0.id,
+        repr(pubkey0)))
+

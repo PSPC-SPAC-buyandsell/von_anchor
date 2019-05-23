@@ -137,6 +137,7 @@ def canon_pairwise_wql(query: dict = None) -> dict:
     """
     Canonicalize WQL tags to unencrypted storage specification.
     Canonicalize comparison values to strings via raw().
+    Canonicalize empty query to find all pairwise DID records.
 
     Raise BadWalletQuery for WQL mapping '$or' to non-list.
 

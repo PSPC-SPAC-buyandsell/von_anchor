@@ -17,16 +17,19 @@ limitations under the License.
 import json
 import subprocess
 
+from os import unlink
 from os.path import dirname, join, realpath
+from tempfile import NamedTemporaryFile
 from time import time
 
 import pytest
 
 from von_anchor import NominalAnchor, TrusteeAnchor, SRIAnchor
-from von_anchor.error import AbsentPool, ExtantWallet
+from von_anchor.error import AbsentPool, ErrorCode, ExtantWallet
 from von_anchor.frill import Ink, inis2dict, ppjson
 from von_anchor.indytween import Role
 from von_anchor.nodepool import NodePool, NodePoolManager
+from von_anchor.op import AnchorData, NodePoolData
 from von_anchor.wallet import Wallet, WalletManager
 
 
@@ -56,6 +59,35 @@ async def get_wallets(wallet_data, open_all, auto_remove=False):
 
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
+async def test_formalisms(
+        pool_ip,
+        pool_name,
+        pool_genesis_txn_data,
+        seed_trustee1,
+        path_setnym_ini,
+        setnym_ini_file):
+
+    print(Ink.YELLOW('\n\n== Testing usage screed and data structures'))
+
+    # Run setnym with no parameters to engage usage message
+    sub_proc = subprocess.run(
+        [
+            'python',
+            join(dirname(dirname(dirname(realpath(__file__)))), 'von_anchor', 'op', 'setnym.py')
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL)
+    assert sub_proc.returncode == 1
+    print('\n\n== 1 == Missing parameter invokes usage message OK')
+
+    # Exercise namedtuples for syntax
+    nodepool_data = NodePoolData('name', None)
+    anchor_data = AnchorData('role', 'name', 'seed', 'did', 'wallet_create', 'wallet_type', 'wallet_access')
+    print('\n\n== 2 == Data structures create OK')
+
+
+@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.asyncio
 async def test_setnym(
         pool_ip,
         pool_name,
@@ -71,9 +103,9 @@ async def test_setnym(
     cfg = inis2dict(str(path_setnym_ini))
 
     # Set up node pool ledger config and wallets, open pool, init anchors
-    manager = NodePoolManager()
-    if pool_name not in await manager.list():
-        await manager.add_config(pool_name, pool_genesis_txn_data)
+    p_mgr = NodePoolManager()
+    if pool_name not in await p_mgr.list():
+        await p_mgr.add_config(pool_name, pool_genesis_txn_data)
 
     wallets = await get_wallets(
         {
@@ -97,7 +129,7 @@ async def test_setnym(
     wallets.pop('x-anchor')
 
     # Open pool, check if nym already present
-    pool = manager.get(pool_name)
+    pool = p_mgr.get(pool_name)
     await pool.open()
     assert pool.handle
 
@@ -138,17 +170,24 @@ async def test_setnym(
     await noman.close()
     await pool.close()
 
-    # Run setnym on configuration with no seeds nor VON Anchor role, check ledger
+    # Run setnym on configuration with DID and explicit storage type, check ledger
     with open(path_setnym_ini, 'w+') as ini_fh:
         for section in cfg:
             print('[{}]'.format(section), file=ini_fh)
             for (key, value) in cfg[section].items():
-                if key in ('seed', 'genesis.txn.path'):
-                    continue
-                print('{}={}'.format(key, '${X_ROLE:-}' if key == 'role' else value), file=ini_fh)  # exercise default
+                if section == 'VON Anchor':
+                    if key == 'seed':
+                        print('did={}'.format(noman.did), file=ini_fh)
+                    elif key == 'wallet.type':
+                        print('wallet.type=default', file=ini_fh)
+                    else:
+                        print('{}={}'.format(key, value), file=ini_fh)
+                else:
+                    print('{}={}'.format(key, value), file=ini_fh)
             print(file=ini_fh)
     with open(path_setnym_ini, 'r') as cfg_fh:
-        print('\n\n== 5 == Next configuration, no seeds, no VON Anchor role:\n{}'.format(cfg_fh.read()))
+        print('\n\n== 5 == Next configuration, on DID instead of seed and explicit wallet type:\n{}'.format(
+            cfg_fh.read()))
 
     sub_proc = subprocess.run(
         [
@@ -159,14 +198,49 @@ async def test_setnym(
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     assert not sub_proc.returncode
-    print('\n\n== 6 == Set nym with USER role on {} for {}'.format(noman.did, noman.wallet.name))
+    print('\n\n== 6 == Set nym with TRUST_ANCHOR role on {} for {}'.format(noman.did, noman.wallet.name))
+
+    await pool.open()
+    await noman.open()
+    nym = json.loads(await noman.get_nym(noman.did))
+    assert nym and Role.get(nym['role']) == Role.TRUST_ANCHOR
+    last_nym_seqno = nym['seqNo']
+    print('\n\n== 7 == Got nym transaction from ledger for DID {} ({}): {}'.format(
+        noman.did,
+        noman.wallet.name,
+        ppjson(nym)))
+    await noman.close()
+    await pool.close()
+
+    # Run setnym on configuration with no seeds nor VON Anchor role, check ledger
+    with open(path_setnym_ini, 'w+') as ini_fh:
+        for section in cfg:
+            print('[{}]'.format(section), file=ini_fh)
+            for (key, value) in cfg[section].items():
+                if key in ('seed', 'genesis.txn.path'):
+                    continue
+                print('{}={}'.format(key, '${X_ROLE:-}' if key == 'role' else value), file=ini_fh)  # exercise default
+            print(file=ini_fh)
+    with open(path_setnym_ini, 'r') as cfg_fh:
+        print('\n\n== 8 == Next configuration, no seeds, no VON Anchor role:\n{}'.format(cfg_fh.read()))
+
+    sub_proc = subprocess.run(
+        [
+            'python',
+            join(dirname(dirname(dirname(realpath(__file__)))), 'von_anchor', 'op', 'setnym.py'),
+            str(path_setnym_ini)
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL)
+    assert not sub_proc.returncode
+    print('\n\n== 9 == Set nym with USER role on {} for {}'.format(noman.did, noman.wallet.name))
 
     await pool.open()
     await noman.open()
     nym = json.loads(await noman.get_nym(noman.did))
     assert nym and Role.get(nym['role']) == Role.USER
     last_nym_seqno = nym['seqNo']
-    print('\n\n== 7 == Got nym transaction from ledger for DID {} ({}): {}'.format(
+    print('\n\n== 10 == Got nym transaction from ledger for DID {} ({}): {}'.format(
         noman.did,
         noman.wallet.name,
         ppjson(nym)))
@@ -183,13 +257,13 @@ async def test_setnym(
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     assert not sub_proc.returncode
-    print('\n\n== 8 == Set nym again with default role on {} for {}'.format(noman.did, noman.wallet.name))
+    print('\n\n== 11 == Set nym again with default role on {} for {}'.format(noman.did, noman.wallet.name))
 
     await pool.open()
     await noman.open()
     nym = json.loads(await noman.get_nym(noman.did))
     last_nym_seqno = nym['seqNo']
-    print('\n\n== 9 == Got (same) nym transaction from ledger for DID {} ({}): {}'.format(
+    print('\n\n== 12 == Got (same) nym transaction from ledger for DID {} ({}): {}'.format(
         noman.did,
         noman.wallet.name,
         ppjson(nym)))
@@ -206,7 +280,7 @@ async def test_setnym(
                 print('{}={}'.format(key, 'BAD_ROLE' if key == 'role' else value), file=ini_fh)
             print(file=ini_fh)
     with open(path_setnym_ini, 'r') as cfg_fh:
-        print('\n\n== 10 == Next configuration, no seeds, bad VON Anchor role:\n{}'.format(cfg_fh.read()))
+        print('\n\n== 13 == Next configuration, no seeds, bad VON Anchor role:\n{}'.format(cfg_fh.read()))
 
     sub_proc = subprocess.run(
         [
@@ -217,7 +291,8 @@ async def test_setnym(
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     assert sub_proc.returncode
-    print('\n\n== 11 == Called to set bad role for {}, got error text {}'.format(
+    assert str(int(ErrorCode.BadRole)) in sub_proc.stdout.decode()
+    print('\n\n== 14 == Called to set bad role for {}, got error text {}'.format(
         noman.wallet.name,
         sub_proc.stdout.decode()))
 
@@ -228,12 +303,12 @@ async def test_setnym(
     assert nym and nym['seqNo'] == last_nym_seqno
     await noman.close()
     await pool.close()
-
-    print('\n\n== 12 == Got nym transaction from ledger for DID {} ({}): {}'.format(
+    print('\n\n== 15 == Got nym transaction from ledger for DID {} ({}): {}'.format(
         noman.did,
         noman.wallet.name,
         ppjson(nym)))
 
+    # Exercise reseed, ensure no side effect to role on ledger
     await pool.open()
     san = SRIAnchor(wallets[cfg['VON Anchor']['name']], pool, rrbx=False)
     await san.open()
@@ -243,12 +318,143 @@ async def test_setnym(
     san_role = await san.get_nym_role()
     await pool.close()
     assert nym and nym['seqNo'] != last_nym_seqno
-    assert san_role == noman_role  # ensure that reseed does not side-effect role on ledger
-
-    print('\n\n== 13 == As SRI Anchor, reseeded, then got nym transaction from ledger for DID {} ({}): {}'.format(
+    assert san_role == noman_role
+    print('\n\n== 16 == As SRI Anchor, reseeded, then got nym transaction from ledger for DID {} ({}): {}'.format(
         san.did,
         san.wallet.name,
         ppjson(nym)))
+    last_nym_seqno = nym['seqNo']
+
+    # Run setnym on configuration with same wallet for trustee and VON anchor
+    with open(path_setnym_ini, 'w+') as ini_fh:
+        for section in cfg:
+            print('[{}]'.format(section), file=ini_fh)
+            for (key, value) in cfg[section].items():
+                if section == 'VON Anchor' and key == 'name':
+                    print('{}={}'.format(key, cfg['Trustee Anchor']['name']), file=ini_fh)
+                else:
+                    print('{}={}'.format(key, value), file=ini_fh)
+            print(file=ini_fh)
+    with open(path_setnym_ini, 'r') as cfg_fh:
+        print('\n\n== 17 == Next configuration, same wallet for trustee anchor and VON anchor:\n{}'.format(
+            cfg_fh.read()))
+
+    sub_proc = subprocess.run(
+        [
+            'python',
+            join(dirname(dirname(dirname(realpath(__file__)))), 'von_anchor', 'op', 'setnym.py'),
+            str(path_setnym_ini)
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL)
+    assert sub_proc.returncode
+    assert str(int(ErrorCode.ExtantWallet)) in sub_proc.stdout.decode()
+    print('\n\n== 18 == Called with same wallet for trustee anchor and VON anchor, got error text {}'.format(
+        sub_proc.stdout.decode()))
+
+    # Run setnym on configuration with new ledger node pool configuration
+    genesis_tmp = NamedTemporaryFile(mode='w+b', buffering=0, delete=False)
+    with genesis_tmp:
+        genesis_tmp.write(pool_genesis_txn_data.encode())
+    pool_copy = '{}.{}'.format(cfg['Node Pool']['name'], int(time()))
+    with open(path_setnym_ini, 'w+') as ini_fh:
+        for section in cfg:
+            print('[{}]'.format(section), file=ini_fh)
+            for (key, value) in cfg[section].items():
+                if section == 'Node Pool':
+                    if key == 'name':
+                        print('name={}'.format(pool_copy), file=ini_fh)
+                    elif key == 'genesis.txn.path':
+                        print('genesis.txn.path={}'.format(genesis_tmp.name), file=ini_fh)  # includes /tmp/ path
+                    else:
+                        print('{}={}.xxx'.format(key, value), file=ini_fh)
+                else:
+                    print('{}={}'.format(key, value), file=ini_fh)
+            print(file=ini_fh)
+    with open(path_setnym_ini, 'r') as cfg_fh:
+        print('\n\n== 19 == Next configuration, calling for copy of node pool ledger config:\n{}'.format(cfg_fh.read()))
+
+    sub_proc = subprocess.run(
+        [
+            'python',
+            join(dirname(dirname(dirname(realpath(__file__)))), 'von_anchor', 'op', 'setnym.py'),
+            str(path_setnym_ini)
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL)
+    assert not sub_proc.returncode
+    print('\n\n== 20 == Called for new copy {} of node pool ledger config'.format(pool_copy))
+
+    unlink(genesis_tmp.name)
+    await p_mgr.remove(pool_copy)
+    await pool.open()
+    await san.open()
+    nym = json.loads(await san.get_nym(san.did))
+    assert nym and Role.get(nym['role']) == Role.TRUST_ANCHOR
+    assert nym and nym['seqNo'] != last_nym_seqno
+    print('\n\n== 21 == Got nym transaction from ledger for DID {} ({}): {}'.format(
+        san.did,
+        san.wallet.name,
+        ppjson(nym)))
+    await san.close()
+    await pool.close()
+
+    # Run setnym on configuration with wrong genesis transaction path
+    with open(path_setnym_ini, 'w+') as ini_fh:
+        for section in cfg:
+            print('[{}]'.format(section), file=ini_fh)
+            for (key, value) in cfg[section].items():
+                if section == 'Node Pool':
+                    print('{}={}.xxx'.format(key, value), file=ini_fh)
+                else:
+                    print('{}={}'.format(key, value), file=ini_fh)
+            print(file=ini_fh)
+    with open(path_setnym_ini, 'r') as cfg_fh:
+        print('\n\n== 22 == Next configuration, missing pool and bad genesis txn path:\n{}'.format(cfg_fh.read()))
+
+    sub_proc = subprocess.run(
+        [
+            'python',
+            join(dirname(dirname(dirname(realpath(__file__)))), 'von_anchor', 'op', 'setnym.py'),
+            str(path_setnym_ini)
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL)
+    assert sub_proc.returncode
+    assert str(int(ErrorCode.AbsentPool)) in sub_proc.stdout.decode()
+    print('\n\n== 23 == Called with missing pool and bad genesis txn path, got error text {}'.format(
+        sub_proc.stdout.decode()))
+
+    # Run setnym on configuration with no node pool ledger configuration
+    with open(path_setnym_ini, 'w+') as ini_fh:
+        for section in cfg:
+            print('[{}]'.format(section), file=ini_fh)
+            for (key, value) in cfg[section].items():
+                if section == 'Node Pool':
+                    if key == 'name':
+                        print('{}={}.xxx'.format(key, value), file=ini_fh)
+                    elif key == 'genesis.txn.path':
+                        print('genesis.txn.path=', file=ini_fh)
+                    else:
+                        print('{}={}'.format(key, value), file=ini_fh)
+                else:
+                    print('{}={}'.format(key, value), file=ini_fh)
+            print(file=ini_fh)
+    with open(path_setnym_ini, 'r') as cfg_fh:
+        print('\n\n== 24 == Next configuration, missing pool and no genesis txn path:\n{}'.format(cfg_fh.read()))
+
+    sub_proc = subprocess.run(
+        [
+            'python',
+            join(dirname(dirname(dirname(realpath(__file__)))), 'von_anchor', 'op', 'setnym.py'),
+            str(path_setnym_ini)
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL)
+    assert sub_proc.returncode
+    assert str(int(ErrorCode.AbsentPool)) in sub_proc.stdout.decode()
+    print('\n\n== 25 == Called with missing pool and no genesis txn path, got error text {}'.format(
+        sub_proc.stdout.decode()))
 
     # Run again without trustee anchor wallet present
     await wallets['trustee-anchor'].close()
@@ -263,7 +469,7 @@ async def test_setnym(
                 print('{}={}'.format(key, value), file=ini_fh)
             print(file=ini_fh)
     with open(path_setnym_ini, 'r') as cfg_fh:
-        print('\n\n== 14 == Set VON anchor configuration, no Trustee anchor wallet a priori:\n{}'.format(cfg_fh.read()))
+        print('\n\n== 26 == Set VON anchor configuration, no Trustee anchor wallet a priori:\n{}'.format(cfg_fh.read()))
 
     sub_proc = subprocess.run(
         [
@@ -274,14 +480,13 @@ async def test_setnym(
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     assert not sub_proc.returncode
-    print('\n\n== 15 == Set nym with TRUST_ANCHOR role on {} for {}'.format(noman.did, noman.wallet.name))
+    print('\n\n== 27 == Set nym with TRUST_ANCHOR role on {} for {}'.format(noman.did, noman.wallet.name))
 
     await pool.open()
     await noman.open()
     nym = json.loads(await noman.get_nym(noman.did))
     assert nym and Role.get(nym['role']) == Role.TRUST_ANCHOR
-    last_nym_seqno = nym['seqNo']
-    print('\n\n== 16 == Got nym transaction from ledger for DID {} ({}): {}'.format(
+    print('\n\n== 28 == Got nym transaction from ledger for DID {} ({}): {}'.format(
         noman.did,
         noman.wallet.name,
         ppjson(nym)))

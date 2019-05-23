@@ -350,10 +350,6 @@ class BaseAnchor:
             LOGGER.debug('BaseAnchor.get_did_endpoint <!< Bad DID %s', remote_did)
             raise BadIdentifier('Bad DID {}'.format(remote_did))
 
-        if not self.wallet.handle:
-            LOGGER.debug('BaseAnchor.get_did_endpoint <!< Wallet %s is closed', self.name)
-            raise WalletState('Wallet {} is closed'.format(self.name))
-
         pairwise_info = (await self.wallet.get_pairwise(remote_did)).get(remote_did, None)
         if not (pairwise_info and 'did_endpoint' in pairwise_info.metadata):
             LOGGER.debug('BaseAnchor.get_did_endpoint <!< No endpoint for remote DID %s', remote_did)
@@ -581,10 +577,10 @@ class BaseAnchor:
         nym = json.loads(await self.get_nym(target))
         if not nym:
             LOGGER.debug(
-                'BaseAnchor._verkey_for <!< Wallet %s closed and ledger has no cryptonym for DID %s',
+                'BaseAnchor._verkey_for <!< Anchor %s cannot get cryptonym (hence verkey) for DID %s',
                 self.name,
                 target)
-            raise AbsentNym('Wallet {} closed, and ledger has no cryptonym for DID {}'.format(self.name, target))
+            raise AbsentNym('Anchor {} cannot get cryptonym (hence verkey) for DID {}'.format(self.name, target))
 
         rv = json.loads(await self.get_nym(target))['verkey']
         LOGGER.info('Anchor %s got verkey for DID %s from pool %s', self.name, target, self.pool.name)
@@ -733,7 +729,8 @@ class BaseAnchor:
                 if txn.get('type', None) == '101':  # {} for no such txn; 101 marks indy-sdk schema txn type
                     rv_json = await self.get_schema(self.pool.protocol.txn_data2schema_key(txn))
                 else:
-                    LOGGER.info('BaseAnchor.get_schema: no schema at seq #%s on ledger', index)
+                    LOGGER.debug('BaseAnchor.get_schema <!< no schema at seq #%s on ledger', index)
+                    raise AbsentSchema('No schema at seq #{} on ledger'.format(index))
 
             else:
                 LOGGER.debug('BaseAnchor.get_schema <!< bad schema index type')
@@ -761,7 +758,7 @@ class BaseAnchor:
 
         LOGGER.debug('BaseAnchor.encrypt >>> message: %s, authn: %s, recip: %s', message, authn, recip)
 
-        if not self.wallet.handle:
+        if not self.wallet.handle:  # don't risk fetching verkey from ledger only to fail encryption on closed wallet
             LOGGER.debug('BaseAnchor.encrypt <!< Wallet %s is closed', self.name)
             raise WalletState('Wallet {} is closed'.format(self.name))
 
@@ -784,7 +781,7 @@ class BaseAnchor:
 
         LOGGER.debug('BaseAnchor.decrypt >>> ciphertext: %s, sender: %s', ciphertext, sender)
 
-        if not self.wallet.handle:
+        if not self.wallet.handle:  # don't risk fetching verkey from ledger only to fail encryption on closed wallet
             LOGGER.debug('BaseAnchor.decrypt <!< Wallet %s is closed', self.name)
             raise WalletState('Wallet {} is closed'.format(self.name))
 
@@ -863,11 +860,11 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor.get_txn <<< %s', rv_json)
         return rv_json
 
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         """
-        Return representation for current object.
+        Return string representation for current object.
 
-        :return: representation for current object
+        :return: string representation for current object
         """
 
-        return '{}({})'.format(self.__class__.__name__, self.wallet)
+        return '{}({})'.format(self.__class__.__name__, self.name)

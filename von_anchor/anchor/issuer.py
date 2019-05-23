@@ -447,7 +447,7 @@ class Issuer(BaseAnchor):
         try:
             rv = await anoncreds.issuer_create_credential_offer(self.wallet.handle, cd_id)
         except IndyError as x_indy:
-            if x_indy.error_code == ErrorCode.WalletNotFoundError:
+            if x_indy.error_code == ErrorCode.WalletItemNotFound:
                 LOGGER.debug(
                     'Issuer.create_cred_offer <!< did not issue cred definition from wallet %s',
                     self.name)

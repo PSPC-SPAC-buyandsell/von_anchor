@@ -18,8 +18,6 @@ limitations under the License.
 import json
 import logging
 
-from os.path import expanduser, join
-
 from indy import pool
 from indy.error import IndyError, ErrorCode
 
@@ -52,8 +50,6 @@ class NodePool:
         self._handle = None
         self._config = config or {}
         validate_config('pool', self._config)
-
-        self._cache_id = None
 
         LOGGER.debug('NodePool.__init__ <<<')
 
@@ -96,30 +92,6 @@ class NodePool:
         """
 
         return self._protocol
-
-    @property
-    def cache_id(self) -> str:
-        """
-        Return identifier for archivable caches, computing it first and retaining it if need be.
-        Raise AbsentPool if ledger configuration is not yet available.
-
-        :param name: pool name
-        :return: archivable cache identifier
-        """
-
-        if self._cache_id:
-            return self._cache_id
-
-        with open(join(expanduser('~'), '.indy_client', 'pool', self.name, '{}.txn'.format(self.name))) as fh_genesis:
-            genesis = [json.loads(line) for line in fh_genesis.readlines() if line]
-
-        hps = []
-        for gen_txn in genesis:
-            hps.append(self.protocol.genesis_host_port(gen_txn))
-        hps.sort()  # canonicalize to make order irrelevant
-        self._cache_id = ':'.join('{}:{}'.format(hp[0], hp[1]) for hp in hps)
-
-        return self._cache_id
 
     async def __aenter__(self) -> 'NodePool':
         """
@@ -219,4 +191,4 @@ class NodePool:
         :return: representation for current object
         """
 
-        return 'NodePool({}, {})'.format(self.name, self.genesis_txn_path)
+        return 'NodePool({}, {}, {})'.format(self.name, self.protocol, self.config)

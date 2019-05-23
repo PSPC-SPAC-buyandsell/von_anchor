@@ -133,8 +133,8 @@ class HolderProver(BaseAnchor):
         :param value: configuration dict
         """
 
+        validate_config('holder-prover', value or {})
         self._config = value or {}
-        validate_config('holder-prover', self._config)
 
     @property
     def dir_cache(self) -> str:
@@ -172,8 +172,12 @@ class HolderProver(BaseAnchor):
                 'HolderProver._sync_revoc_for_proof <!< corrupt tails tree %s may be for another ledger',
                 self._dir_tails)
             raise AbsentCredDef('Corrupt tails tree {} may be for another ledger'.format(self._dir_tails))
-        except ClosedPool:
-            pass  # carry on, may be OK from cache only
+        except (AbsentPool, ClosedPool):  # carry on, may be OK from cache only
+            LOGGER.warning(
+                'HolderProver %s could not sync cred def id %s for proof: pool %s',
+                self.name,
+                cd_id,
+                '{} closed'.format(self.pool.name) if self.pool else 'absent')
 
         with REVO_CACHE.lock:
             revo_cache_entry = REVO_CACHE.get(rr_id, None)
@@ -182,19 +186,29 @@ class HolderProver(BaseAnchor):
                 try:
                     tails = await Tails(self._dir_tails, cd_id, tag).open()
                 except AbsentTails:  # get hash from ledger and check for tails file
-                    rr_def = json.loads(await self.get_rev_reg_def(rr_id))
-                    tails_hash = rr_def['value']['tailsHash']
-                    path_tails = join(Tails.dir(self._dir_tails, rr_id), tails_hash)
-                    if not isfile(path_tails):
-                        LOGGER.debug('HolderProver._sync_revoc_for_proof <!< No tails file present at %s', path_tails)
-                        raise AbsentTails('No tails file present at {}'.format(path_tails))
-                    Tails.associate(self._dir_tails, rr_id, tails_hash)
-                    tails = await Tails(self._dir_tails, cd_id, tag).open()  # OK now since tails file present
+                    try:
+                        rr_def = json.loads(await self.get_rev_reg_def(rr_id))
+                        tails_hash = rr_def['value']['tailsHash']
+                        path_tails = join(Tails.dir(self._dir_tails, rr_id), tails_hash)
+                        if not isfile(path_tails):
+                            LOGGER.debug(
+                                'HolderProver._sync_revoc_for_proof <!< No tails file present at %s',
+                                path_tails)
+                            raise AbsentTails('No tails file present at {}'.format(path_tails))
+                        Tails.associate(self._dir_tails, rr_id, tails_hash)
+                        tails = await Tails(self._dir_tails, cd_id, tag).open()  # OK now since tails file present
+                    except (AbsentPool, ClosedPool):  # carry on, may be OK from cache only
+                        LOGGER.warning(
+                            'HolderProver %s could not sync rev reg id %s for proof: pool %s',
+                            self.name,
+                            rr_id,
+                            '{} closed'.format(self.pool.name) if self.pool else 'absent')
 
-                if revo_cache_entry is None:
-                    REVO_CACHE[rr_id] = RevoCacheEntry(None, tails)
-                else:
-                    REVO_CACHE[rr_id].tails = tails
+                if tails:
+                    if revo_cache_entry is None:
+                        REVO_CACHE[rr_id] = RevoCacheEntry(None, tails)
+                    else:
+                        REVO_CACHE[rr_id].tails = tails
 
         LOGGER.debug('HolderProver._sync_revoc_for_proof <<<')
 
@@ -378,7 +392,7 @@ class HolderProver(BaseAnchor):
                 cred_def = json.loads(await self.get_cred_def(cd_id))
             except ClosedPool:
                 LOGGER.debug('HolderProver.offline_intervals <!< no such cred def %s in cred def cache', cd_id)
-                raise CacheIndex('No cached delta for non-revoc interval on {}'.format(cd_id))
+                raise CacheIndex('No such cred def {} in cred def cache'.format(cd_id))
 
             rv[cd_id] = {}
             if 'revocation' in cred_def['value']:
@@ -593,17 +607,11 @@ class HolderProver(BaseAnchor):
                 if revo_cache_entry:
                     try:
                         await revo_cache_entry.get_delta_json(self._build_rr_delta_json, rv, rv)
-                    except ClosedPool:
+                    except (AbsentPool, ClosedPool):
                         LOGGER.warning(
-                            'HolderProver %s is offline from pool %s, cannot update revo cache reg delta for %s to %s',
+                            'HolderProver %s pool %s, cannot update revo cache reg delta for %s to %s',
                             self.name,
-                            self.pool.name,
-                            rr_id,
-                            rv)
-                    except AbsentPool:
-                        LOGGER.warning(
-                            'HolderProver %s has no pool, cannot update revo cache reg delta for %s to %s',
-                            self.name,
+                            '{} closed'.format(self.pool.name) if self.pool else 'absent',
                             rr_id,
                             rv)
 
