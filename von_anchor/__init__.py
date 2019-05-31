@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 
-from .anchor.demo import BCRegistrarAnchor, OrgBookAnchor, OrgHubAnchor, SRIAnchor, NominalAnchor, TrusteeAnchor
+from .anchor.demo import NominalAnchor, OrgBookAnchor, OrgHubAnchor, ProctorAnchor, RegistrarAnchor, TrusteeAnchor
 from .anchor.holderprover import HolderProver
 from .anchor.issuer import Issuer
 from .anchor.origin import Origin

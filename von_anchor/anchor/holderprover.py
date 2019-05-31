@@ -426,7 +426,7 @@ class HolderProver(BaseAnchor):
 
         LOGGER.debug('HolderProver.create_link_secret <<<')
 
-    async def create_cred_req(self, cred_offer_json: str, cd_id: str) -> (str, str):
+    async def create_cred_req(self, cred_offer_json: str, cd_id: str, my_did: str = None) -> (str, str):
         """
         Create credential request as HolderProver and store in wallet; return credential json and metadata json.
 
@@ -434,10 +434,16 @@ class HolderProver(BaseAnchor):
 
         :param cred_offer_json: credential offer json
         :param cd_id: credential definition identifier
+        :param my_did: HolderProver DID to use in offer creation (default to anchor DID,
+            or specify local DID in pairwise relation)
         :return: cred request json and corresponding metadata json as created and stored in wallet
         """
 
-        LOGGER.debug('HolderProver.create_cred_req >>> cred_offer_json: %s, cd_id: %s', cred_offer_json, cd_id)
+        LOGGER.debug(
+            'HolderProver.create_cred_req >>> cred_offer_json: %s, cd_id: %s, my_did %s',
+            cred_offer_json,
+            cd_id,
+            my_did)
 
         if not ok_cred_def_id(cd_id):
             LOGGER.debug('HolderProver.create_cred_req <!< Bad cred def id %s', cd_id)
@@ -461,7 +467,7 @@ class HolderProver(BaseAnchor):
             raise AbsentSchema('Absent schema@#{}, cred req may be for another ledger'.format(schema_seq_no))
         (cred_req_json, cred_req_metadata_json) = await anoncreds.prover_create_credential_req(
             self.wallet.handle,
-            self.did,
+            my_did or self.did,
             cred_offer_json,
             cred_def_json,
             label)

@@ -37,11 +37,12 @@ import pytest
 from indy import anoncreds, did
 
 from von_anchor import (
-    BCRegistrarAnchor,
+    RegistrarAnchor,
+    HolderProver,
     OrgBookAnchor,
     OrgHubAnchor,
     RevRegBuilder,
-    SRIAnchor,
+    ProctorAnchor,
     NominalAnchor,
     TrusteeAnchor,
     Verifier)
@@ -238,7 +239,7 @@ async def test_anchors_api(
     p = p_mgr.get(pool_name)
 
     try:  # exercise creation on nonexistent wallet, OK to open later
-        SRIAnchor(w_mgr.get({'id': 'xxx', 'auto_remove': True}), p, rrbx=False)
+        ProctorAnchor(w_mgr.get({'id': 'xxx', 'auto_remove': True}), p, rrbx=False)
     except AbsentWallet:
         assert False
 
@@ -269,13 +270,13 @@ async def test_anchors_api(
     except AbsentPool:
         pass
     try:  # exercise error path: cannot send cred def to absent pool
-        async with SRIAnchor(wallets['x-anchor']) as xan:
+        async with ProctorAnchor(wallets['x-anchor']) as xan:
             await xan.send_cred_def(schema_id(xan.did, 'name', '1.0'))
         assert False
     except AbsentPool:
         pass
     try:  # exercise error path: cannot create cred offer without pool (as protocol, hence cred def id format, unknown)
-        async with SRIAnchor(wallets['x-anchor']) as xan:
+        async with ProctorAnchor(wallets['x-anchor']) as xan:
             await xan.create_cred_offer(99999)
         assert False
     except AbsentPool:
@@ -287,7 +288,7 @@ async def test_anchors_api(
     async with p:  # exercise some anchor methods with wallet in all states
         xwallet = w_mgr.get({'id': 'xxx', 'auto_remove': True})
         await xwallet.remove()  # could still be there from prior abend; silently fails if not present
-        xan = SRIAnchor(xwallet, p)
+        xan = ProctorAnchor(xwallet, p)
         try:
             await xan.get_nym()  # wallet never opened: no anchor DID
             assert False
@@ -325,7 +326,7 @@ async def test_anchors_api(
             assert False
 
     tan = TrusteeAnchor(wallets['trustee-anchor'], p)
-    san = SRIAnchor(wallets['sri'], p, rrbx=False)
+    san = ProctorAnchor(wallets['sri'], p, rrbx=False)
     pspcoban = OrgBookAnchor(
         wallets['pspc-org-book'],
         p,
@@ -348,7 +349,7 @@ async def test_anchors_api(
             }
         },
         rrbx=False)
-    bcran = BCRegistrarAnchor(wallets['bc-registrar'], p, rrbx=False)
+    bcran = RegistrarAnchor(wallets['bc-registrar'], p, rrbx=False)
 
     await tan.open()
 
@@ -393,7 +394,7 @@ async def test_anchors_api(
         'bcohan': json.loads(await tan.get_nym(bcohan.did)),
         'bcran': json.loads(await tan.get_nym(bcran.did))
     }
-    print('\n\n== 1 == nyms: {}'.format(ppjson(nyms)))
+    print('\n\n== 1 == Nyms on ledger: {}'.format(ppjson(nyms)))
 
     for k in nyms:
         assert 'dest' in nyms[k]
@@ -420,7 +421,7 @@ async def test_anchors_api(
     await san.send_endpoint(url_endpoint)
     assert await san.get_endpoint() == url_endpoint  # check cache correctness
     assert await san.get_endpoint(None, False) == url_endpoint
-    print('\n\n== 2 == endpoint set/get/clear/cache OK')
+    print('\n\n== 2 == Endpoint set/get/clear/cache OK')
 
     # Publish schema to ledger if not yet present; get from ledger
     S_ID = {
@@ -546,7 +547,7 @@ async def test_anchors_api(
 
         seq_no2schema_id[schema[s_id]['seqNo']] = s_id
         seq_no2schema[schema[s_id]['seqNo']] = schema[s_id]
-        print('\n\n== 3.{} == SCHEMA [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
+        print('\n\n== 3.{} == Schema [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
         assert schema[s_id]
         i += 1
 
@@ -1041,7 +1042,7 @@ async def test_anchors_api(
         ppjson(nr_briefs_q)))
     assert len(nr_briefs_q) == 2
     nr_box_ids_q = box_ids(nr_briefs_q)  # exercise box_ids
-    print('\n\n== 15 == box-ids for non-revo cred briefs via $or query: {}'.format(ppjson(nr_box_ids_q)))
+    print('\n\n== 15 == Box-ids for non-revo cred briefs via $or query: {}'.format(ppjson(nr_box_ids_q)))
 
     wql_get_briefs_json = json.dumps({
         nr_refts[cd_id[S_ID['NON-REVO']]]['Must Have']: {  # AND, require presence of this NON-REVO cred def attr
@@ -1058,7 +1059,7 @@ async def test_anchors_api(
         ppjson(nr_briefs_q)))
     assert len(nr_briefs_q) == 0
     nr_box_ids_q = box_ids(nr_briefs_q.values())  # exercise box_ids on empty content
-    print('\n\n== 17 == box-ids for non-revo cred briefs via no-match AND query: {}'.format(ppjson(nr_box_ids_q)))
+    print('\n\n== 17 == Box-ids for non-revo cred briefs via no-match AND query: {}'.format(ppjson(nr_box_ids_q)))
 
     wql_get_briefs_json = json.dumps({
         nr_refts[cd_id[S_ID['NON-REVO']]]['Preferred Name']: {  # AND
@@ -1075,7 +1076,7 @@ async def test_anchors_api(
         ppjson(nr_briefs_q)))
     assert len(nr_briefs_q) == 1
     nr_box_ids_q = box_ids(nr_briefs_q.values(), nr_briefs_q.keys())  # exercise box_ids
-    print('\n\n== 19 == box-ids for non-revo cred briefs via single-match AND query: {}'.format(ppjson(nr_box_ids_q)))
+    print('\n\n== 19 == Box-ids for non-revo cred briefs via single-match AND query: {}'.format(ppjson(nr_box_ids_q)))
 
     bc_refts = proof_req_attr_referents(proof_req[S_ID['BC']])
     print('\n\n== 20 == BC referents from proof req: {}'.format(ppjson(bc_refts)))
@@ -2204,7 +2205,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     # PSPC Org Book anchor (as HolderProver) creates multi-cred proof with specification of one by pred
     cd_id = {}
     schema = {}
-    san = SRIAnchor(wallets['sri'], p, rrbx=False)
+    san = ProctorAnchor(wallets['sri'], p, rrbx=False)
     async with wallets['sri']:
         S_ID = {
             'SRI-1.0': schema_id(san.did, 'sri', '1.0'),
@@ -2246,7 +2247,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
         'parse-caches-on-open': True,
         'archive-verifier-caches-on-close': json.loads(await pspcoban.get_box_ids_held())
     }
-    san = SRIAnchor(wallets['sri'], p, config=san_cfg, rrbx=False)
+    san = ProctorAnchor(wallets['sri'], p, config=san_cfg, rrbx=False)
 
     # Exercise pool/wallet error conditions
     try:
@@ -2324,7 +2325,7 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
             wallets['pspc-org-book']) as w_pspc, (
             wallets['xxx-org-book']) as w_xxx, (
             p_mgr.get(pool_name)) as p, (
-            SRIAnchor(w_sri, p, rrbx=False)) as san, (
+            ProctorAnchor(w_sri, p, rrbx=False)) as san, (
             OrgBookAnchor(
                 w_pspc,
                 p,
@@ -2411,7 +2412,7 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
                 'parse-caches-on-open': True,
                 'archive-holder-prover-caches-on-close': True
             })) as pspcoban, (
-            SRIAnchor(w_sri, p, rrbx=True)) as san:  # exercise external rev reg builder
+            ProctorAnchor(w_sri, p, rrbx=True)) as san:  # exercise external rev reg builder
 
         nyms = {
             'pspcoban': json.loads(await san.get_nym(pspcoban.did)),
@@ -2422,7 +2423,7 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
             assert False
         except BadIdentifier:
             pass
-        print('\n\n== 1 == nyms: {}'.format(ppjson(nyms)))
+        print('\n\n== 1 == Nyms on ledger: {}'.format(ppjson(nyms)))
 
         # Exercise error paths for external revocation registry build
         await san.wallet.close()
@@ -2499,7 +2500,7 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
         assert json.loads(schema_json)  # should exist now
         schema = json.loads(schema_json)
         seq_no = schema['seqNo']
-        print('\n\n== 4 == SCHEMA for revocation cache exercise [{} v{}]: {}'.format(
+        print('\n\n== 4 == Schema for revocation cache exercise [{} v{}]: {}'.format(
             s_key.name,
             s_key.version,
             ppjson(schema)))
@@ -2646,9 +2647,9 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
             wallets['sri-1']) as w_sri1, (
             wallets['sri-2']) as w_sri2, (
             p_mgr.get(pool_name)) as p, (
-            SRIAnchor(w_sri0, p, rrbx=False)) as san0, (
-            SRIAnchor(w_sri1, p, rrbx=False)) as san1, (
-            SRIAnchor(w_sri2, p, rrbx=False)) as san2:
+            ProctorAnchor(w_sri0, p, rrbx=False)) as san0, (
+            ProctorAnchor(w_sri1, p, rrbx=False)) as san1, (
+            ProctorAnchor(w_sri2, p, rrbx=False)) as san2:
 
         sri_did = san0.did
         schema_key2seq_no = {
@@ -2710,7 +2711,7 @@ async def test_anchor_reseed(
     now = int(time())  # ten digits, unique and disposable each run
     rsoban_seeds = ['Reseed-Org-Book-Anchor{}'.format(now + i) for i in range(3)]  # makes 32 characters
     # Generate seeds (in case of re-run on existing ledger, use fresh disposable identity every time)
-    print('\n\n== 1 == seeds: {}'.format(rsoban_seeds))
+    print('\n\n== 1 == Seeds: {}'.format(rsoban_seeds))
 
     seeds = {
         'trustee-anchor': seed_trustee1,
@@ -2738,7 +2739,7 @@ async def test_anchor_reseed(
             'tan': json.loads(await tan.get_nym(tan.did)),
             'rsan': json.loads(await tan.get_nym(rsan.did))
         }
-        print('\n\n== 2 == nyms: {}'.format(ppjson(nyms)))
+        print('\n\n== 2 == Nyms on ledger: {}'.format(ppjson(nyms)))
 
         for k in nyms:
             assert 'dest' in nyms[k]
@@ -2861,7 +2862,7 @@ async def test_anchors_cache_only(
     # Create pool, init anchors, then open pool afterward
     p = p_mgr.get(pool_name)
 
-    san = SRIAnchor(wallets['sri'], p, rrbx=False)
+    san = ProctorAnchor(wallets['sri'], p, rrbx=False)
     pspcoban = OrgBookAnchor(
         wallets['pspc-org-book'],
         p,
@@ -2942,7 +2943,7 @@ async def test_anchors_cache_only(
 
         seq_no2schema_id[schema[s_id]['seqNo']] = s_id
         seq_no2schema[schema[s_id]['seqNo']] = schema[s_id]
-        print('\n\n== 1.{} == SCHEMA [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
+        print('\n\n== 1.{} == Schema [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
         assert schema[s_id]
         i += 1
 
@@ -3307,7 +3308,7 @@ async def test_catpol(
             wallets['pspc-org-book']) as w_pspc, (
             p_mgr.get(pool_name)) as p, (
             TrusteeAnchor(w_trustee, p)) as tan, (
-            SRIAnchor(w_sri, p, rrbx=False)) as san, (
+            ProctorAnchor(w_sri, p, rrbx=False)) as san, (
             OrgBookAnchor(w_pspc, p, config={
                 'parse-caches-on-open': True,
                 'archive-holder-prover-caches-on-close': True
@@ -3324,7 +3325,7 @@ async def test_catpol(
             'san': json.loads(await san.get_nym(san.did)),
             'pspcoban': json.loads(await san.get_nym(pspcoban.did))
         }
-        print('\n\n== 1 == nyms: {}'.format(ppjson(nyms)))
+        print('\n\n== 1 == Nyms on ledger: {}'.format(ppjson(nyms)))
 
         for k in nyms:
             assert 'dest' in nyms[k]
@@ -3380,7 +3381,7 @@ async def test_catpol(
 
             schema[s_id] = json.loads(schema_json[s_id])
             seq_no2schema_id[schema[s_id]['seqNo']] = s_id
-            print('\n\n== 2.{} == SCHEMA [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
+            print('\n\n== 2.{} == Schema [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
             assert schema[s_id]
             i += 1
 
@@ -3455,7 +3456,7 @@ async def test_catpol(
             }
         }
         try:  # exercise error case with bad cred def id
-            x_cred_offer = json.loads(cred_offer_json)
+            x_cred_offer = json.loads(cred_offer_json[s_id])
             x_cred_offer['cred_def_id'] = 'not-a-cdid'
             await san.create_cred(
                 json.dumps(x_cred_offer),
@@ -3573,7 +3574,7 @@ async def test_util_wranglers(
     async with wallets['sri'] as w_sri, (
             wallets['pspc-org-book']) as w_pspc, (
             p_mgr.get(pool_name)) as p, (
-            SRIAnchor(w_sri, p, rrbx=True)) as san, (
+            ProctorAnchor(w_sri, p, rrbx=True)) as san, (
             OrgBookAnchor(w_pspc, p, config={
                 'parse-caches-on-open': True,
                 'archive-holder-prover-caches-on-close': True
@@ -3585,7 +3586,7 @@ async def test_util_wranglers(
             'san': json.loads(await san.get_nym(san.did)),
             'pspcoban': json.loads(await san.get_nym(pspcoban.did))
         }
-        print('\n\n== 1 == nyms: {}'.format(ppjson(nyms)))
+        print('\n\n== 1 == Nyms on ledger: {}'.format(ppjson(nyms)))
 
         for k in nyms:
             assert 'dest' in nyms[k]
@@ -3653,7 +3654,7 @@ async def test_util_wranglers(
 
             schema[s_id] = json.loads(schema_json[s_id])
             seq_no2schema_id[schema[s_id]['seqNo']] = s_id
-            print('\n\n== 2.{} == SCHEMA [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
+            print('\n\n== 2.{} == Schema [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
             assert schema[s_id]
             i += 1
 
@@ -3923,7 +3924,7 @@ async def test_crypto(
     async with wallets['sri'] as w_sri, (
             wallets['pspc-org-book']) as w_pspc, (
             p_mgr.get(pool_name)) as p, (
-            SRIAnchor(w_sri, p, rrbx=False)) as san, (
+            ProctorAnchor(w_sri, p, rrbx=False)) as san, (
             OrgBookAnchor(w_pspc, p)) as pspcoban:
 
         assert p.handle is not None
@@ -4100,7 +4101,7 @@ async def test_crypto(
     # Repeat crypto tests with anchors on wallet only
     async with wallets['sri'] as w_sri, (
             wallets['pspc-org-book']) as w_pspc, (
-            SRIAnchor(w_sri, rrbx=False)) as san, (
+            ProctorAnchor(w_sri, rrbx=False)) as san, (
             OrgBookAnchor(w_pspc)) as pspcoban:
 
         dids = {
@@ -4253,7 +4254,7 @@ async def test_share_wallet(
     # Open pool, init anchors
     async with wallets['multipass'] as w_multi, (
             p_mgr.get(pool_name)) as p, (
-            SRIAnchor(w_multi, p, rrbx=False)) as san, (
+            ProctorAnchor(w_multi, p, rrbx=False)) as san, (
             NominalAnchor(w_multi, p)) as noman:
 
         assert p.handle is not None
@@ -4269,11 +4270,11 @@ async def test_least_role():
 
     print(Ink.YELLOW('\n\n== Testing least role per anchor class =='))
     least_role = {
-        BCRegistrarAnchor: Role.TRUST_ANCHOR,
+        RegistrarAnchor: Role.TRUST_ANCHOR,
         OrgBookAnchor: Role.TRUST_ANCHOR,
         OrgHubAnchor: Role.TRUST_ANCHOR,
         RevRegBuilder: Role.TRUST_ANCHOR,
-        SRIAnchor: Role.TRUST_ANCHOR,
+        ProctorAnchor: Role.TRUST_ANCHOR,
         NominalAnchor: Role.USER,
         TrusteeAnchor: Role.TRUSTEE,
         Verifier: Role.USER
@@ -4306,11 +4307,9 @@ async def test_did_endpoints():
     await wallets['pspc-org-book'].close()
     await pspcoban.close()
 
-
-    # Set up wallets, anchors
     async with wallets['sri'] as w_sri, (
             wallets['pspc-org-book']) as w_pspc, (
-            SRIAnchor(w_sri, rrbx=False)) as san, (
+            ProctorAnchor(w_sri, rrbx=False)) as san, (
             OrgBookAnchor(w_pspc)) as pspcoban:
 
         dids = {
@@ -4378,3 +4377,337 @@ async def test_did_endpoints():
             ppjson({k: vars(records[k]) for k in records})))
         assert len(records) == 1
         assert records[san.did].metadata['did_endpoint'] == '7.8.9.10:1112'
+
+
+@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.asyncio
+async def test_free_holder_prover(
+        pool_ip,
+        pool_name,
+        pool_genesis_txn_path,
+        pool_genesis_txn_file,
+        seed_trustee1):
+
+    print(Ink.YELLOW('\n\n== Testing Free Holder-Prover (with no anchor DID on ledger) =='))
+
+    # Set up node pool ledger config and wallets, open pool, init anchors
+    p_mgr = NodePoolManager()
+    w_mgr = WalletManager()
+    if pool_name not in await p_mgr.list():
+        await p_mgr.add_config(pool_name, pool_genesis_txn_path)
+    p = p_mgr.get(pool_name)
+
+    wallet_data = {
+        'trustee-anchor': {'seed': seed_trustee1},
+        'bc-proctor': {'seed': 'BC-Proctor-Anchor-00000000000000'},
+        'holder-prover': {'seed': 'Simple-Holder-Prover-00000000000', 'link_secret_label': 'hp-secret-sauce'},
+        'sri': {'seed': 'SRI-Anchor-000000000000000000000'}
+    }
+
+    wallets = await get_wallets(wallet_data, open_all=False)
+
+    # Open pool, init anchors
+    async with wallets['trustee-anchor'] as w_trustee, (
+            wallets['bc-proctor']) as w_bc, (
+            wallets['holder-prover']) as w_hp, (
+            wallets['sri']) as w_sri, (
+            p_mgr.get(pool_name)) as p, (
+            TrusteeAnchor(w_trustee, p)) as tan, (
+            ProctorAnchor(w_bc, p)) as bcpan, (  # in this example the BC proctor anchor issues and verifies
+            HolderProver(w_hp, p)) as hpan, (
+            ProctorAnchor(w_sri, p, rrbx=False)) as san:
+
+        # Publish trustee, issuer anchor particulars to ledger if not yet present
+        did2an = {}
+        for an in (tan, bcpan, san):
+            if not json.loads(await tan.get_nym(an.did)):
+                await tan.send_nym(an.did, an.verkey, an.wallet.name, an.least_role())
+
+        nyms = {
+            'tan': json.loads(await tan.get_nym()),
+            'bcpan': json.loads(await tan.get_nym(bcpan.did)),
+            'hpan': json.loads(await tan.get_nym(hpan.did)),
+            'san': json.loads(await tan.get_nym(san.did))
+        }
+        print('\n\n== 1 == Nyms on ledger: {}'.format(ppjson(nyms)))
+
+        # Publish schema to ledger if not yet present; get from ledger
+        now = int(time())
+        S_ID = {
+            'VER-PERSON': schema_id(bcpan.did, 'verified-person', '{}.0'.format(now)),
+            'VER-BUS-REL': schema_id(bcpan.did, 'verified-provincial-business-relationship', '{}.0'.format(now))
+        }
+
+        schema_data = {
+            S_ID['VER-PERSON']: {
+                'name': schema_key(S_ID['VER-PERSON']).name,
+                'version': schema_key(S_ID['VER-PERSON']).version,
+                'attr_names': [
+                    'legalName',
+                    'socialInsuranceNumber',
+                    'sex',
+                    'dateOfBirth',
+                    'localityOfBirth'
+                ]
+            },
+            S_ID['VER-BUS-REL']: {
+                'name': schema_key(S_ID['VER-BUS-REL']).name,
+                'version': schema_key(S_ID['VER-BUS-REL']).version,
+                'attr_names': [
+                    'businessNumber',
+                    'relation',
+                    'fromDate',
+                    'toDate'
+                ]
+            }
+        }
+
+        cred_data = {
+            S_ID['VER-PERSON']: {
+                'legalName': 'Bill Lee',
+                'socialInsuranceNumber': '123456789',
+                'sex': 'M',
+                'dateOfBirth': '1970-01-01',
+                'localityOfBirth': 'Prince Rupert'
+            },
+            S_ID['VER-BUS-REL']: {
+                'businessNumber': '1337',
+                'relation': 'signing officer',
+                'fromDate': datetime.date.today().strftime('%Y-%m-%d'),
+                'toDate': (datetime.date.today() + datetime.timedelta(days=365)).strftime('%Y-%m-%d')
+            }
+        }
+
+        # index by transaction number
+        seq_no2schema_id = {}
+
+        # index by schema id
+        schema_json = {}
+        schema = {}
+        cred_offer_json = {}
+        cred_offer = {}
+        cred_def_json = {}
+        cred_def = {}
+        cd_id = {}
+        cred_id = {}
+        cred_req_json = {}
+        cred_req = {}
+        cred_json = {}
+        cred_req_metadata_json = {}
+
+        # Publish schemata to ledger
+        i = 0
+        seq_no = None
+        for s_id in schema_data:
+            s_key = schema_key(s_id)
+            await bcpan.send_schema(json.dumps(schema_data[s_id]))
+            schema_json[s_id] = await bcpan.get_schema(s_key)
+            assert json.loads(schema_json[s_id])  # should exist now
+
+            schema[s_id] = json.loads(schema_json[s_id])
+            seq_no2schema_id[schema[s_id]['seqNo']] = s_id
+            print('\n\n== 2.{} == Schema [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
+            assert schema[s_id]
+            i += 1
+
+        # Local and pairwise DIDs: Holder-Prover and BC Proctor agents exchange
+        didinfo = {}
+        didinfo['bcpan'] = await bcpan.wallet.create_local_did(None, None)  # BC proctor agent sends to Holder-Prover's
+        pairwise = {}
+        pairwise['hpan2bcpan'] = await hpan.wallet.write_pairwise(
+            their_did=didinfo['bcpan'].did,
+            their_verkey=didinfo['bcpan'].verkey,
+            metadata={'for': 'bcpan'})  # nicety for later search
+        pairwise['bcpan2hpan'] = await bcpan.wallet.write_pairwise(
+            their_did=pairwise['hpan2bcpan'].my_did,
+            their_verkey=pairwise['hpan2bcpan'].my_verkey,
+            my_did=didinfo['bcpan'].did,
+            metadata={'for': 'hpan'})  # nicety for later search
+        print('\n\n== 3 == Pairwise relations between Holder-Prover and BC Proctor: {}'.format(ppjson(pairwise)))
+
+        # BC Proctor anchor creates, stores, publishes cred definitions to ledger; creates cred offers
+        i = 0
+        for s_id in schema_data:
+            s_key = schema_key(s_id)
+
+            await bcpan.send_cred_def(s_id, revo=False, rr_size=None)  # omit revocation for this demo
+            cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
+
+            cred_def_json[s_id] = await bcpan.get_cred_def(cd_id[s_id])  # ought to exist now
+            cred_def[s_id] = json.loads(cred_def_json[s_id])
+            print('\n\n== 4.{}.0 == Cred def [{} v{}]: {}'.format(
+                i,
+                s_key.name,
+                s_key.version,
+                ppjson(json.loads(cred_def_json[s_id]))))
+            assert cred_def[s_id].get('schemaId', None) == str(schema[s_id]['seqNo'])
+
+            cred_offer_json[s_id] = await bcpan.create_cred_offer(schema[s_id]['seqNo'])
+            cred_offer[s_id] = json.loads(cred_offer_json[s_id])
+            print('\n\n== 4.{}.1 == Credential offer [{} v{}]: {}'.format(
+                i,
+                s_key.name,
+                s_key.version,
+                ppjson(cred_offer_json[s_id])))
+            i += 1
+
+        # Holder-Prover Verified Person credential request to Province (assume legitimate identity proofing process)
+        s_id = S_ID['VER-PERSON']
+        (cred_req_json[s_id], cred_req_metadata_json[s_id]) = await hpan.create_cred_req(
+            cred_offer_json[s_id],
+            cd_id[s_id],
+            pairwise['hpan2bcpan'].my_did)
+        cred_req[s_id] = json.loads(cred_req_json[s_id])
+        print('\n\n== 5 == Verified person credential request: metadata {}, cred req {}'.format(
+            ppjson(cred_req_metadata_json[s_id]),
+            ppjson(cred_req_json[s_id])))
+        assert json.loads(cred_req_json[s_id])
+        assert cred_req[s_id]['prover_did'] == pairwise['bcpan2hpan'].their_did
+        assert cred_req[s_id]['prover_did'] == pairwise['hpan2bcpan'].my_did
+
+        # BC Proctor issues verified-person cred
+        (cred_json[s_id], _) = await bcpan.create_cred(
+            cred_offer_json[s_id],
+            cred_req_json[s_id],
+            cred_data[s_id])
+        assert json.loads(cred_json[s_id])
+        print('\n\n== 6 == Issuer created {} cred: {}'.format(s_id, ppjson(cred_json[s_id])))
+
+        # Holder-Prover stores cred
+        cred = json.loads(cred_json[s_id])
+        cred_id[s_id] = await hpan.store_cred(
+            cred_json[s_id],
+            cred_req_metadata_json[s_id])
+        print('\n\n== 7 == Cred id on {} in wallet: {}'.format(s_id, cred_id[s_id]))
+
+        # BC Proctor agent requests proof of identity via verified person, to check for right to verified relation
+        proof_req_json = await bcpan.build_proof_req_json({
+            cd_id[s_id]: {
+                'attrs': [
+                    'legalName',
+                    'dateOfBirth',
+                    'localityOfBirth'
+                ]
+            }
+        })
+        proof_req = json.loads(proof_req_json)
+        print('\n\n== 8 == Proof req for verified person (BC Proctor asks): {}'.format(ppjson(proof_req_json)))
+
+        # Holder-Prover anchor gets cred-briefs via query, creates proof
+        refts = proof_req_attr_referents(proof_req)
+        wql = {
+            refts[cd_id[s_id]]['legalName']: {
+                'attr::legalName::value': cred_data[s_id]['legalName']
+            }
+        }
+        print('\n\n== 9 == WQL to find verified-person cred brief: {}'.format(ppjson(wql)))
+        wql_json = json.dumps(wql)
+        briefs_q = json.loads(await hpan.get_cred_briefs_by_proof_req_q(proof_req_json, wql_json))
+        assert len(briefs_q) == 1  # by construction
+        print('\n\n== 10 == Found cred briefs: {}'.format(ppjson(briefs_q)))
+        req_creds_q = proof_req_briefs2req_creds(proof_req, briefs_q.values())
+        print('\n\n== 11 == Proof req and briefs created req-creds: {}'.format(ppjson(req_creds_q)))
+        proof_q = json.loads(await hpan.create_proof(proof_req, briefs_q.values(), req_creds_q))
+        print('\n\n== 12 == Proof via query: {}'.format(ppjson(proof_q)))
+
+        # BC Proctor anchor (as Verifier) verifies proof (by query)
+        rc_json = await bcpan.verify_proof(proof_req, proof_q)
+        print('\n\n== 13 == BC Proctor anchor verifies proof by query as: {}'.format(ppjson(rc_json)))
+        assert json.loads(rc_json)
+
+        revealed = revealed_attrs(proof_q)
+        print('\n\n== 14 == Revealed attributes from verified-person proof: {}'.format(ppjson(revealed)))
+        revealed_vp = revealed[cd_id[s_id]]
+        '''
+        Looks like {
+            'localityofbirth': 'Prince Rupert',
+            'dateofbirth': '1970-01-01',
+            'legalname': 'Bill Lee'
+        }
+        '''
+        assert all(revealed_vp[canon(attr_name)] == cred_data[s_id][attr_name]
+            for attr_name in cred_data[s_id] if canon(attr_name) in revealed_vp)
+
+        # Holder-Prover requests verified business relationship credential
+        s_id = S_ID['VER-BUS-REL']
+        (cred_req_json[s_id], cred_req_metadata_json[s_id]) = await hpan.create_cred_req(
+            cred_offer_json[s_id],
+            cd_id[s_id],
+            pairwise['hpan2bcpan'].my_did)
+        cred_req[s_id] = json.loads(cred_req_json[s_id])
+        print('\n\n== 15 == Verified business relation credential request: metadata {}, cred req {}'.format(
+            ppjson(cred_req_metadata_json[s_id]),
+            ppjson(cred_req_json[s_id])))
+        assert cred_req[s_id]['prover_did'] == pairwise['bcpan2hpan'].their_did
+        assert cred_req[s_id]['prover_did'] == pairwise['hpan2bcpan'].my_did
+
+        # BC Proctor anchor (as Issuer) checks DB, issues cred attesting to HolderProver's verified relation to company
+        (cred_json[s_id], _) = await bcpan.create_cred(
+            cred_offer_json[s_id],
+            cred_req_json[s_id],
+            cred_data[s_id])
+        assert json.loads(cred_json[s_id])
+        print('\n\n== 16 == Issuer created {} cred: {}'.format(s_id, ppjson(cred_json[s_id])))
+
+        # Holder-Prover stores cred
+        cred = json.loads(cred_json[s_id])
+        cred_id[s_id] = await hpan.store_cred(
+            cred_json[s_id],
+            cred_req_metadata_json[s_id])
+        print('\n\n== 17 == Cred id on {} in wallet: {}'.format(s_id, cred_id[s_id]))
+
+        # Local and pairwise DIDs: Holder-Prover and SRI agents exchange, preparing for presentation of proof to enrol
+        didinfo = {}
+        didinfo['san'] = await san.wallet.create_local_did(None, None)  # SRI agent sends to Holder-Prover's
+        pairwise['hpan2san'] = await hpan.wallet.write_pairwise(
+            their_did=didinfo['san'].did,
+            their_verkey=didinfo['san'].verkey,
+            metadata={'for': 'san'})  # nicety for later search
+        pairwise['san2hpan'] = await san.wallet.write_pairwise(
+            their_did=pairwise['hpan2san'].my_did,
+            their_verkey=pairwise['hpan2san'].my_verkey,
+            my_did=didinfo['san'].did,
+            metadata={'for': 'hpan'})  # nicety for later search
+        print('\n\n== 18 == Pairwise relations between Holder-Prover and SRI: {}'.format(ppjson(pairwise)))
+
+        # SRI agent requests proof of identity via verified person and verified business relationship
+        proof_req_json = await bcpan.build_proof_req_json({
+            cd_id[S_ID['VER-PERSON']]: {
+                'attrs': [
+                    'legalName',
+                    'socialInsuranceNumber'
+                ]
+            },
+            cd_id[S_ID['VER-BUS-REL']]: None  # all attrs
+        })
+        proof_req = json.loads(proof_req_json)
+        print('\n\n== 19 == Proof req for verified person and business relation (SRI anchor asks): {}'.format(
+            ppjson(proof_req_json)))
+
+        # Holder-Prover anchor gets cred-briefs via query, creates proof
+        refts = proof_req_attr_referents(proof_req)
+        wql = {
+            refts[cd_id[S_ID['VER-PERSON']]]['legalName']: {
+                'attr::legalName::value': cred_data[S_ID['VER-PERSON']]['legalName']
+            },
+            refts[cd_id[S_ID['VER-BUS-REL']]]['businessNumber']: {
+                'attr::businessNumber::value': cred_data[S_ID['VER-BUS-REL']]['businessNumber']
+            }
+        }
+        print('\n\n== 20 == WQL to find 2 cred briefs: {}'.format(ppjson(wql)))
+        wql_json = json.dumps(wql)
+        briefs_q = json.loads(await hpan.get_cred_briefs_by_proof_req_q(proof_req_json, wql_json))
+        assert len(briefs_q) == 2  # by construction
+        print('\n\n== 21 == Found cred briefs: {}'.format(ppjson(briefs_q)))
+        req_creds_q = proof_req_briefs2req_creds(proof_req, briefs_q.values())
+        print('\n\n== 22 == Proof req and briefs created req-creds: {}'.format(ppjson(req_creds_q)))
+        proof_q = json.loads(await hpan.create_proof(proof_req, briefs_q.values(), req_creds_q))
+        print('\n\n== 23 == Multi-cred proof via query: {}'.format(ppjson(proof_q)))
+
+        # SRI anchor (as Verifier) verifies proof (by query)
+        rc_json = await bcpan.verify_proof(proof_req, proof_q)
+        print('\n\n== 24 == SRI anchor verifies multi-cred proof by query as: {}'.format(ppjson(rc_json)))
+        assert json.loads(rc_json)
+
+        revealed = revealed_attrs(proof_q)
+        print('\n\n== 25 == Revealed attributes from multi-cred proof: {}'.format(ppjson(revealed)))

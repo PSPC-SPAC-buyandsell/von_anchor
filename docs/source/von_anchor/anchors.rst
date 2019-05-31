@@ -228,7 +228,7 @@ A credentials (in indy-sdk, "credentials for proof request") structure, is a dic
 Methods Implementing Operations with Credential-Like Data
 ==============================================================
 
-Its  ``create_cred_req()`` method creates a credential request for an input credential offer and credential definition. It returns the credential request and its  associated metadata.
+Its  ``create_cred_req()`` method creates a credential request for an input credential offer and credential definition, using a specified local DID (from a pairwise relation) or defaulting to the anchor DID. It returns the credential request and its associated metadata.
 
 Its  ``store_cred()`` method stores a credential in the wallet. It returns the credential identifier as it appears in the wallet. Note that the credential attribute tagging policy :ref:`catpol` specifies the credential attributes for which the indy-sdk builds WQL searchable tags in the wallet on storage.
 
@@ -320,4 +320,14 @@ Because these operations could monopolize the (shared) caches, it is best for an
 Demonstration Anchor Classes
 ****************************************************
 
-The ``TrusteeAnchor``, ``SRIAnchor``, ``OrgBookAnchor``, ``OrgHubAnchor``, ``BCRegistrarAnchor``, and ``NominalAnchor`` demonstration anchors of file ``von_anchor/anchor/demo.py`` use the derived mixins above to create their respective demonstration VON anchor classes.
+The ``TrusteeAnchor``, ``ProctorAnchor``, ``OrgBookAnchor``, ``OrgHubAnchor``, ``RegistrarAnchor``, and ``NominalAnchor`` demonstration anchors of file ``von_anchor/anchor/demo.py`` use the derived mixins above to create their respective demonstration VON anchor classes:
+
+.. csv-table::
+    :header: "Demonstration Class", "Roles", "Notes"
+
+    "TrusteeAnchor", "Trustee", "Writes nyms to ledger"
+    "ProctorAnchor", "Origin, Issuer, Verifier", "Originates schemata, issues credentials, and verifies presentations"
+    "OrgBookAnchor", "Holder-Prover", "Stores credentials"
+    "OrgHubAnchor", "Origin, Issuer, Holder-Prover, Verifier", "Acts as both OrgBook for community and Proctor for its own program"
+    "RegistrarAnchor", "Origin, Issuer", "Originates schemata, issues credentials"
+    "NominalAnchor", "Base", "Uses ledger primarily for cryptonym access to perform cryptographic operations"

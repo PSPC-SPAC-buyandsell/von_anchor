@@ -26,7 +26,7 @@ LinkedDataKeySpec = namedtuple('LinkedDataKeySpec', 'ver_type authn_type specifi
 
 class PublicKeyType(Enum):
     """
-    Class encapsulating indy-node transaction particulars by protocol version.
+    Class encapsulating public key types.
     """
 
     RSA_SIG_2018 = LinkedDataKeySpec(
@@ -38,18 +38,21 @@ class PublicKeyType(Enum):
         'Ed25519SignatureAuthentication2018',
         'publicKeyBase58')
     EDDSA_SA_SIG_SECP256K1 = LinkedDataKeySpec(
-        'Ed25519VerificationKey2018',
-        'Ed25519SignatureAuthenticationKey2018',
+        'Secp256k1VerificationKey2018',
+        'Secp256k1SignatureAuthenticationKey2018',
         'publicKeyHex')
 
     @staticmethod
-    def get(value: str) -> 'Protocol':
+    def get(val: str) -> 'PublicKeyType':
         """
-        Return enum instance corresponding to input version value ('RsaVerificationKey2018' etc.)
+        Return enum instance corresponding to input value ('RsaVerificationKey2018' etc.)
+
+        :param val: input value marking public key type
+        :return: public key type
         """
 
         for pktype in PublicKeyType:
-            if value in (pktype.ver_type, pktype.authn_type):
+            if val in (pktype.ver_type, pktype.authn_type):
                 return pktype
         return None
 
@@ -58,7 +61,7 @@ class PublicKeyType(Enum):
         """
         Return verification type identifier in public key specification.
 
-        :return verification type
+        :return: verification type
         """
 
         return self.value.ver_type
@@ -68,7 +71,7 @@ class PublicKeyType(Enum):
         """
         Return authentication type identifier in public key specification.
 
-        :return authentication type
+        :return: authentication type
         """
 
         return self.value.authn_type
@@ -77,16 +80,21 @@ class PublicKeyType(Enum):
     def specifier(self) -> str:
         """
         Return value specifier in public key specification.
+
+        :return: value specifier in public key specification
         """
 
         return self.value.specifier
 
-    def specification(self, value: str) -> str:
+    def specification(self, val: str) -> str:
         """
         Return specifier and input value for use in public key specification.
+
+        :param val: value of public key
+        :return: dict mapping applicable specifier to input value
         """
 
-        return {self.value.specifier: value}
+        return {self.specifier: val}
 
 
 class PublicKey:

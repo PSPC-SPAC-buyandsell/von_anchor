@@ -24,7 +24,7 @@ from time import time
 
 import pytest
 
-from von_anchor import NominalAnchor, TrusteeAnchor, SRIAnchor
+from von_anchor import NominalAnchor, TrusteeAnchor, ProctorAnchor
 from von_anchor.error import AbsentPool, ErrorCode, ExtantWallet
 from von_anchor.frill import Ink, inis2dict, ppjson
 from von_anchor.indytween import Role
@@ -310,18 +310,18 @@ async def test_setnym(
 
     # Exercise reseed, ensure no side effect to role on ledger
     await pool.open()
-    san = SRIAnchor(wallets[cfg['VON Anchor']['name']], pool, rrbx=False)
-    await san.open()
+    pan = ProctorAnchor(wallets[cfg['VON Anchor']['name']], pool, rrbx=False)
+    await pan.open()
     next_seed = '{}000000000000VonAnchor1'.format(int(time()) + 1)
-    await san.reseed(next_seed)
-    nym = json.loads(await san.get_nym(noman.did))
-    san_role = await san.get_nym_role()
+    await pan.reseed(next_seed)
+    nym = json.loads(await pan.get_nym(noman.did))
+    pan_role = await pan.get_nym_role()
     await pool.close()
     assert nym and nym['seqNo'] != last_nym_seqno
-    assert san_role == noman_role
-    print('\n\n== 16 == As SRI Anchor, reseeded, then got nym transaction from ledger for DID {} ({}): {}'.format(
-        san.did,
-        san.wallet.name,
+    assert pan_role == noman_role
+    print('\n\n== 16 == As Proctor Anchor, reseeded, then got nym transaction from ledger for DID {} ({}): {}'.format(
+        pan.did,
+        pan.wallet.name,
         ppjson(nym)))
     last_nym_seqno = nym['seqNo']
 
@@ -388,15 +388,15 @@ async def test_setnym(
     unlink(genesis_tmp.name)
     await p_mgr.remove(pool_copy)
     await pool.open()
-    await san.open()
-    nym = json.loads(await san.get_nym(san.did))
+    await pan.open()
+    nym = json.loads(await pan.get_nym(pan.did))
     assert nym and Role.get(nym['role']) == Role.TRUST_ANCHOR
     assert nym and nym['seqNo'] != last_nym_seqno
     print('\n\n== 21 == Got nym transaction from ledger for DID {} ({}): {}'.format(
-        san.did,
-        san.wallet.name,
+        pan.did,
+        pan.wallet.name,
         ppjson(nym)))
-    await san.close()
+    await pan.close()
     await pool.close()
 
     # Run setnym on configuration with wrong genesis transaction path
@@ -493,6 +493,6 @@ async def test_setnym(
     await noman.close()
     await pool.close()
 
-    await san.close()
+    await pan.close()
     for name in wallets:
         await wallets[name].close()

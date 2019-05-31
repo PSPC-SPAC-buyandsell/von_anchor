@@ -758,7 +758,7 @@ class Wallet:
 
         :param their_did: remote DID
         :param their_verkey: remote verification key (default None is OK if updating an existing pairwise DID)
-        :param my_did: local DID
+        :param my_did: local DID (default None prompts operation to generate one at random)
         :param metadata: metadata for pairwise connection
         :param replace_meta: whether to (True) replace or (False) augment and overwrite existing metadata
         :return: resulting PairwiseInfo

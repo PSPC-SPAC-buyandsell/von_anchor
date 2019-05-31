@@ -222,7 +222,6 @@ class NodePool {
     +handle
     +config
     +protocol
-    +cache_id
     +open()
     +close()
     +refresh()
@@ -364,11 +363,11 @@ class NominalAnchor {
     {static} +least_role()
 }
 
-class SRIAnchor {
+class ProctorAnchor {
     {static} +least_role()
 }
 
-class BCRegistrarAnchor {
+class RegistrarAnchor {
 }
 
 class OrgBookAnchor {
@@ -460,12 +459,12 @@ BaseAnchor <|-down- RevRegBuilder
 BaseAnchor <-- Issuer
 Issuer *- RevRegBuilder
 
-Origin <|-left- SRIAnchor
-Issuer <|-left- SRIAnchor
-Verifier <|-right- SRIAnchor
+Origin <|-left- ProctorAnchor
+Issuer <|-left- ProctorAnchor
+Verifier <|-right- ProctorAnchor
 
-Issuer <|-up- BCRegistrarAnchor
-Origin <|-up- BCRegistrarAnchor
+Issuer <|-up- RegistrarAnchor
+Origin <|-up- RegistrarAnchor
 
 HolderProver <|-down- OrgBookAnchor
 
@@ -486,7 +485,7 @@ AnchorSmith ..> Role
 Verifier ..> Role
 NominalAnchor ..> Role
 OrgHubAnchor ..> Role
-SRIAnchor ..> Role
+ProctorAnchor ..> Role
 
 PublicKey "1" *-- "1" PublicKeyType
 DIDDoc "1" *-- "n" PublicKey

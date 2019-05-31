@@ -64,9 +64,9 @@ class TrusteeAnchor(AnchorSmith):
     """
 
 
-class BCRegistrarAnchor(Origin, Issuer):
+class RegistrarAnchor(Origin, Issuer):
     """
-    BCRegistrarAnchor demonstrator class acts as an issuer.
+    RegistrarAnchor demonstrator class acts as an issuer.
     """
 
 
@@ -78,8 +78,9 @@ class OrgBookAnchor(HolderProver):
 
 class OrgHubAnchor(Verifier, Origin, Issuer, OrgBookAnchor):
     """
-    OrgHubAnchor demonstrator class acts as an origin, issuer and verifier for its own credentials
-    (principally metadata), and as a holder-prover for its own and any of its registrars' credentials.
+    OrgHubAnchor demonstrator class acts as an origin, issuer and verifier for its own
+    schemata, credentials, and presentations; and as a holder-prover for its own and any
+    of its registrars' credentials.
     """
 
     def __init__(self, wallet: Wallet, pool: NodePool = None, **kwargs) -> None:
@@ -183,10 +184,10 @@ class OrgHubAnchor(Verifier, Origin, Issuer, OrgBookAnchor):
         LOGGER.debug('OrgHubAnchor.close <<<')
 
 
-class SRIAnchor(Verifier, Origin, Issuer):
+class ProctorAnchor(Verifier, Origin, Issuer):
     """
-    SRIAnchor demonstrator class acts as an origin and issuer of its own credentials and a verifier
-    of any holder-prover's.
+    ProctorAnchor demonstrator class acts as an origin and issuer of its own credentials and a verifier
+    of a holder-prover's presentations.
     """
 
     def __init__(self, wallet: Wallet, pool: NodePool = None, **kwargs) -> None:
@@ -199,11 +200,11 @@ class SRIAnchor(Verifier, Origin, Issuer):
         :param rrbx: whether revocation registry builder is an external process
         """
 
-        LOGGER.debug('SRIAnchor.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)
+        LOGGER.debug('ProctorAnchor.__init__ >>> wallet: %s, pool: %s, kwargs: %s', wallet, pool, kwargs)
 
         super().__init__(wallet, pool, **kwargs)
 
-        LOGGER.debug('SRIAnchor.close <<<')
+        LOGGER.debug('ProctorAnchor.close <<<')
 
     @staticmethod
     def least_role() -> Role:
@@ -213,9 +214,9 @@ class SRIAnchor(Verifier, Origin, Issuer):
         :return: TRUST_ANCHOR role
         """
 
-        LOGGER.debug('SRIAnchor.least_role >>>')
+        LOGGER.debug('ProctorAnchor.least_role >>>')
 
         rv = Role.TRUST_ANCHOR
 
-        LOGGER.debug('SRIAnchor.least_role <<< %s', rv)
+        LOGGER.debug('ProctorAnchor.least_role <<< %s', rv)
         return rv

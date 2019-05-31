@@ -266,7 +266,13 @@ async def test_a2a():
                 'publicKeyBase58': '~YYYYYYYYYYYYYYYY'
             },
             {
-                'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL#keys-3',
+                'id': 'LjgpST2rjsoxYegQDRm7EL#keys-3',
+                'type': 'Secp256k1VerificationKey2018',
+                'controller': 'LjgpST2rjsoxYegQDRm7EL',
+                'publicKeyHex': '02b97c30de767f084ce3080168ee293053ba33b235d7116a3263d29f1450936b71'
+            },
+            {
+                'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL#keys-4',
                 'type': 'RsaVerificationKey2018',
                 'controller': 'did:sov:LjgpST2rjsoxYegQDRm7EL',
                 'publicKeyPem': '-----BEGIN PUBLIC A...'
@@ -289,7 +295,7 @@ async def test_a2a():
                     'did:sov:LjgpST2rjsoxYegQDRm7EL#keys-1'
                 ],
                 'routingKeys': [
-                    'did:sov:LjgpST2rjsoxYegQDRm7EL#keys-3'
+                    'did:sov:LjgpST2rjsoxYegQDRm7EL#keys-4'
                 ],
                 'serviceEndpoint': 'LjgpST2rjsoxYegQDRm7EL;2'
             },
@@ -302,7 +308,7 @@ async def test_a2a():
                     'did:sov:LjgpST2rjsoxYegQDRm7EL#keys-1'
                 ],
                 'routingKeys': [
-                    'did:sov:LjgpST2rjsoxYegQDRm7EL#keys-3'
+                    'did:sov:LjgpST2rjsoxYegQDRm7EL#keys-4'
                 ],
                 'serviceEndpoint': 'https://www.two.ca/two'
             }

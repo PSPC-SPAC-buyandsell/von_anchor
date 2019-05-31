@@ -5,9 +5,8 @@ Exceptions
 This section outlines the Exception descendants that the von_anchor package defines. Each exception class descends from VonAnchorError, which itself inherits Exception, and each exception class encapsulates a simple error code and message as per the table.
 
 .. csv-table::
-   :header: "Exception Class", "Error Code", "Semantics", "Example"
-   :widths: 20, 15, 50, 50
-
+    :header: "Exception Class", "Error Code", "Semantics", "Example"
+    :widths: 20, 15, 50, 50
 
     "CredentialFocus", "1003", "Anchor attempting to prove zero credentials, or more than one credentials per cred def", "Actuator posts a get-proof form with credential filter resolving to multiple credentials for a single credential definition, or to no credentials at all"
     "AbsentLinkSecret", "1005", "Anchor attempts to perform operation requiring link secret which is not set", "Actuator calls holder-prover anchor to create credential request, but anchor has no link secret set"
