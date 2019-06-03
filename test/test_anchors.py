@@ -219,7 +219,7 @@ def _get_cacheable(anchor, s_key, seq_no, issuer_did):
         print('.. Thread {} got rev reg def {}'.format(current_thread().name, rr_id))
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchors_api(
         pool_ip,
@@ -2169,7 +2169,7 @@ async def test_anchors_api(
     await bcohan.close()  # exercise on closed wallet with config to archive caches on close - should warn and carry on
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_home):
 
@@ -2303,7 +2303,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     assert len(remaining) == 0
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_home):
 
@@ -2383,7 +2383,7 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
     await w_xxx.remove()
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_temp):
 
@@ -2624,7 +2624,7 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
     logging.getLogger('von_anchor.anchor.rrbuilder').removeHandler(rrbx_handler)  # restore original state
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_file):
     THREADS = 256
@@ -2693,7 +2693,7 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
         print('\n\n== 1 == Exercised cache locks, elapsed time: {} sec'.format(elapsed))
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchor_reseed(
         pool_name,
@@ -2837,7 +2837,7 @@ async def test_anchor_reseed(
         assert rsan.wallet.auto_remove  # make sure auto-remove configuration survives reset
     await rsan.wallet.close()  # it's a new wallet object
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchors_cache_only(
         pool_name,
@@ -3550,7 +3550,7 @@ async def test_catpol(
             print('\n\n== 13.{} == WQL: {}, found {} as expected'.format(i, ppjson(wql[attr]), len(cred_infos)))
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_util_wranglers(
         pool_name,
@@ -3900,7 +3900,7 @@ async def test_util_wranglers(
         assert len(req_creds['requested_attributes']) == 1
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_crypto(
         pool_name,
@@ -4233,7 +4233,7 @@ async def test_crypto(
         print('\n\n== 21 == PSPC Org Book anchor failed auto-verification of SRI anchor signature, as expected')
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_share_wallet(
         pool_name,
@@ -4265,7 +4265,7 @@ async def test_share_wallet(
         print('\n\n== 2 == SRI, Nominal anchor share common wallet OK')
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_least_role():
 
@@ -4285,7 +4285,7 @@ async def test_least_role():
     print('\n\n== 1 == Anchor profiles return correct least role OK')
 
 
-@pytest.mark.skipif(True, reason='short-circuiting')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_did_endpoints():
 
@@ -4511,31 +4511,6 @@ async def test_free_holder_prover(
             assert schema[s_id]
             i += 1
 
-        # Local and pairwise DIDs: Holder-Prover and BC Proctor agents exchange
-        didinfo_bcpan = await bcpan.wallet.create_local_did(None, None)
-        diddoc = DIDDoc(didinfo_bcpan.did)
-        diddoc.set(PublicKey(didinfo_bcpan.did, '1', didinfo_bcpan.verkey))
-        print('\n\n== 3 == BC Proctor DID Doc to holder-prover: {}'.format(ppjson(diddoc.to_json())))
-
-        pairwise = {}
-        pubkey_bcpan = diddoc.pubkey['did:sov:{}#1'.format(diddoc.did)].value
-        pairwise['hpan2bcpan'] = await hpan.wallet.write_pairwise(
-            their_did=diddoc.did,
-            their_verkey=pubkey_bcpan,
-            metadata={'for': 'bcpan'})  # nicety in case of later search
-        diddoc = DIDDoc(pairwise['hpan2bcpan'].my_did)
-        diddoc.set(PublicKey(pairwise['hpan2bcpan'].my_did, '1', pairwise['hpan2bcpan'].my_verkey))
-        print('\n\n== 4 == Holder-prover DID Doc to BC Proctor: {}'.format(ppjson(diddoc.to_json())))
-
-        pairwise['bcpan2hpan'] = await bcpan.wallet.write_pairwise(
-            their_did=pairwise['hpan2bcpan'].my_did,
-            their_verkey=pairwise['hpan2bcpan'].my_verkey,
-            my_did=didinfo_bcpan.did,
-            # my_verkey is already in wallet by construction
-            metadata={'for': 'hpan'})  # nicety in case of later search
-        print('\n\n== 5 == Pairwise relations between Holder-Prover and BC Proctor: {}'.format(
-            ppjson({k: pairwise[k].metadata for k in pairwise})))
-
         # BC Proctor anchor creates, stores, publishes cred definitions to ledger; creates cred offers
         i = 0
         for s_id in schema_data:
@@ -4546,7 +4521,7 @@ async def test_free_holder_prover(
 
             cred_def_json[s_id] = await bcpan.get_cred_def(cd_id[s_id])  # ought to exist now
             cred_def[s_id] = json.loads(cred_def_json[s_id])
-            print('\n\n== 6.{}.0 == Cred def [{} v{}]: {}'.format(
+            print('\n\n== 3.{}.0 == Cred def [{} v{}]: {}'.format(
                 i,
                 s_key.name,
                 s_key.version,
@@ -4555,12 +4530,37 @@ async def test_free_holder_prover(
 
             cred_offer_json[s_id] = await bcpan.create_cred_offer(schema[s_id]['seqNo'])
             cred_offer[s_id] = json.loads(cred_offer_json[s_id])
-            print('\n\n== 6.{}.1 == Credential offer [{} v{}]: {}'.format(
+            print('\n\n== 3.{}.1 == Credential offer [{} v{}]: {}'.format(
                 i,
                 s_key.name,
                 s_key.version,
                 ppjson(cred_offer_json[s_id])))
             i += 1
+
+        # Local and pairwise DIDs: Holder-Prover and BC Proctor agents exchange
+        didinfo_bcpan = await bcpan.wallet.create_local_did(None, None)
+        diddoc = DIDDoc(didinfo_bcpan.did)
+        diddoc.set(PublicKey(didinfo_bcpan.did, '1', didinfo_bcpan.verkey))
+        print('\n\n== 4 == BC Proctor DID Doc to holder-prover: {}'.format(ppjson(diddoc.to_json())))
+
+        pairwise = {}
+        pubkey_bcpan = diddoc.pubkey['did:sov:{}#1'.format(diddoc.did)].value
+        pairwise['hpan2bcpan'] = await hpan.wallet.write_pairwise(
+            their_did=diddoc.did,
+            their_verkey=pubkey_bcpan,
+            metadata={'for': 'bcpan'})  # nicety in case of later search
+        diddoc = DIDDoc(pairwise['hpan2bcpan'].my_did)
+        diddoc.set(PublicKey(pairwise['hpan2bcpan'].my_did, '1', pairwise['hpan2bcpan'].my_verkey))
+        print('\n\n== 5 == Holder-prover DID Doc to BC Proctor: {}'.format(ppjson(diddoc.to_json())))
+
+        pairwise['bcpan2hpan'] = await bcpan.wallet.write_pairwise(
+            their_did=pairwise['hpan2bcpan'].my_did,
+            their_verkey=pairwise['hpan2bcpan'].my_verkey,
+            my_did=didinfo_bcpan.did,
+            # my_verkey is already in wallet by construction
+            metadata={'for': 'hpan'})  # nicety in case of later search
+        print('\n\n== 6 == Pairwise relations between Holder-Prover and BC Proctor: {}'.format(
+            ppjson({k: pairwise[k].metadata for k in pairwise})))
 
         # Holder-Prover Verified Person credential request to Province (assume legitimate identity proofing process)
         s_id = S_ID['VER-PERSON']
@@ -4669,6 +4669,7 @@ async def test_free_holder_prover(
 
         # Local and pairwise DIDs: Holder-Prover and SRI agents exchange, preparing for presentation of proof to enrol
         didinfo = {}
+        pairwise = {}
         didinfo['san'] = await san.wallet.create_local_did(None, None)  # SRI agent sends to Holder-Prover's
         pairwise['hpan2san'] = await hpan.wallet.write_pairwise(
             their_did=didinfo['san'].did,
@@ -4679,7 +4680,8 @@ async def test_free_holder_prover(
             their_verkey=pairwise['hpan2san'].my_verkey,
             my_did=didinfo['san'].did,
             metadata={'for': 'hpan'})  # nicety for later search
-        print('\n\n== 20 == Pairwise relations between Holder-Prover and SRI: {}'.format(ppjson(pairwise)))
+        print('\n\n== 20 == Pairwise relations between Holder-Prover and SRI agent: {}'.format(
+            ppjson({k: pairwise[k].metadata for k in pairwise})))
 
         # SRI agent requests proof of identity via verified person and verified business relationship
         proof_req_json = await bcpan.build_proof_req_json({
