@@ -46,6 +46,7 @@ from von_anchor import (
     NominalAnchor,
     TrusteeAnchor,
     Verifier)
+from von_anchor.a2a import DIDDoc, PublicKey
 from von_anchor.cache import ArchivableCaches, CRED_DEF_CACHE, ENDPOINT_CACHE, REVO_CACHE, SCHEMA_CACHE, RevoCacheEntry
 from von_anchor.canon import canon
 from von_anchor.error import (
@@ -218,7 +219,7 @@ def _get_cacheable(anchor, s_key, seq_no, issuer_did):
         print('.. Thread {} got rev reg def {}'.format(current_thread().name, rr_id))
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchors_api(
         pool_ip,
@@ -2168,7 +2169,7 @@ async def test_anchors_api(
     await bcohan.close()  # exercise on closed wallet with config to archive caches on close - should warn and carry on
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_home):
 
@@ -2302,7 +2303,7 @@ async def test_offline(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, 
     assert len(remaining) == 0
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_home):
 
@@ -2382,7 +2383,7 @@ async def test_anchors_on_nodepool_restart(pool_name, pool_genesis_txn_path, poo
     await w_xxx.remove()
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_path, pool_genesis_txn_file, path_temp):
 
@@ -2623,7 +2624,7 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
     logging.getLogger('von_anchor.anchor.rrbuilder').removeHandler(rrbx_handler)  # restore original state
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_file):
     THREADS = 256
@@ -2692,7 +2693,7 @@ async def test_cache_locking(pool_name, pool_genesis_txn_path, pool_genesis_txn_
         print('\n\n== 1 == Exercised cache locks, elapsed time: {} sec'.format(elapsed))
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchor_reseed(
         pool_name,
@@ -2836,7 +2837,7 @@ async def test_anchor_reseed(
         assert rsan.wallet.auto_remove  # make sure auto-remove configuration survives reset
     await rsan.wallet.close()  # it's a new wallet object
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchors_cache_only(
         pool_name,
@@ -3549,7 +3550,7 @@ async def test_catpol(
             print('\n\n== 13.{} == WQL: {}, found {} as expected'.format(i, ppjson(wql[attr]), len(cred_infos)))
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_util_wranglers(
         pool_name,
@@ -3899,7 +3900,7 @@ async def test_util_wranglers(
         assert len(req_creds['requested_attributes']) == 1
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_crypto(
         pool_name,
@@ -4232,7 +4233,7 @@ async def test_crypto(
         print('\n\n== 21 == PSPC Org Book anchor failed auto-verification of SRI anchor signature, as expected')
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_share_wallet(
         pool_name,
@@ -4264,7 +4265,7 @@ async def test_share_wallet(
         print('\n\n== 2 == SRI, Nominal anchor share common wallet OK')
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_least_role():
 
@@ -4284,7 +4285,7 @@ async def test_least_role():
     print('\n\n== 1 == Anchor profiles return correct least role OK')
 
 
-@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.skipif(True, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_did_endpoints():
 
@@ -4511,19 +4512,29 @@ async def test_free_holder_prover(
             i += 1
 
         # Local and pairwise DIDs: Holder-Prover and BC Proctor agents exchange
-        didinfo = {}
-        didinfo['bcpan'] = await bcpan.wallet.create_local_did(None, None)  # BC proctor agent sends to Holder-Prover's
+        didinfo_bcpan = await bcpan.wallet.create_local_did(None, None)
+        diddoc = DIDDoc(didinfo_bcpan.did)
+        diddoc.set(PublicKey(didinfo_bcpan.did, '1', didinfo_bcpan.verkey))
+        print('\n\n== 3 == BC Proctor DID Doc to holder-prover: {}'.format(ppjson(diddoc.to_json())))
+
         pairwise = {}
+        pubkey_bcpan = diddoc.pubkey['did:sov:{}#1'.format(diddoc.did)].value
         pairwise['hpan2bcpan'] = await hpan.wallet.write_pairwise(
-            their_did=didinfo['bcpan'].did,
-            their_verkey=didinfo['bcpan'].verkey,
-            metadata={'for': 'bcpan'})  # nicety for later search
+            their_did=diddoc.did,
+            their_verkey=pubkey_bcpan,
+            metadata={'for': 'bcpan'})  # nicety in case of later search
+        diddoc = DIDDoc(pairwise['hpan2bcpan'].my_did)
+        diddoc.set(PublicKey(pairwise['hpan2bcpan'].my_did, '1', pairwise['hpan2bcpan'].my_verkey))
+        print('\n\n== 4 == Holder-prover DID Doc to BC Proctor: {}'.format(ppjson(diddoc.to_json())))
+
         pairwise['bcpan2hpan'] = await bcpan.wallet.write_pairwise(
             their_did=pairwise['hpan2bcpan'].my_did,
             their_verkey=pairwise['hpan2bcpan'].my_verkey,
-            my_did=didinfo['bcpan'].did,
-            metadata={'for': 'hpan'})  # nicety for later search
-        print('\n\n== 3 == Pairwise relations between Holder-Prover and BC Proctor: {}'.format(ppjson(pairwise)))
+            my_did=didinfo_bcpan.did,
+            # my_verkey is already in wallet by construction
+            metadata={'for': 'hpan'})  # nicety in case of later search
+        print('\n\n== 5 == Pairwise relations between Holder-Prover and BC Proctor: {}'.format(
+            ppjson({k: pairwise[k].metadata for k in pairwise})))
 
         # BC Proctor anchor creates, stores, publishes cred definitions to ledger; creates cred offers
         i = 0
@@ -4535,7 +4546,7 @@ async def test_free_holder_prover(
 
             cred_def_json[s_id] = await bcpan.get_cred_def(cd_id[s_id])  # ought to exist now
             cred_def[s_id] = json.loads(cred_def_json[s_id])
-            print('\n\n== 4.{}.0 == Cred def [{} v{}]: {}'.format(
+            print('\n\n== 6.{}.0 == Cred def [{} v{}]: {}'.format(
                 i,
                 s_key.name,
                 s_key.version,
@@ -4544,7 +4555,7 @@ async def test_free_holder_prover(
 
             cred_offer_json[s_id] = await bcpan.create_cred_offer(schema[s_id]['seqNo'])
             cred_offer[s_id] = json.loads(cred_offer_json[s_id])
-            print('\n\n== 4.{}.1 == Credential offer [{} v{}]: {}'.format(
+            print('\n\n== 6.{}.1 == Credential offer [{} v{}]: {}'.format(
                 i,
                 s_key.name,
                 s_key.version,
@@ -4558,7 +4569,7 @@ async def test_free_holder_prover(
             cd_id[s_id],
             pairwise['hpan2bcpan'].my_did)
         cred_req[s_id] = json.loads(cred_req_json[s_id])
-        print('\n\n== 5 == Verified person credential request: metadata {}, cred req {}'.format(
+        print('\n\n== 7 == Verified person credential request: metadata {}, cred req {}'.format(
             ppjson(cred_req_metadata_json[s_id]),
             ppjson(cred_req_json[s_id])))
         assert json.loads(cred_req_json[s_id])
@@ -4571,14 +4582,14 @@ async def test_free_holder_prover(
             cred_req_json[s_id],
             cred_data[s_id])
         assert json.loads(cred_json[s_id])
-        print('\n\n== 6 == Issuer created {} cred: {}'.format(s_id, ppjson(cred_json[s_id])))
+        print('\n\n== 8 == Issuer created {} cred: {}'.format(s_id, ppjson(cred_json[s_id])))
 
         # Holder-Prover stores cred
         cred = json.loads(cred_json[s_id])
         cred_id[s_id] = await hpan.store_cred(
             cred_json[s_id],
             cred_req_metadata_json[s_id])
-        print('\n\n== 7 == Cred id on {} in wallet: {}'.format(s_id, cred_id[s_id]))
+        print('\n\n== 9 == Cred id on {} in wallet: {}'.format(s_id, cred_id[s_id]))
 
         # BC Proctor agent requests proof of identity via verified person, to check for right to verified relation
         proof_req_json = await bcpan.build_proof_req_json({
@@ -4591,7 +4602,7 @@ async def test_free_holder_prover(
             }
         })
         proof_req = json.loads(proof_req_json)
-        print('\n\n== 8 == Proof req for verified person (BC Proctor asks): {}'.format(ppjson(proof_req_json)))
+        print('\n\n== 10 == Proof req for verified person (BC Proctor asks): {}'.format(ppjson(proof_req_json)))
 
         # Holder-Prover anchor gets cred-briefs via query, creates proof
         refts = proof_req_attr_referents(proof_req)
@@ -4600,23 +4611,23 @@ async def test_free_holder_prover(
                 'attr::legalName::value': cred_data[s_id]['legalName']
             }
         }
-        print('\n\n== 9 == WQL to find verified-person cred brief: {}'.format(ppjson(wql)))
+        print('\n\n== 11 == WQL to find verified-person cred brief: {}'.format(ppjson(wql)))
         wql_json = json.dumps(wql)
         briefs_q = json.loads(await hpan.get_cred_briefs_by_proof_req_q(proof_req_json, wql_json))
         assert len(briefs_q) == 1  # by construction
-        print('\n\n== 10 == Found cred briefs: {}'.format(ppjson(briefs_q)))
+        print('\n\n== 12 == Found cred briefs: {}'.format(ppjson(briefs_q)))
         req_creds_q = proof_req_briefs2req_creds(proof_req, briefs_q.values())
-        print('\n\n== 11 == Proof req and briefs created req-creds: {}'.format(ppjson(req_creds_q)))
+        print('\n\n== 13 == Proof req and briefs created req-creds: {}'.format(ppjson(req_creds_q)))
         proof_q = json.loads(await hpan.create_proof(proof_req, briefs_q.values(), req_creds_q))
-        print('\n\n== 12 == Proof via query: {}'.format(ppjson(proof_q)))
+        print('\n\n== 14 == Proof via query: {}'.format(ppjson(proof_q)))
 
         # BC Proctor anchor (as Verifier) verifies proof (by query)
         rc_json = await bcpan.verify_proof(proof_req, proof_q)
-        print('\n\n== 13 == BC Proctor anchor verifies proof by query as: {}'.format(ppjson(rc_json)))
+        print('\n\n== 15 == BC Proctor anchor verifies proof by query as: {}'.format(ppjson(rc_json)))
         assert json.loads(rc_json)
 
         revealed = revealed_attrs(proof_q)
-        print('\n\n== 14 == Revealed attributes from verified-person proof: {}'.format(ppjson(revealed)))
+        print('\n\n== 16 == Revealed attributes from verified-person proof: {}'.format(ppjson(revealed)))
         revealed_vp = revealed[cd_id[s_id]]
         '''
         Looks like {
@@ -4635,7 +4646,7 @@ async def test_free_holder_prover(
             cd_id[s_id],
             pairwise['hpan2bcpan'].my_did)
         cred_req[s_id] = json.loads(cred_req_json[s_id])
-        print('\n\n== 15 == Verified business relation credential request: metadata {}, cred req {}'.format(
+        print('\n\n== 17 == Verified business relation credential request: metadata {}, cred req {}'.format(
             ppjson(cred_req_metadata_json[s_id]),
             ppjson(cred_req_json[s_id])))
         assert cred_req[s_id]['prover_did'] == pairwise['bcpan2hpan'].their_did
@@ -4647,14 +4658,14 @@ async def test_free_holder_prover(
             cred_req_json[s_id],
             cred_data[s_id])
         assert json.loads(cred_json[s_id])
-        print('\n\n== 16 == Issuer created {} cred: {}'.format(s_id, ppjson(cred_json[s_id])))
+        print('\n\n== 18 == Issuer created {} cred: {}'.format(s_id, ppjson(cred_json[s_id])))
 
         # Holder-Prover stores cred
         cred = json.loads(cred_json[s_id])
         cred_id[s_id] = await hpan.store_cred(
             cred_json[s_id],
             cred_req_metadata_json[s_id])
-        print('\n\n== 17 == Cred id on {} in wallet: {}'.format(s_id, cred_id[s_id]))
+        print('\n\n== 19 == Cred id on {} in wallet: {}'.format(s_id, cred_id[s_id]))
 
         # Local and pairwise DIDs: Holder-Prover and SRI agents exchange, preparing for presentation of proof to enrol
         didinfo = {}
@@ -4668,7 +4679,7 @@ async def test_free_holder_prover(
             their_verkey=pairwise['hpan2san'].my_verkey,
             my_did=didinfo['san'].did,
             metadata={'for': 'hpan'})  # nicety for later search
-        print('\n\n== 18 == Pairwise relations between Holder-Prover and SRI: {}'.format(ppjson(pairwise)))
+        print('\n\n== 20 == Pairwise relations between Holder-Prover and SRI: {}'.format(ppjson(pairwise)))
 
         # SRI agent requests proof of identity via verified person and verified business relationship
         proof_req_json = await bcpan.build_proof_req_json({
@@ -4681,7 +4692,7 @@ async def test_free_holder_prover(
             cd_id[S_ID['VER-BUS-REL']]: None  # all attrs
         })
         proof_req = json.loads(proof_req_json)
-        print('\n\n== 19 == Proof req for verified person and business relation (SRI anchor asks): {}'.format(
+        print('\n\n== 21 == Proof req for verified person and business relation (SRI anchor asks): {}'.format(
             ppjson(proof_req_json)))
 
         # Holder-Prover anchor gets cred-briefs via query, creates proof
@@ -4694,20 +4705,20 @@ async def test_free_holder_prover(
                 'attr::businessNumber::value': cred_data[S_ID['VER-BUS-REL']]['businessNumber']
             }
         }
-        print('\n\n== 20 == WQL to find 2 cred briefs: {}'.format(ppjson(wql)))
+        print('\n\n== 22 == WQL to find 2 cred briefs: {}'.format(ppjson(wql)))
         wql_json = json.dumps(wql)
         briefs_q = json.loads(await hpan.get_cred_briefs_by_proof_req_q(proof_req_json, wql_json))
         assert len(briefs_q) == 2  # by construction
-        print('\n\n== 21 == Found cred briefs: {}'.format(ppjson(briefs_q)))
+        print('\n\n== 23 == Found cred briefs: {}'.format(ppjson(briefs_q)))
         req_creds_q = proof_req_briefs2req_creds(proof_req, briefs_q.values())
-        print('\n\n== 22 == Proof req and briefs created req-creds: {}'.format(ppjson(req_creds_q)))
+        print('\n\n== 24 == Proof req and briefs created req-creds: {}'.format(ppjson(req_creds_q)))
         proof_q = json.loads(await hpan.create_proof(proof_req, briefs_q.values(), req_creds_q))
-        print('\n\n== 23 == Multi-cred proof via query: {}'.format(ppjson(proof_q)))
+        print('\n\n== 25 == Multi-cred proof via query: {}'.format(ppjson(proof_q)))
 
         # SRI anchor (as Verifier) verifies proof (by query)
         rc_json = await bcpan.verify_proof(proof_req, proof_q)
-        print('\n\n== 24 == SRI anchor verifies multi-cred proof by query as: {}'.format(ppjson(rc_json)))
+        print('\n\n== 26 == SRI anchor verifies multi-cred proof by query as: {}'.format(ppjson(rc_json)))
         assert json.loads(rc_json)
 
         revealed = revealed_attrs(proof_q)
-        print('\n\n== 25 == Revealed attributes from multi-cred proof: {}'.format(ppjson(revealed)))
+        print('\n\n== 27 == Revealed attributes from multi-cred proof: {}'.format(ppjson(revealed)))
