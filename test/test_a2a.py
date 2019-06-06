@@ -320,6 +320,11 @@ async def test_a2a():
     assert len(dd.authnkey) == 0
     assert {s.priority for s in dd.service.values()} == {0, 1, 2}
     assert len(dd.service) == 3
+    assert all(len(dd.service[k].to_dict()['recipientKeys']) == 1 for k in dd.service)
+    assert 'routingKeys' not in dd.service['did:sov:LjgpST2rjsoxYegQDRm7EL;indy'].to_dict()
+    assert all(len(dd.service[k].to_dict()['routingKeys']) == 1
+        for k in ('did:sov:LjgpST2rjsoxYegQDRm7EL;1', 'did:sov:LjgpST2rjsoxYegQDRm7EL;2'))
+
 
     dd_out = dd.serialize()
     print('\n\n== 8 == DID Doc on mixed service routing and recipient keys: {}'.format(ppjson(dd_out)))
