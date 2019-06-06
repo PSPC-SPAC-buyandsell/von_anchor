@@ -52,9 +52,10 @@ class Service:
         self._did = canon_did(did)
         self._id = canon_ref(self._did, ident, ';')
         self._type = typ
-        self._recip_keys = [recip_keys] if isinstance(recip_keys, str) else list(recip_keys) if recip_keys else None
+        self._recip_keys = (
+            [recip_keys] if isinstance(recip_keys, PublicKey) else list(recip_keys) if recip_keys else None)
         self._routing_keys = (
-            [routing_keys] if isinstance(routing_keys, str) else list(routing_keys) if routing_keys else None)
+            [routing_keys] if isinstance(routing_keys, PublicKey) else list(routing_keys) if routing_keys else None)
         self._endpoint = endpoint
         self._priority = priority
 
