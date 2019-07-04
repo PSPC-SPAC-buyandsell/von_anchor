@@ -178,7 +178,7 @@ async def test_anchors_tails_load(
 
     (cred_req_json, cred_req_metadata_json) = await san.create_cred_req(cred_offer_json, cd_id)
     cred_req = json.loads(cred_req_json)
-    print('\n\n== 4 == Credential request [{} v{}]: metadata {}, cred {}'.format(
+    print('\n\n== 4 == Credential request [{} v{}]: metadata {}, cred-req {}'.format(
         S_KEY.name,
         S_KEY.version,
         ppjson(cred_req_metadata_json),

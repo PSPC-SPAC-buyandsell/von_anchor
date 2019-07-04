@@ -3279,9 +3279,7 @@ async def test_anchors_cache_only(
     ArchivableCaches.purge_archives(pspcoban.dir_cache, False)
 
 
-@pytest.mark.skipif(
-    not callable(getattr(anoncreds, 'prover_set_credential_attr_tag_policy', None)),
-    reason='credential attr tag policy not yet in anoncreds')
+@pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_catpol(
         pool_name,
@@ -3506,6 +3504,7 @@ async def test_catpol(
             cred_infos = json.loads(await pspcoban.get_cred_infos_by_q(json.dumps(wql[attr])))
             assert len(cred_infos) == (1 if attr in catpol else 0)
             print('\n\n== 7.{} == WQL: {}, found {} as expected'.format(i, ppjson(wql[attr]), len(cred_infos)))
+            i += 1
 
         # PSPC Org Book clears credential attr tag policy, non-retroactively
         await pspcoban.set_cred_attr_tag_policy(cd_id[S_ID['DRINK']], None, retroactive=False)
@@ -3520,6 +3519,7 @@ async def test_catpol(
             cred_infos = json.loads(await pspcoban.get_cred_infos_by_q(json.dumps(wql[attr])))
             assert len(cred_infos) == {'drink': 1, 'ident': 0}[attr]  # old policy for creds in wallet before set-catpol
             print('\n\n== 9.{} == WQL: {}, found {} as expected'.format(i, ppjson(wql[attr]), len(cred_infos)))
+            i += 1
 
         # PSPC Org Book sets credential attr tag policy, retroactively
         await pspcoban.set_cred_attr_tag_policy(cd_id[S_ID['DRINK']], ['ident'], retroactive=True)
@@ -3534,6 +3534,7 @@ async def test_catpol(
             cred_infos = json.loads(await pspcoban.get_cred_infos_by_q(json.dumps(wql[attr])))
             assert len(cred_infos) == (1 if attr in catpol else 0)  # catpol is retroactive
             print('\n\n== 11.{} == WQL: {}, found {} as expected'.format(i, ppjson(wql[attr]), len(cred_infos)))
+            i += 1
 
         # PSPC Org Book clears credential attr tag policy, retroactively
         await pspcoban.set_cred_attr_tag_policy(cd_id[S_ID['DRINK']], None, retroactive=True)
@@ -3548,6 +3549,7 @@ async def test_catpol(
             cred_infos = json.loads(await pspcoban.get_cred_infos_by_q(json.dumps(wql[attr])))
             assert len(cred_infos) == 1  # catpol is retroactive
             print('\n\n== 13.{} == WQL: {}, found {} as expected'.format(i, ppjson(wql[attr]), len(cred_infos)))
+            i += 1
 
 
 @pytest.mark.skipif(False, reason='short-circuiting')

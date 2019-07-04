@@ -35,22 +35,23 @@ async def test_protocol():
 
     print(Ink.YELLOW('\n\n== Testing Node Pool Protocols =='))
 
-    assert Protocol.V_13.indy() != Protocol.V_14.indy()  # all the same except indy-node 1.3
-    assert Protocol.V_14.indy() == Protocol.V_15.indy()
-    assert Protocol.V_15.indy() == Protocol.V_16.indy()
-    assert Protocol.V_16.indy() == Protocol.V_17.indy()
-    assert Protocol.V_17.indy() == Protocol.V_18.indy()
-    assert Protocol.V_18.indy() == Protocol.DEFAULT.indy()
-    assert Protocol.get('1.8') == Protocol.DEFAULT
+    assert Protocol.V1_3.indy() != Protocol.V1_4.indy()  # all the same except indy-node 1.3
+    assert Protocol.V1_4.indy() == Protocol.V1_5.indy()
+    assert Protocol.V1_5.indy() == Protocol.V1_6.indy()
+    assert Protocol.V1_6.indy() == Protocol.V1_7.indy()
+    assert Protocol.V1_7.indy() == Protocol.V1_8.indy()
+    assert Protocol.V1_8.indy() == Protocol.V1_9.indy()
+    assert Protocol.V1_9.indy() == Protocol.V1_10.indy()
+    assert Protocol.get('1.10') == Protocol.DEFAULT
     print('\n\n== 1 == Protocol enum values correspond OK to indy values')
 
     issuer_did = 'ZqhtaRvibYPQ23456789ee'
     seq_no = 123
-    assert Protocol.V_13.cred_def_id(issuer_did, seq_no) == '{}:3:CL:{}'.format(issuer_did, seq_no)
+    assert Protocol.V1_3.cred_def_id(issuer_did, seq_no) == '{}:3:CL:{}'.format(issuer_did, seq_no)
     assert Protocol.DEFAULT.cred_def_id(issuer_did, seq_no) == '{}:3:CL:{}:tag'.format(issuer_did, seq_no)
 
-    assert Protocol.V_13.cd_id_tag(for_box_id=True) == ''
-    assert Protocol.V_13.cd_id_tag(for_box_id=False) == 'tag'  # indy-sdk refuses empty string on issue-cred-def
+    assert Protocol.V1_3.cd_id_tag(for_box_id=True) == ''
+    assert Protocol.V1_3.cd_id_tag(for_box_id=False) == 'tag'  # indy-sdk refuses empty string on issue-cred-def
     assert Protocol.DEFAULT.cd_id_tag(for_box_id=True) == ':tag'
     assert Protocol.DEFAULT.cd_id_tag(for_box_id=False) == 'tag'  # indy-sdk refuses empty string on issue-cred-def
     print('\n\n== 2 == Protocol enum values build cred def id and tags as expected')
@@ -72,9 +73,9 @@ async def test_protocol():
         },
         "...": "..."
     }''')
-    assert json.loads(Protocol.V_13.txn2data(txn_13)) == txn_13['result']['data']
-    assert Protocol.V_13.txn2epoch(txn_13) == 1234567890
-    assert Protocol.V_13.txn_data2schema_key(json.loads(Protocol.V_13.txn2data(txn_13))) == SchemaKey(
+    assert json.loads(Protocol.V1_3.txn2data(txn_13)) == txn_13['result']['data']
+    assert Protocol.V1_3.txn2epoch(txn_13) == 1234567890
+    assert Protocol.V1_3.txn_data2schema_key(json.loads(Protocol.V1_3.txn2data(txn_13))) == SchemaKey(
         'WgWxqztrNooG92RXvxSTWv',
         'green',
         '1.0')
@@ -124,7 +125,7 @@ async def test_manager(path_home, pool_genesis_txn_data, pool_ip):
 
     # Create node pool manager
     p_mgr = NodePoolManager()
-    p_mgr.protocol = Protocol.V_18
+    p_mgr.protocol = Protocol.V1_10
     assert p_mgr.protocol == Protocol.DEFAULT
 
     # Create new pool on raw data
