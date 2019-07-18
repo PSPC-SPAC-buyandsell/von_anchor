@@ -19,7 +19,7 @@ The initializer takes only the DID that is the subject for the DID document. Not
 
 The caller must use the accessor methods or ``set()`` to populate (verification) public keys and services.
 
-The ``serialize()`` and ``to_json()`` methods output the DID document in its current state as a dict or as JSON-LD respectively. The class ``deserialize()`` and ``from_json()`` methods return a ``DIDDoc`` object from an input dict or JSON-LD DID document respectively.
+The ``serialize()`` and ``to_json()`` methods output the DID document in its current state as a dict or as JSON-LD respectively; they take a boolean to specify service block public key format (as per :ref:`services`). The class ``deserialize()`` and ``from_json()`` methods return a ``DIDDoc`` object from an input dict or JSON-LD DID document respectively.
 
 Public Keys
 +++++++++++++++++++++++++++++++++++
@@ -51,6 +51,8 @@ The ``PublicKeyType`` enum encapsulates public key types available for specifica
 
 as per http://w3c-ccg.github.il/ld-cryptosuite-registry.
 
+.. _services:
+
 Services
 +++++++++++++++++++++++++++++++++++
 
@@ -69,7 +71,7 @@ The implementation stores the DID document subject DID in raw base58 sovrin form
 interoperation with indy applications. It stores all other references as URIs, geared toward interoperation
 with W3C applications.
 
-The ``to_dict()`` method returns a dict representation of the service to embed in a DID document.
+The ``to_dict()`` method returns a dict representation of the service to embed in a DID document. It takes a boolean to specify whether to emit public keys as references (in strict compliance with the standard) or as raw key values (to interoperate with prior implementations in the field).
 
 DID Document Utilities
 +++++++++++++++++++++++++++++++++++

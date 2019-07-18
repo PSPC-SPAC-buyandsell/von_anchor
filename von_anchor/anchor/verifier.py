@@ -233,7 +233,7 @@ class Verifier(BaseAnchor):
                     '>=': {
                         'employees': '50'  # nicety: implementation converts to int for caller
                     },
-                    '>=': {
+                    '>': {
                         'revenue': '10000000'  # nicety: implementation converts to int for caller
                         'ebidta': 0
                     }

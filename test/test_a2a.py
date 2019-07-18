@@ -327,7 +327,18 @@ async def test_a2a():
 
 
     dd_out = dd.serialize()
-    print('\n\n== 8 == DID Doc on mixed service routing and recipient keys: {}'.format(ppjson(dd_out)))
+    print('\n\n== 8.0 == DID Doc on mixed service routing and recipient keys: {}'.format(ppjson(dd_out)))
+    assert {service['recipientKeys'][0] for service in dd_out['service']} == {
+        '~ZZZZZZZZZZZZZZZZ',
+        '~XXXXXXXXXXXXXXXX'
+    }
+
+    dd_out = dd.serialize(service_key_refs=True)
+    print('\n\n== 8.1 == DID Doc on mixed service routing and recipient keys as refs: {}'.format(ppjson(dd_out)))
+    assert {service['recipientKeys'][0] for service in dd_out['service']} == {
+        'did:sov:LjgpST2rjsoxYegQDRm7EL#ZZZZZZZZ',
+        'did:sov:LjgpST2rjsoxYegQDRm7EL#keys-1'
+    }
 
     pk = PublicKey(
         dd.did,

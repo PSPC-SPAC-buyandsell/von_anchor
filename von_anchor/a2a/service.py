@@ -129,9 +129,13 @@ class Service:
 
         return self._priority
 
-    def to_dict(self) -> dict:
+    def to_dict(self, key_refs: bool = False) -> dict:
         """
         Return dict representation of service to embed in DID document.
+
+        :param key_refs: whether to output keys as references rather than raw
+
+        :return: dict representation of service to embed in DID document
         """
 
         rv = {
@@ -140,9 +144,9 @@ class Service:
             'priority': self.priority
         }
         if self.recip_keys:
-            rv['recipientKeys'] = [k.value for k in self.recip_keys]
+            rv['recipientKeys'] = [canon_ref(k.did, k.id, '#') if key_refs else k.value for k in self.recip_keys]
         if self.routing_keys:
-            rv['routingKeys'] = [k.value for k in self.routing_keys]
+            rv['routingKeys'] = [canon_ref(k.did, k.id, '#') if key_refs else k.value for k in self.routing_keys]
         rv['serviceEndpoint'] = self.endpoint
 
         return rv

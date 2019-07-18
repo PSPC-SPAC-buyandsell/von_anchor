@@ -110,10 +110,12 @@ class DIDDoc:
         else:
             raise BadDIDDocItem('Cannot add item {} to DIDDoc on DID {}'.format(item, self.did))
 
-    def serialize(self) -> str:
+    def serialize(self, service_key_refs: bool = False) -> str:
         """
         Dump current object to a JSON-compatible dictionary.
 
+        :param service_key_refs: whether to output service keys as references
+            rather than raw
         :return: dict representation of current DIDDoc
         """
 
@@ -125,12 +127,17 @@ class DIDDoc:
                 'type': pubkey.type.authn_type,
                 'publicKey': canon_ref(self.did, pubkey.id)
             } for pubkey in self.pubkey.values() if pubkey.authn],
-            'service': [service.to_dict() for service in self.service.values()]
+            'service': [
+                service.to_dict(service_key_refs) for service in self.service.values()
+            ]
         }
 
-    def to_json(self) -> str:
+    def to_json(self, service_key_refs: bool = False) -> str:
         """
         Dump current object as json (JSON-LD).
+
+        :param service_key_refs: whether to output service keys as references
+            rather than raw
 
         :return json representation of current DIDDoc
         """
