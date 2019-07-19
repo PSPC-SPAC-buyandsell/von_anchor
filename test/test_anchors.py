@@ -4438,7 +4438,8 @@ async def test_free_holder_prover(
         now = int(time())
         S_ID = {
             'VER-PERSON': schema_id(bcpan.did, 'verified-person', '{}.0'.format(now)),
-            'VER-BUS-REL': schema_id(bcpan.did, 'verified-provincial-business-relationship', '{}.0'.format(now))
+            'VER-BUS-REL': schema_id(bcpan.did, 'verified-provincial-business-relationship', '{}.0'.format(now)),
+            'SRI-AUTHZ': schema_id(san.did, 'sri-authz', '{}.0'.format(now))
         }
 
         schema_data = {
@@ -4461,6 +4462,15 @@ async def test_free_holder_prover(
                     'relation',
                     'fromDate',
                     'toDate'
+                ]
+            },
+            S_ID['SRI-AUTHZ']: {
+                'name': schema_key(S_ID['SRI-AUTHZ']).name,
+                'version': schema_key(S_ID['SRI-AUTHZ']).version,
+                'attr_names': [
+                    'businessNumber',
+                    'year',
+                    'limit'
                 ]
             }
         }
@@ -4502,8 +4512,9 @@ async def test_free_holder_prover(
         i = 0
         seq_no = None
         for s_id in schema_data:
+            an = san if s_id == S_ID['SRI-AUTHZ'] else bcpan
             s_key = schema_key(s_id)
-            await bcpan.send_schema(json.dumps(schema_data[s_id]))
+            await an.send_schema(json.dumps(schema_data[s_id]))
             schema_json[s_id] = await bcpan.get_schema(s_key)
             assert json.loads(schema_json[s_id])  # should exist now
 
@@ -4516,9 +4527,10 @@ async def test_free_holder_prover(
         # BC Proctor anchor creates, stores, publishes cred definitions to ledger; creates cred offers
         i = 0
         for s_id in schema_data:
+            an = san if s_id == S_ID['SRI-AUTHZ'] else bcpan
             s_key = schema_key(s_id)
 
-            await bcpan.send_cred_def(s_id, revo=False, rr_size=None)  # omit revocation for this demo
+            await an.send_cred_def(s_id, revo=False, rr_size=None)  # omit revocation for this demo
             cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
 
             cred_def_json[s_id] = await bcpan.get_cred_def(cd_id[s_id])  # ought to exist now
@@ -4530,14 +4542,16 @@ async def test_free_holder_prover(
                 ppjson(json.loads(cred_def_json[s_id]))))
             assert cred_def[s_id].get('schemaId', None) == str(schema[s_id]['seqNo'])
 
-            cred_offer_json[s_id] = await bcpan.create_cred_offer(schema[s_id]['seqNo'])
+            cred_offer_json[s_id] = await an.create_cred_offer(schema[s_id]['seqNo'])
             cred_offer[s_id] = json.loads(cred_offer_json[s_id])
-            print('\n\n== 3.{}.1 == Credential offer [{} v{}]: {}'.format(
+            print('\n\n== 3.{}.1 == Credential offer (ties issuer to cred def) [{} v{}]: {}'.format(
                 i,
                 s_key.name,
                 s_key.version,
                 ppjson(cred_offer_json[s_id])))
             i += 1
+
+        print(Ink.GREEN('\n\n== Bill applies to BC Proctor for verified person cred =='))
 
         # Local and pairwise DIDs: Holder-Prover and BC Proctor agents exchange
         didinfo_bcpan = await bcpan.wallet.create_local_did(None, None)
@@ -4592,6 +4606,7 @@ async def test_free_holder_prover(
             cred_json[s_id],
             cred_req_metadata_json[s_id])
         print('\n\n== 9 == Cred id on {} in wallet: {}'.format(s_id, cred_id[s_id]))
+        print(Ink.GREEN('\n\n== Time passes; Bill applies to BC Proctor for verified business relationship cred =='))
 
         # BC Proctor agent requests proof of identity via verified person, to check for right to verified relation
         proof_req_json = await bcpan.build_proof_req_json({
@@ -4668,6 +4683,7 @@ async def test_free_holder_prover(
             cred_json[s_id],
             cred_req_metadata_json[s_id])
         print('\n\n== 19 == Cred id on {} in wallet: {}'.format(s_id, cred_id[s_id]))
+        print(Ink.GREEN('\n\n== Time passes; Bill applies to SRI anchor for supplier registration cred =='))
 
         # Local and pairwise DIDs: Holder-Prover and SRI agents exchange, preparing for presentation of proof to enrol
         didinfo = {}
@@ -4726,3 +4742,54 @@ async def test_free_holder_prover(
 
         revealed = revealed_attrs(proof_q)
         print('\n\n== 27 == Revealed attributes from multi-cred proof: {}'.format(ppjson(revealed)))
+        '''
+        Looks like {
+            "MdANKCkSgQBu8cC2txDXNT:3:CL:32:tag": {
+                "relation": "signing officer",
+                "fromdate": "2019-07-19",
+                "businessnumber": "1337",
+                "todate": "2020-07-18"
+            },
+            "MdANKCkSgQBu8cC2txDXNT:3:CL:31:tag": {
+                "socialinsurancenumber": "123456789",
+                "legalname": "Bill Lee"
+            }
+        }
+        '''
+
+        # Extract SRI authorization cred data from revealed attrs
+        cred_data[S_ID['SRI-AUTHZ']] = {
+            'businessNumber': revealed[cd_id[S_ID['VER-BUS-REL']]][canon('businessNumber')],
+            'year': revealed[cd_id[S_ID['VER-BUS-REL']]][canon('fromDate')].split('-')[0],
+            'limit': 100000
+        }
+
+        # Holder-Prover SRI authorization credential request to SRI anchor
+        s_id = S_ID['SRI-AUTHZ']
+        (cred_req_json[s_id], cred_req_metadata_json[s_id]) = await hpan.create_cred_req(
+            cred_offer_json[s_id],
+            cd_id[s_id],
+            pairwise['hpan2san'].my_did)
+        cred_req[s_id] = json.loads(cred_req_json[s_id])
+        print('\n\n== 28 == SRI authorization credential request: metadata {}, cred req {}'.format(
+            ppjson(cred_req_metadata_json[s_id]),
+            ppjson(cred_req_json[s_id])))
+        assert json.loads(cred_req_json[s_id])
+        assert cred_req[s_id]['prover_did'] == pairwise['san2hpan'].their_did
+        assert cred_req[s_id]['prover_did'] == pairwise['hpan2san'].my_did
+
+        # SRI anchor issues verified-person cred
+        (cred_json[s_id], _) = await san.create_cred(
+            cred_offer_json[s_id],
+            cred_req_json[s_id],
+            cred_data[s_id])
+        assert json.loads(cred_json[s_id])
+        print('\n\n== 29 == Issuer created {} cred: {}'.format(s_id, ppjson(cred_json[s_id])))
+
+        # Holder-Prover stores cred
+        cred = json.loads(cred_json[s_id])
+        cred_id[s_id] = await hpan.store_cred(
+            cred_json[s_id],
+            cred_req_metadata_json[s_id])
+        print('\n\n== 30 == Cred id on {} in wallet: {}'.format(s_id, cred_id[s_id]))
+
