@@ -19,25 +19,29 @@ import json
 import subprocess
 import time
 
-from os.path import isfile, join
-
 import pytest
 
 from von_anchor import OrgHubAnchor, RevRegBuilder, TrusteeAnchor
 from von_anchor.error import AbsentSchema, ExtantWallet
-from von_anchor.frill import Ink, Stopwatch, ppjson
-from von_anchor.nodepool import NodePool, NodePoolManager
+from von_anchor.frill import Ink, ppjson, Stopwatch
+from von_anchor.nodepool import NodePoolManager
 from von_anchor.tails import Tails
 from von_anchor.util import (
     cred_def_id,
     rev_reg_id2tag,
     schema_id,
     schema_key)
-from von_anchor.wallet import Wallet, WalletManager
+from von_anchor.wallet import WalletManager
+
+
+WALLET_NAME = 'superstar'
 
 
 def rrbx_prox():
-    return int(subprocess.check_output('ps -ef | grep rrbuilder.py | wc -l', stderr=subprocess.STDOUT, shell=True))
+    return int(subprocess.check_output(
+        "ps -ef | grep 'rrbuilder.py -n {}' | grep python | grep -v grep | wc -l".format(WALLET_NAME),
+        stderr=subprocess.STDOUT,
+        shell=True))
 
 
 async def beep(msg, n):
@@ -51,7 +55,6 @@ async def beep(msg, n):
 @pytest.mark.skipif(False, reason='short-circuiting')
 @pytest.mark.asyncio
 async def test_anchors_tails_load(
-        pool_ip,
         pool_name,
         pool_genesis_txn_data,
         seed_trustee1):
@@ -59,7 +62,6 @@ async def test_anchors_tails_load(
     rrbx = True
     print(Ink.YELLOW('\n\n== Load-testing tails on {}ternal rev reg builder ==').format("ex" if rrbx else "in"))
 
-    WALLET_NAME = 'superstar'
     await RevRegBuilder.stop(WALLET_NAME)  # in case of re-run
 
     # Set up node pool ledger config and wallets, open pool, init anchors
@@ -101,14 +103,18 @@ async def test_anchors_tails_load(
     no_prox = rrbx_prox()
     san = OrgHubAnchor(wallets[WALLET_NAME]['wallet'], pool, rrbx=rrbx)
     if rrbx:
-        await beep('external rev reg builder process on {}'.format(WALLET_NAME), 5)
-        assert rrbx_prox() == no_prox + 1
+        await beep('external rev reg builder process on {}'.format(WALLET_NAME), 15)
+        if rrbx_prox() != no_prox + 1:
+            await RevRegBuilder.stop(WALLET_NAME)
+            assert False, "External rev reg builder process did not start"
         async with OrgHubAnchor(
                 wallets[WALLET_NAME]['wallet'],
                 pool,
                 rrbx=rrbx):  # check for exactly 1 external rev reg builder process
             await beep('external rev reg builder process uniqueness test on {}'.format(WALLET_NAME), 5)
-            assert rrbx_prox() == no_prox + 1
+            if rrbx_prox() != no_prox + 1:
+                await RevRegBuilder.stop(WALLET_NAME)
+                assert False, "External rev reg builder process was not unique"
 
     assert pool.handle
 
@@ -170,14 +176,12 @@ async def test_anchors_tails_load(
     assert cred_def.get('schemaId', None) == str(schema['seqNo'])
 
     cred_offer_json = await san.create_cred_offer(schema['seqNo'])
-    cred_offer = json.loads(cred_offer_json)
     print('\n\n== 3.1 == Credential offer [{} v{}]: {}'.format(
         S_KEY.name,
         S_KEY.version,
         ppjson(cred_offer_json)))
 
     (cred_req_json, cred_req_metadata_json) = await san.create_cred_req(cred_offer_json, cd_id)
-    cred_req = json.loads(cred_req_json)
     print('\n\n== 4 == Credential request [{} v{}]: metadata {}, cred-req {}'.format(
         S_KEY.name,
         S_KEY.version,
@@ -210,6 +214,7 @@ async def test_anchors_tails_load(
             print('{}: #{}: {:.2f}-{:.2f}s'.format(number + 1, tag, *optima[tag]), flush=True)
 
         assert json.loads(cred_json)
+    print('{}: #{}: {:.2f}-{:.2f}s'.format(number + 1, tag, *optima[tag]), flush=True)
 
     print('\n\n== 6 == best, worst times by revocation registry: {}'.format(ppjson(optima)))
     assert (not rrbx) or (max(optima[tag][1] for tag in optima) <
