@@ -82,7 +82,7 @@ from von_anchor.tails import Tails
 from von_anchor.util import (
     box_ids,
     cred_def_id,
-    cred_def_id2seq_no,
+    cred_def_id2schema_seq_no_or_id,
     creds_display,
     proof_req2wql_all,
     proof_req_attr_referents,
@@ -625,7 +625,7 @@ async def test_anchors_api(
     try:  # exercise error path: bad cred def id
         await san.build_proof_req_json({
             'not-a-cdid': {
-                'attrs': schema_data[seq_no2schema_id[cred_def_id2seq_no(cd_id[s_id])]]['attr_names'][0:2]
+                'attrs': schema_data[seq_no2schema_id[cred_def_id2schema_seq_no_or_id(cd_id[s_id])]]['attr_names'][0:2]
             } for s_id in schema_data
         })
         assert False
@@ -645,7 +645,7 @@ async def test_anchors_api(
 
     big_proof_req_json = await san.build_proof_req_json({
         cd_id[s_id]: {
-            'attrs': schema_data[seq_no2schema_id[cred_def_id2seq_no(cd_id[s_id])]]['attr_names'][0:2]
+            'attrs': schema_data[seq_no2schema_id[cred_def_id2schema_seq_no_or_id(cd_id[s_id])]]['attr_names'][0:2]
         } for s_id in schema_data
     })
     print('\n\n== 5 == Built sample proof request: {}'.format(ppjson(big_proof_req_json)))
@@ -811,7 +811,7 @@ async def test_anchors_api(
         pass
 
     x_cred = json.loads(cred_json[S_ID['BC']])
-    x_cred['cred_def_id'] = cred_def_id(bcran.did, cred_def_id2seq_no(x_cred['cred_def_id']) + 100)
+    x_cred['cred_def_id'] = cred_def_id(bcran.did, cred_def_id2schema_seq_no_or_id(x_cred['cred_def_id']) + 100)
     try:  # exercise error path: cred def id not present
         await bcohan.store_cred(
             json.dumps(x_cred),
@@ -3095,7 +3095,7 @@ async def test_anchors_cache_only(
     # PSPC org book anchor provides default intervals per cred def id, SRI anchor builds proof req
     cd_id2spec = await pspcoban.offline_intervals(list(cd_id.values()))
     for c in cd_id2spec:
-        cd_id2spec[c]['attrs'] = schema_data[seq_no2schema_id[cred_def_id2seq_no(c)]]['attr_names']
+        cd_id2spec[c]['attrs'] = schema_data[seq_no2schema_id[cred_def_id2schema_seq_no_or_id(c)]]['attr_names']
     proof_req_json = await san.build_proof_req_json(cd_id2spec)
     proof_req = json.loads(proof_req_json)
     print('\n\n== 7 == Proof req from cache data: {}'.format(ppjson(proof_req_json)))
@@ -3146,7 +3146,7 @@ async def test_anchors_cache_only(
     # SRI anchor builds proof req for single cred on FAV-NUM cred-def
     cd_id2spec = await pspcoban.offline_intervals([cd_id[S_ID['FAV-NUM']]])
     cd_id2spec[cd_id[S_ID['FAV-NUM']]]['attrs'] = schema_data[
-        seq_no2schema_id[cred_def_id2seq_no(cd_id[S_ID['FAV-NUM']])]]['attr_names']  # request all attrs in schema
+        seq_no2schema_id[cred_def_id2schema_seq_no_or_id(cd_id[S_ID['FAV-NUM']])]]['attr_names']  # request all attrs
     proof_req_json = await san.build_proof_req_json(cd_id2spec)
     proof_req = json.loads(proof_req_json)
     print('\n\n== 16 == Proof req for single fav-num cred from cache data: {}'.format(ppjson(proof_req_json)))
@@ -3178,7 +3178,7 @@ async def test_anchors_cache_only(
     # SRI anchor builds proof req for single cred on FAV-NUM cred-def
     cd_id2spec = await pspcoban.offline_intervals([cd_id[S_ID['FAV-NUM']]])
     cd_id2spec[cd_id[S_ID['FAV-NUM']]]['attrs'] = schema_data[
-        seq_no2schema_id[cred_def_id2seq_no(cd_id[S_ID['FAV-NUM']])]]['attr_names']  # request all attrs in schema
+        seq_no2schema_id[cred_def_id2schema_seq_no_or_id(cd_id[S_ID['FAV-NUM']])]]['attr_names']  # request all attrs
     proof_req_json = await san.build_proof_req_json(cd_id2spec)
     proof_req = json.loads(proof_req_json)
     print('\n\n== 22 == Proof req for single fav-num cred from cache data: {}'.format(ppjson(proof_req_json)))
@@ -3239,8 +3239,6 @@ async def test_anchors_cache_only(
 
     # PSPC org book anchor provides default intervals per cred def id, SRI anchor builds proof req
     cd_id2spec = await pspcoban.offline_intervals([cd_id[S_ID['FAV-NUM']]])
-    # cd_id2spec[cd_id[S_ID['FAV-NUM']]]['attrs'] = schema_data[  # recall: can omit 'attrs' to pick up all attrs
-        # seq_no2schema_id[cred_def_id2seq_no(cd_id[S_ID['FAV-NUM']])]]['attr_names']
     proof_req_json = await san.build_proof_req_json(cd_id2spec)
     proof_req = json.loads(proof_req_json)
     print('\n\n== 33 == Proof req from cache data on fav-num cred def attrs: {}'.format(ppjson(proof_req_json)))

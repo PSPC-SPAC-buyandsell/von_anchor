@@ -48,7 +48,7 @@ from von_anchor.indytween import Predicate
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.util import (
-    cred_def_id2seq_no,
+    cred_def_id2schema_seq_no_or_id,
     iter_briefs,
     ok_cred_def_id,
     ok_rev_reg_id,
@@ -685,7 +685,7 @@ class HolderProver(BaseAnchor):
         }
         s_ids = set()
         for cd_id in cd_ids:
-            s_ids.add(json.loads(await self.get_schema(cred_def_id2seq_no(cd_id)))['id'])
+            s_ids.add(json.loads(await self.get_schema(cred_def_id2schema_seq_no_or_id(cd_id)))['id'])
 
         un_cd_ids = set()
         for cd_id in cd_ids:

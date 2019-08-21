@@ -9,6 +9,8 @@ Utilities in util.py
 
 This section discusses utilities in ``von_anchor/util.py``.
 
+.. _id_wranglers:
+
 Identifier Wranglers
 ***********************************
 
@@ -20,8 +22,9 @@ Identifiers for indy-sdk schemata, credential definitions, and revocation regist
    :header: "Identifier Type", "Format", "Example"
    :widths: 25, 50, 50
 
-    "Schema Identifier", "<origin-did>:2:<name>:<version>","V4SGRU86Z58d6TV7PBUe6f:2:gvt:1.0"
-    "Credential Definition Identifier", "<issuer-did>:3:CL:<schema-seq-no>:<tag>", "V4SGRU86Z58d6TV7PBUe6f:3:CL:13:tag"
+    "Schema Identifier", "<origin-did>:2:<schema-name>:<schema-version>","V4SGRU86Z58d6TV7PBUe6f:2:gvt:1.0"
+    "Credential Definition Identifier (short form)", "<issuer-did>:3:CL:<schema-seq-no>:<tag>", "V4SGRU86Z58d6TV7PBUe6f:3:CL:13:tag"
+    "Credential Definition Identifier (long form)", "<issuer-did>:3:CL:<origin-did>:2:<schema-name>:<schema-version>:<tag>", "V4SGRU86Z58d6TV7PBUe6f:3:CL:V4SGRU86Z58d6TV7PBUe6f:2:gvt:1.0:tag"
     "Revocation Registry Identifier", "<issuer-did>:4:<cred-def-id>:CL_ACCUM:<tag>", "V4SGRU86Z58d6TV7PBUe6f:4:V4SGRU86Z58d6TV7PBUe6f:3:CL:13:tag:CL_ACCUM:0"
 
 Table: Identifiers Forms within indy-sdk
@@ -32,7 +35,7 @@ The ``schema_key()`` function returns a SchemaKey named tuple corresponding to t
 
 The ``cred_def_id()`` function returns a credential definition identifier on input issuer DID and schema sequence number. Recall that a schema may root a credential definition for any issuer anchor.
 
-The ``cred_def_id2seq_no()`` function returns the schema sequence number from an input credential definition identifier.
+The ``cred_def_id2schema_seq_no_or_id()`` function returns the schema sequence number or schema identifier from an input credential definition identifier. By construction, VON anchor ``Issuer`` anchors :ref:`issuer` always create short-form credential definition identifiers with a schema sequence number (see :ref:`id_wranglers`). Other implementations of indy-sdk may, if they create a credential definition from a schema not having a ledger transaction sequence number, generate credential definition identifiers with a schema identifier instead.
 
 The ``rev_reg_id()`` function returns a revocation registry identifier on input credential definition identifier and tag. Recall that a credential definition may root a revocation registry per issuer and tag.
 

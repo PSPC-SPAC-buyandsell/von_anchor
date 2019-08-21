@@ -37,7 +37,7 @@ from von_anchor.error import (
     ClosedPool)
 from von_anchor.indytween import encode, Predicate, Role
 from von_anchor.nodepool import NodePool
-from von_anchor.util import cred_def_id2seq_no, ok_cred_def_id, ok_rev_reg_id, ok_schema_id
+from von_anchor.util import cred_def_id2schema_seq_no_or_id, ok_cred_def_id, ok_rev_reg_id, ok_schema_id
 from von_anchor.validcfg import validate_config
 from von_anchor.wallet import Wallet
 
@@ -269,8 +269,9 @@ class Verifier(BaseAnchor):
 
             interval = None
             cred_def = json.loads(await self.get_cred_def(cd_id))
-            seq_no = cred_def_id2seq_no(cd_id)
-            cd_id2schema[cd_id] = json.loads(await self.get_schema(seq_no))
+            schema = json.loads(await self.get_schema(cred_def_id2schema_seq_no_or_id(cd_id)))
+            seq_no = schema['seqNo']
+            cd_id2schema[cd_id] = schema
 
             if 'revocation' in cred_def['value']:
                 fro_to = cd_id2spec[cd_id].get('interval', (now, now)) if cd_id2spec[cd_id] else (now, now)

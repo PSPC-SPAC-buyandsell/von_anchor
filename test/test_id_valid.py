@@ -26,7 +26,8 @@ from von_anchor.util import (
     ok_rev_reg_id,
     ok_role,
     ok_schema_id,
-    ok_wallet_reft)
+    ok_wallet_reft,
+    rev_reg_id2cred_def_id)
 
 
 @pytest.mark.asyncio
@@ -68,8 +69,19 @@ async def test_ids():
     print('\n\n== 5 == Schema identifier checks pass OK')
 
     assert ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:tag')  # protocol >= 1.4
-    assert ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:tag', 'Q4zqM7aXqm7gDQkUVLng9h')
+    assert ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:Q4zqM7aXqm7gDQkUVLng9h:2:schema_name:1.0:tag')  # long form
+    assert ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:tag', 'Q4zqM7aXqm7gDQkUVLng9h')  # issuer-did
+    assert ok_cred_def_id(
+        'Q4zqM7aXqm7gDQkUVLng9h:3:CL:Q999999999999999999999:2:schema_name:1.0:tag',
+        'Q4zqM7aXqm7gDQkUVLng9h')  # long form, issuer-did
     assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:18:tag', 'Xxxxxxxxxxxxxxxxxxxxxx')
+    assert not ok_cred_def_id(
+        'Q4zqM7aXqm7gDQkUVLng9h:3:CL:Q4zqM7aXqm7gDQkUVLng9h:2:schema_name:1.0:tag',
+        'Xxxxxxxxxxxxxxxxxxxxxx')  # long form, issuer-did
+    assert ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:Q4zqM7aXqm7gDQkUVLng9h:2:schema_name:1.0:tag')  # long form
+    assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:Q4zqM7aXqm7gDQkUVLng9h:schema_name:1.0:tag')  # no :2:
+    assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:QIIIIIIIII7gDQkUVLng9h:schema_name:1.0:tag')  # I not base58
+    assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:QIIIIIIIII7gDQkUVLng9h:schema_name:v1.0:tag')  # bad version
     assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:4:CL:18:0')
     assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h::CL:18:0')
     assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9I:3:CL:18:tag')
@@ -79,12 +91,16 @@ async def test_ids():
     assert ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:18')  # protocol == 1.3
     assert ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:18', 'Q4zqM7aXqm7gDQkUVLng9h')
     assert not ok_cred_def_id('Q4zqM7aXqm7gDQkUVLng9h:3:CL:18', 'Xxxxxxxxxxxxxxxxxxxxxx')
+    assert ok_cred_def_id(rev_reg_id2cred_def_id(
+        'LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:Q4zqM7aXqm7gDQkUVLng9h:2:schema_name:1.0:tag:CL_ACCUM:1'))
     print('\n\n== 6 == Credential definition identifier checks pass OK')
 
     assert ok_rev_reg_id('LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:tag:CL_ACCUM:1')  # protocol >= 1.4
     assert ok_rev_reg_id(
         'LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:tag:CL_ACCUM:1',
         'LjgpST2rjsoxYegQDRm7EL')
+    assert ok_rev_reg_id(  # long form
+        'LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:Q4zqM7aXqm7gDQkUVLng9h:2:schema_name:1.0:tag:CL_ACCUM:1')
     assert not ok_rev_reg_id(
         'LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:tag:CL_ACCUM:1',
         'Xxxxxxxxxxxxxxxxxxxxxx')

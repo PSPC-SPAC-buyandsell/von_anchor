@@ -39,7 +39,8 @@ class Protocol(Enum):
     V1_8 = ProtocolMap('1.8', 2)
     V1_9 = ProtocolMap('1.9', 2)
     V1_10 = ProtocolMap('1.10', 2)
-    DEFAULT = ProtocolMap('1.10', 2)
+    V1_11 = ProtocolMap('1.11', 2)
+    DEFAULT = ProtocolMap('1.11', 2)
 
     @staticmethod
     def get(version: str) -> 'Protocol':
@@ -77,10 +78,10 @@ class Protocol(Enum):
 
     def cred_def_id(self, issuer_did: str, schema_seq_no: int) -> str:
         """
-        Return credential definition identifier for input issuer DID and schema sequence number.
+        Return credential definition identifier for input issuer DID and schema sequence number (or schema identifier).
 
         :param issuer_did: DID of credential definition issuer
-        :param schema_seq_no: schema sequence number
+        :param schema_seq_no: schema sequence number (or, for some non-von_anchor implementations, a schema id)
         :return: credential definition identifier
         """
 

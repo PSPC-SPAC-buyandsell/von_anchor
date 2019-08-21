@@ -146,13 +146,17 @@ def ok_cred_def_id(token: str, issuer_did: str = None) -> bool:
     :return: whether input token looks like a valid credential definition identifier
     """
 
-    cd_id_m = re.match('([{}]{{21,22}}):3:CL:[1-9][0-9]*(:.+)?$'.format(B58), token or '')
+    cd_id_m = re.match(
+        '([{0}]{{21,22}}):3:CL:(([1-9][0-9]*)|([{0}]{{21,22}}:2:.+:[0-9.]+))(:.+)?$'.format(B58), token or '')
     return bool(cd_id_m) and ((not issuer_did) or cd_id_m.group(1) == issuer_did)
 
 
-def cred_def_id2seq_no(cd_id: str) -> int:
+def cred_def_id2schema_seq_no_or_id(cd_id: str) -> Union[str, int]:
     """
-    Given a credential definition identifier, return its schema sequence number.
+    Given a credential definition identifier, return its schema sequence number, or its
+    schema identifier if the credential definition identifier is long-form; i.e., it
+    has a schema identifier instead of a sequence number.
+
     Raise BadIdentifier on input that is not a credential definition identifier.
 
     :param cd_id: credential definition identifier
@@ -160,7 +164,11 @@ def cred_def_id2seq_no(cd_id: str) -> int:
     """
 
     if ok_cred_def_id(cd_id):
-        return int(cd_id.split(':')[3])  # sequence number is token at 0-based position 3
+        tokens = cd_id.split(':')
+        if len(tokens) == 5:
+            return int(tokens[3])  # seq no is token at 0-based position 3
+        elif len(tokens) == 8:
+            return ':'.join(tokens[3:7])  # schema id spans 0-based positions 3 through 6 inclusively
     raise BadIdentifier('Bad credential definition identifier {}'.format(cd_id))
 
 
@@ -181,8 +189,7 @@ def rev_reg_id(cd_id: str, tag: Union[str, int]) -> str:
 def ok_rev_reg_id(token: str, issuer_did: str = None) -> bool:
     """
     Whether input token looks like a valid revocation registry identifier from input issuer DID (default any); i.e.,
-    <issuer-did>:4:<issuer-did>:3:CL:<schema-seq-no>:<cred-def-id-tag>:CL_ACCUM:<rev-reg-id-tag> for protocol >= 1.4, or
-    <issuer-did>:4:<issuer-did>:3:CL:<schema-seq-no>:CL_ACCUM:<rev-reg-id-tag> for protocol == 1.3.
+    <issuer-did>:4:<cred-def-id>:CL_ACCUM:<rev-reg-id-tag> with valid cred-def-id per protocol.
 
     :param token: candidate string
     :param issuer_did: issuer DID to match, if specified
@@ -191,7 +198,13 @@ def ok_rev_reg_id(token: str, issuer_did: str = None) -> bool:
 
     rr_id_m = re.match(
         '([{0}]{{21,22}}):4:([{0}]{{21,22}}):3:CL:[1-9][0-9]*(:.+)?:CL_ACCUM:.+$'.format(B58),
+        token or '') or re.match(
+            '([{0}]{{21,22}}):'
+            '4:'
+            '([{0}]{{21,22}}):3:CL:(([1-9][0-9]*)|([{0}]{{21,22}}:2:.+:[0-9.]+))(:.+)?:'
+            'CL_ACCUM:.+$'.format(B58),
         token or '')
+
     return bool(rr_id_m) and ((not issuer_did) or (rr_id_m.group(1) == issuer_did and rr_id_m.group(2) == issuer_did))
 
 

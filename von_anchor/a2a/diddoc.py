@@ -33,7 +33,7 @@ LOGGER = logging.getLogger(__name__)
 class DIDDoc:
     """
     DID document, grouping a DID with verification keys and services.
-    Retains DIDs as raw values (orientated toward indy-facing operations),
+    Retains DIDs as raw values (oriented toward indy-facing operations),
     everything else as URIs (oriented toward W3C-facing operations).
     """
 

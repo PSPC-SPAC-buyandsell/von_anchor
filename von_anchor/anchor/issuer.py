@@ -45,7 +45,7 @@ from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.util import (
     cred_def_id,
-    cred_def_id2seq_no,
+    cred_def_id2schema_seq_no_or_id,
     ok_cred_def_id,
     ok_rev_reg_id,
     ok_schema_id,
@@ -304,7 +304,7 @@ class Issuer(BaseAnchor):
         cred_def_json = '{}'
         private_key_ok = True
         try:
-            (_, cred_def_json) = await anoncreds.issuer_create_and_store_credential_def(
+            (cred_def_id, cred_def_json) = await anoncreds.issuer_create_and_store_credential_def(
                 self.wallet.handle,
                 self.did,  # issuer DID
                 json.dumps(schema),
@@ -662,7 +662,7 @@ class Issuer(BaseAnchor):
         s_ids = []
         for cd_id in cd_ids:
             try:
-                s_ids.append(json.loads(await self.get_schema(cred_def_id2seq_no(cd_id)))['id'])
+                s_ids.append(json.loads(await self.get_schema(cred_def_id2schema_seq_no_or_id(cd_id)))['id'])
             except AbsentSchema:
                 LOGGER.error(
                     'Issuer %s has issued cred def %s but no corresponding schema on ledger',

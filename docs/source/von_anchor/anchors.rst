@@ -105,6 +105,8 @@ The figure illustrates the process of starting and stopping an external revocati
     :align: center
     :alt: External Revocation Registry Builder Start and Stop
 
+.. _issuer:
+
 Issuer
 ****************************************************
 

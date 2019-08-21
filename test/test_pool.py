@@ -42,7 +42,8 @@ async def test_protocol():
     assert Protocol.V1_7.indy() == Protocol.V1_8.indy()
     assert Protocol.V1_8.indy() == Protocol.V1_9.indy()
     assert Protocol.V1_9.indy() == Protocol.V1_10.indy()
-    assert Protocol.get('1.10') == Protocol.DEFAULT
+    assert Protocol.V1_10.indy() == Protocol.V1_11.indy()
+    assert Protocol.get('1.11') == Protocol.DEFAULT
     print('\n\n== 1 == Protocol enum values correspond OK to indy values')
 
     issuer_did = 'ZqhtaRvibYPQ23456789ee'
@@ -125,7 +126,7 @@ async def test_manager(path_home, pool_genesis_txn_data, pool_ip):
 
     # Create node pool manager
     p_mgr = NodePoolManager()
-    p_mgr.protocol = Protocol.V1_10
+    p_mgr.protocol = Protocol.DEFAULT
     assert p_mgr.protocol == Protocol.DEFAULT
 
     # Create new pool on raw data
