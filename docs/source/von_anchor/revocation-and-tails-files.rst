@@ -30,9 +30,9 @@ Tails Tree
 
 Given that an issuer anchor may support many credential definitions, and that a credential definition may entail many (possibly, thousands of) revocation registries, a Tails tree splits a base directory by credential definition, and houses tails files in their respective subdirectories by their respective credential definition identifiers.
 
-Issuer VON anchors asynchronously build revocation registry definitions and initial entries, plus corresponding tails files, in the .hopper subdirectory. The last operation in this process links the revocation registry identifier to its tails file. Once the symbolic link appears, the Issuer can send the definition and initial to the ledger and move the directory named for the corresponding credential definition identifier to the tails directory, setting the revocation registry in place.
+Issuer VON anchors asynchronously build revocation registry definitions and initial entries, plus corresponding tails files, in the ``.hopper`` subdirectory. The last operation in this process links the revocation registry identifier to its tails file. Once the symbolic link appears, the Issuer can send the definition and initial entry to the ledger and then move the directory named for the corresponding credential definition identifier to the tails directory, setting the revocation registry in place.
 
-An additional .hopper subdirectory houses control files for an issuer to queue startup, work, and shutdown orders to its designated revocation registry builder.
+An additional ``.sentinel`` subdirectory houses control files for an issuer to queue startup, work, and shutdown orders to its designated revocation registry builder.
 
 The figure illustrates the structure of the tails tree.
 
