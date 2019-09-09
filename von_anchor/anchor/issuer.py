@@ -304,7 +304,7 @@ class Issuer(BaseAnchor):
         cred_def_json = '{}'
         private_key_ok = True
         try:
-            (cred_def_id, cred_def_json) = await anoncreds.issuer_create_and_store_credential_def(
+            (_, cred_def_json) = await anoncreds.issuer_create_and_store_credential_def(
                 self.wallet.handle,
                 self.did,  # issuer DID
                 json.dumps(schema),
