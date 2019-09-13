@@ -20,3 +20,16 @@ from .record import StorageRecord
 from .search import StorageRecordSearch
 from .wallet import Wallet
 from .manager import WalletManager
+
+__all__ = [
+    DIDInfo,
+    EndpointInfo,
+    KeyInfo,
+    PairwiseInfo,
+    pairwise_info2tags,
+    storage_record2pairwise_info,
+    StorageRecord,
+    StorageRecordSearch,
+    Wallet,
+    WalletManager
+]

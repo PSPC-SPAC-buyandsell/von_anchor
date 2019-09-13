@@ -37,12 +37,12 @@ def ppjson(dumpit: Any, elide_to: int = None) -> str:
     """
 
     if elide_to is not None:
-        elide_to = max(elide_to, 3) # make room for ellipses '...'
+        elide_to = max(elide_to, 3)  # make room for ellipses '...'
     try:
         rv = json.dumps(json.loads(dumpit) if isinstance(dumpit, str) else dumpit, indent=4)
     except TypeError:
         rv = '{}'.format(pformat(dumpit, indent=4, width=120))
-    return rv if elide_to is None or len(rv) <= elide_to else '{}...'.format(rv[0 : elide_to - 3])
+    return rv if elide_to is None or len(rv) <= elide_to else '{}...'.format(rv[0:(elide_to - 3)])
 
 
 def do_wait(coro: Callable) -> Any:
@@ -71,6 +71,7 @@ def inis2dict(ini_paths: Union[str, Sequence[str]]) -> dict:
     """
 
     var_dflt = r'\${(.*?):-(.*?)}'
+
     def _interpolate(content):
         rv = expandvars(content)
         while True:

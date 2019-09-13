@@ -20,6 +20,7 @@ import datetime
 import json
 import logging
 
+from atexit import register
 from copy import deepcopy
 from math import ceil
 from os import listdir, makedirs, readlink, unlink
@@ -76,7 +77,7 @@ from von_anchor.error import (
     JSONValidation,
     WalletState)
 from von_anchor.frill import Ink, ppjson
-from von_anchor.indytween import encode, raw, Role
+from von_anchor.indytween import encode, raw, Restriction, Role
 from von_anchor.nodepool import NodePool, NodePoolManager
 from von_anchor.tails import Tails
 from von_anchor.util import (
@@ -192,6 +193,11 @@ def do(coro):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(coro)
+
+
+def _stop_rrbx(wallet_name):
+    asyncio.new_event_loop().run_until_complete(RevRegBuilder.stop(wallet_name))
+    # do(RevRegBuilder.stop(wallet_name))
 
 
 def _get_cacheable(anchor, s_key, seq_no, issuer_did):
@@ -2395,6 +2401,8 @@ async def test_revo_cache_reg_update_maintenance(pool_name, pool_genesis_txn_pat
         await p_mgr.add_config(pool_name, pool_genesis_txn_path)
 
     SRI_NAME = 'sri-0'
+    register(_stop_rrbx, SRI_NAME)  # in case of abend
+
     seeds = {
         'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000',
         SRI_NAME: 'SRI-Anchor-000000000000000000000'
@@ -3565,6 +3573,7 @@ async def test_util_wranglers(
     if pool_name not in await p_mgr.list():
         await p_mgr.add_config(pool_name, pool_genesis_txn_path)
 
+    register(_stop_rrbx, 'sri')  # in case of abend
     seeds = {
         'sri': 'SRI-Anchor-000000000000000000000',
         'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000'
@@ -3898,6 +3907,8 @@ async def test_util_wranglers(
             S_ID['NON-REVO-X'],
             ppjson(req_creds)))
         assert len(req_creds['requested_attributes']) == 1
+
+    await RevRegBuilder.stop('sri')
 
 
 @pytest.mark.skipif(False, reason='short-circuiting')
@@ -4791,3 +4802,390 @@ async def test_free_holder_prover(
             cred_req_metadata_json[s_id])
         print('\n\n== 30 == Cred id on {} in wallet: {}'.format(s_id, cred_id[s_id]))
 
+
+@pytest.mark.skipif(False, reason='short-circuiting')
+@pytest.mark.asyncio
+async def test_proof_request_alternatives(
+        pool_ip,
+        pool_name,
+        pool_genesis_txn_path,
+        pool_genesis_txn_file,
+        seed_trustee1):
+
+    print(Ink.YELLOW('\n\n== Testing proof request build and get-cred-briefs alternatives =='))
+
+    # Set up node pool ledger config and wallets, open pool, init anchors
+    p_mgr = NodePoolManager()
+    w_mgr = WalletManager()
+    if pool_name not in await p_mgr.list():
+        await p_mgr.add_config(pool_name, pool_genesis_txn_path)
+    p = p_mgr.get(pool_name)
+
+    wallet_data = {
+        'trustee-anchor': {'seed': seed_trustee1},
+        'video-proctor': {'seed': 'Video-Proctor-Anchor-00000000000'},
+        'player-1': {'seed': 'Player-One-000000000000000000000', 'link_secret_label': 'hp-secret-skills'}
+    }
+
+    wallets = await get_wallets(wallet_data, open_all=False, auto_remove=True)
+
+    # Open pool, init anchors
+    async with wallets['trustee-anchor'] as w_trustee, (
+            wallets['video-proctor']) as w_vp, (
+            wallets['player-1']) as w_hp, (
+            p_mgr.get(pool_name)) as p, (
+            TrusteeAnchor(w_trustee, p)) as tan, (
+            ProctorAnchor(w_vp, p)) as vpan, (  # in this example the BC proctor anchor issues and verifies
+            HolderProver(w_hp, p)) as hpan:
+
+        # Publish trustee, issuer anchor particulars to ledger if not yet present
+        did2an = {}
+        for an in (tan, vpan):
+            if not json.loads(await tan.get_nym(an.did)):
+                await tan.send_nym(an.did, an.verkey, an.wallet.name, an.least_role())
+
+        nyms = {
+            'tan': json.loads(await tan.get_nym()),
+            'vpan': json.loads(await tan.get_nym(vpan.did))
+        }
+        print('\n\n== 1 == Nyms on ledger: {}'.format(ppjson(nyms)))
+
+        # Publish schema to ledger if not yet present; get from ledger
+        now = int(time())
+        S_ID = {
+            'PREFERENCES': schema_id(vpan.did, 'prefs', '{}.0'.format(now)),
+            'SCORES': schema_id(vpan.did, 'scores', '{}.0'.format(now))
+        }
+
+        schema_data = {
+            S_ID['PREFERENCES']: {
+                'name': schema_key(S_ID['PREFERENCES']).name,
+                'version': schema_key(S_ID['PREFERENCES']).version,
+                'attr_names': [
+                    'ident',
+                    'colour',
+                    'drink'
+                ]
+            },
+            S_ID['SCORES']: {
+                'name': schema_key(S_ID['SCORES']).name,
+                'version': schema_key(S_ID['SCORES']).version,
+                'attr_names': [
+                    'galaga',
+                    'space_invaders',
+                    'asteroids',
+                    'space_fury'
+                ]
+            }
+        }
+
+        cred_data = {
+            S_ID['PREFERENCES']: {
+                'ident': 'Wayne',
+                'colour': 'purple',
+                'drink': 'cola'
+            },
+            S_ID['SCORES']: {
+                'galaga': '123450',
+                'space_invaders': '234560',
+                'asteroids': '345670',
+                'space_fury': '456780'
+            }
+        }
+
+        # index by transaction number
+        seq_no2schema_id = {}
+
+        # index by schema id
+        schema_json = {}
+        schema = {}
+        cred_offer_json = {}
+        cred_offer = {}
+        cred_def_json = {}
+        cred_def = {}
+        cd_id = {}
+        cred_id = {}
+        cred_req_json = {}
+        cred_req = {}
+        cred_json = {}
+        cred_req_metadata_json = {}
+
+        # Publish schemata to ledger
+        i = 0
+        seq_no = None
+        for s_id in schema_data:
+            s_key = schema_key(s_id)
+            await vpan.send_schema(json.dumps(schema_data[s_id]))
+            schema_json[s_id] = await vpan.get_schema(s_key)
+            assert json.loads(schema_json[s_id])  # should exist now
+
+            schema[s_id] = json.loads(schema_json[s_id])
+            seq_no2schema_id[schema[s_id]['seqNo']] = s_id
+            print('\n\n== 2.{} == Schema [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
+            assert schema[s_id]
+            i += 1
+
+        # BC Proctor anchor creates, stores, publishes cred definitions to ledger; creates cred offers
+        i = 0
+        for s_id in schema_data:
+            s_key = schema_key(s_id)
+
+            await vpan.send_cred_def(s_id, revo=False, rr_size=None)  # omit revocation for this demo
+            cd_id[s_id] = cred_def_id(s_key.origin_did, schema[s_id]['seqNo'])
+
+            cred_def_json[s_id] = await vpan.get_cred_def(cd_id[s_id])  # ought to exist now
+            cred_def[s_id] = json.loads(cred_def_json[s_id])
+            print('\n\n== 3.{}.0 == Cred def [{} v{}]: {}'.format(
+                i,
+                s_key.name,
+                s_key.version,
+                ppjson(json.loads(cred_def_json[s_id]))))
+            assert cred_def[s_id].get('schemaId', None) == str(schema[s_id]['seqNo'])
+
+            cred_offer_json[s_id] = await an.create_cred_offer(schema[s_id]['seqNo'])
+            cred_offer[s_id] = json.loads(cred_offer_json[s_id])
+            print('\n\n== 3.{}.1 == Credential offer (ties issuer to cred def) [{} v{}]: {}'.format(
+                i,
+                s_key.name,
+                s_key.version,
+                ppjson(cred_offer_json[s_id])))
+            i += 1
+
+        print(Ink.GREEN('\n\n== Wayne applies to BC Proctor for creds =='))
+
+        # Local and pairwise DIDs: Holder-Prover and BC Proctor agents exchange
+        didinfo_vpan = await vpan.wallet.create_local_did(None, None)
+        diddoc = DIDDoc(didinfo_vpan.did)
+        diddoc.set(PublicKey(didinfo_vpan.did, '1', didinfo_vpan.verkey))
+        print('\n\n== 4 == BC Proctor DID Doc to holder-prover: {}'.format(ppjson(diddoc.to_json())))
+
+        pairwise = {}
+        pubkey_vpan = diddoc.pubkey['did:sov:{}#1'.format(diddoc.did)].value
+        pairwise['hpan2vpan'] = await hpan.wallet.write_pairwise(
+            their_did=diddoc.did,
+            their_verkey=pubkey_vpan,
+            metadata={'for': 'vpan'})  # nicety in case of later search
+        diddoc = DIDDoc(pairwise['hpan2vpan'].my_did)
+        diddoc.set(PublicKey(pairwise['hpan2vpan'].my_did, '1', pairwise['hpan2vpan'].my_verkey))
+        print('\n\n== 5 == Holder-prover DID Doc to BC Proctor: {}'.format(ppjson(diddoc.to_json())))
+
+        pairwise['vpan2hpan'] = await vpan.wallet.write_pairwise(
+            their_did=pairwise['hpan2vpan'].my_did,
+            their_verkey=pairwise['hpan2vpan'].my_verkey,
+            my_did=didinfo_vpan.did,
+            # my_verkey is already in wallet by construction
+            metadata={'for': 'hpan'})  # nicety in case of later search
+        print('\n\n== 6 == Pairwise relations between Holder-Prover and BC Proctor: {}'.format(
+            ppjson({k: pairwise[k].metadata for k in pairwise})))
+
+        # Holder-Prover gets and stores credentials
+        i = 0
+        for key in S_ID:
+            s_id = S_ID[key]
+            (cred_req_json[s_id], cred_req_metadata_json[s_id]) = await hpan.create_cred_req(
+                cred_offer_json[s_id],
+                cd_id[s_id],
+                pairwise['hpan2vpan'].my_did)
+            cred_req[s_id] = json.loads(cred_req_json[s_id])
+            print('\n\n== 7.{}.1 == {} credential request: metadata {}, cred req {}'.format(
+                i,
+                key,
+                ppjson(cred_req_metadata_json[s_id]),
+                ppjson(cred_req_json[s_id])))
+            assert json.loads(cred_req_json[s_id])
+            assert cred_req[s_id]['prover_did'] == pairwise['vpan2hpan'].their_did
+            assert cred_req[s_id]['prover_did'] == pairwise['hpan2vpan'].my_did
+
+            s_id = S_ID[key]
+            (cred_json[s_id], _) = await vpan.create_cred(
+                cred_offer_json[s_id],
+                cred_req_json[s_id],
+                cred_data[s_id])
+            assert json.loads(cred_json[s_id])
+            print('\n\n== 7.{}.2 == Issuer created {} cred: {}'.format(i, s_id, ppjson(cred_json[s_id])))
+
+            cred = json.loads(cred_json[s_id])
+            cred_id[s_id] = await hpan.store_cred(
+                cred_json[s_id],
+                cred_req_metadata_json[s_id])
+            print('\n\n== 7.{}.3 == Cred id on {} in wallet: {}'.format(i, s_id, cred_id[s_id]))
+            i += 1
+
+        # BC Proctor agent requests proof: exercise builder
+        proof_req_json = await vpan.build_preq_json(
+            req_attrs=[
+                {
+                    'name':  'drink',
+                    'restrictions': [{
+                        'cred_def_id': cd_id[S_ID['PREFERENCES']]
+                    }]
+                },
+                {
+                    'name': 'colour'  # self-attested
+                },
+                {
+                    'name':  'ident',
+                    'restrictions': [{
+                        'cred_def_id': cd_id[S_ID['PREFERENCES']]
+                    }]
+                },
+                {
+                    'name':  'galaga',
+                    'restrictions': [{
+                        'cred_def_id': cd_id[S_ID['SCORES']]
+                    }]
+                }
+            ],
+            req_preds=[
+                {
+                    'name': 'space_fury',
+                    'p_value': 1000000,
+                    # 'p_type': '>=',  implementation fills in
+                    'restrictions': [{
+                        'cred_def_id': cd_id[S_ID['SCORES']]
+                    }]
+                }
+            ]
+        )
+        print('\n\n== 8 == Proof req: {}'.format(ppjson(proof_req_json)))
+
+        briefs_q_json = await hpan.get_cred_briefs_by_proof_req_q(proof_req_json)
+        print('\n\n== 9 == Cred briefs by proof req and query: {}'.format(ppjson(briefs_q_json)))
+
+        proof_req_json = await vpan.build_preq_json(
+            req_attrs=[
+                {
+                    'name':  'drink',
+                    'restrictions': [{
+                        'schema_id': S_ID['PREFERENCES']
+                    }]
+                },
+                {
+                    'name': 'colour'  # self-attested
+                },
+                {
+                    'name':  'ident',
+                    'restrictions': [{
+                        'cred_def_id': cd_id[S_ID['PREFERENCES']]
+                    }]
+                },
+                {
+                    'name':  'galaga',
+                    'restrictions': [{
+                        'schema_issuer_did': vpan.did
+                    }]
+                }
+            ],
+            req_preds=[
+                {
+                    'name': 'space_fury',
+                    'p_value': 1000000,
+                    # 'p_type': '>=',  implementation fills in
+                    'restrictions': [{
+                        'issuer_did': vpan.did
+                    }]
+                }
+            ]
+        )
+        print('\n\n== 10 == Proof req on schema-id restrictions: {}'.format(ppjson(proof_req_json)))
+
+        briefs_json = await hpan.get_cred_briefs_by_proof_req(proof_req_json)
+        print('\n\n== 11 == Cred briefs by proof req with schema-id restrictions: {}'.format(ppjson(briefs_json)))
+        assert json.loads(briefs_json) == json.loads(briefs_q_json)
+
+        proof_req_json = await vpan.build_preq_json(
+            req_attrs=[
+                {
+                    'name':  'drink',
+                    'restrictions': [
+                        {
+                            'schema_name': schema_key(S_ID['PREFERENCES']).name,
+                            'schema_version': schema_key(S_ID['PREFERENCES']).version,
+                            'schema_issuer_did': schema_key(S_ID['PREFERENCES']).origin_did
+                        }
+                    ]
+                },
+                {
+                    'name': 'colour'  # self-attested
+                },
+                {
+                    'name':  'ident',
+                    'restrictions': [
+                        {
+                            'cred_def_id': cd_id[S_ID['PREFERENCES']]
+                        },
+                        {
+                            'issuer_did': vpan.did,
+                            'schema_name': schema_key(S_ID['PREFERENCES']).name,
+                        }
+                    ]
+                },
+                {
+                    'name':  'galaga',
+                    'restrictions': [{
+                        'schema_issuer_did': vpan.did
+                    }]
+                }
+            ],
+            req_preds=[
+                {
+                    'name': 'space_fury',
+                    'p_value': 1000000,
+                    # 'p_type': '>=',  implementation fills in
+                    'restrictions': [{
+                        'issuer_did': vpan.did
+                    }]
+                }
+            ]
+        )
+        print('\n\n== 12 == Proof req on complex restrictions: {}'.format(ppjson(proof_req_json)))
+
+        briefs_x_json = await hpan.get_cred_briefs_by_proof_req(proof_req_json)
+        print('\n\n== 13 == Cred briefs by proof req with complex restrictions: {}'.format(ppjson(briefs_x_json)))
+        assert json.loads(briefs_x_json) == json.loads(briefs_q_json)
+
+        # Exercise restriction logic
+        cred_info = {
+            'schema_id': S_ID['PREFERENCES'],
+            'cred_def_id': cd_id[S_ID['PREFERENCES']]
+        }
+        assert Restriction.SCHEMA_ID.applies(cred_info, S_ID['PREFERENCES']) 
+        assert Restriction.SCHEMA_ISSUER_DID.applies(cred_info, vpan.did)
+        assert Restriction.SCHEMA_NAME.applies(cred_info, schema_key(S_ID['PREFERENCES']).name)
+        assert Restriction.SCHEMA_VERSION.applies(cred_info, schema_key(S_ID['PREFERENCES']).version)
+        assert Restriction.ISSUER_DID.applies(cred_info, vpan.did)
+        assert Restriction.CRED_DEF_ID.applies(cred_info, cd_id[S_ID['PREFERENCES']]) 
+
+        assert not Restriction.SCHEMA_ID.applies(cred_info, S_ID['SCORES'])
+        assert not Restriction.SCHEMA_ISSUER_DID.applies(cred_info, hpan.did)
+        assert not Restriction.SCHEMA_NAME.applies(cred_info, schema_key(S_ID['SCORES']).name)
+        assert not Restriction.SCHEMA_VERSION.applies(cred_info, '99.9')
+        assert not Restriction.ISSUER_DID.applies(cred_info, hpan.did)
+        assert not Restriction.CRED_DEF_ID.applies(cred_info, cd_id[S_ID['SCORES']]) 
+
+        assert Restriction.all_apply_dict(
+            cred_info, 
+            {
+                'schema_name': schema_key(S_ID['PREFERENCES']).name,
+                'schema_version': schema_key(S_ID['PREFERENCES']).version,
+                'cred_def_id': cd_id[S_ID['PREFERENCES']]
+            }
+        )
+
+        assert Restriction.any_apply_list(
+            cred_info,
+            [
+                {
+                    'schema_name': schema_key(S_ID['PREFERENCES']).name,
+                    'schema_version': schema_key(S_ID['PREFERENCES']).version,
+                    'cred_def_id': cd_id[S_ID['PREFERENCES']]
+                },
+                {
+                    'schema_name': schema_key(S_ID['SCORES']).name,
+                    'schema_version': schema_key(S_ID['SCORES']).version,
+                    'cred_def_id': cd_id[S_ID['SCORES']]
+                }
+            ]
+        )
+
+        print('\n\n== 14 == Restriction logic OK')

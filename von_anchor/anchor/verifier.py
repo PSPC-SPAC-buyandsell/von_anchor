@@ -18,9 +18,11 @@ limitations under the License.
 import json
 import logging
 
+from copy import deepcopy
 from os import makedirs
 from os.path import expanduser, join
 from time import time
+from typing import Sequence, Mapping
 
 from indy import anoncreds, ledger
 from indy.error import IndyError
@@ -191,6 +193,102 @@ class Verifier(BaseAnchor):
         LOGGER.debug('_Verifier._build_rr_state_json <<< %s', rv)
         return rv
 
+    async def build_preq_json(
+        self,
+        nonce: str = None,
+        name: str = None,
+        version: str = None,
+        *,
+        req_attrs: Sequence[Mapping] = None,
+        req_preds: Sequence[Mapping] = None
+    ) -> str:
+        """
+        Build and return indy-sdk proof request for input attributes and predicates.
+
+        :param nonce: proof request nonce
+        :param name: proof request name
+        :param version: proof request version
+        :req_attrs: list/tuple of requested attribute specifications (method can
+            build single restriction dict into a list, or expand single non_revoked
+            timestamp into from/to dict); e.g.,
+
+        ::
+            {
+                "name": "height",
+                "restrictions": [{
+                    "schema_id": "WgWxqztrNooG92RXvxSTWv:2:prefs:1.0"
+                }],
+                "non_revoked": {
+                    "from": 1234567890,
+                    "to": 1234567890
+                }
+            }
+
+        :req_preds: list/tuple of requested predicate specifications (method can supply p_type,
+            or expand single non-revoked timesamp into from/to dict); e.g.,
+
+        ::
+            {
+                "name": "age",
+                "p_type": ">=",
+                "p_value": 18,
+                "restrictions": [{
+                    "schema_id": "WgWxqztrNooG92RXvxSTWv:2:prefs:1.0"
+                }],
+                "non_revoked": {
+                    "from": 1234567890,
+                    "to": 1234567890
+                }
+            }
+
+        return: indy-sdk proof request json
+        """
+
+        LOGGER.debug(
+            'Verifier.build_preq_json >>> nonce: %s, name: %s, version: %s, req_attrs: %s, req_preds: %s',
+            nonce,
+            name,
+            version,
+            req_attrs,
+            req_preds)
+
+        def reft():
+            nonlocal referent
+            rv = "{}_uuid".format(referent)
+            referent += 1
+            return rv
+
+        referent = 0
+
+        rv = {
+            'nonce': nonce or str(int(time())),
+            'name': name or 'proof_req',
+            'version': version or '0.0',
+            'requested_attributes': {},
+            'requested_predicates': {}
+        }
+
+        for req_attr_spec in req_attrs or []:
+            spec = deepcopy(req_attr_spec)
+            if isinstance(spec.get('restrictions'), Mapping):
+                spec['restrictions'] = [spec['restrictions']]
+            if isinstance(spec.get('non_revoked'), int):
+                spec['non_revoked'] = {t: spec.get('non_revoked') for t in ('from', 'to')}
+            rv['requested_attributes'][reft()] = spec
+
+        for req_pred_spec in req_preds or []:
+            spec = deepcopy(req_pred_spec)
+            if 'p_type' not in spec:
+                spec['p_type'] = Predicate.GE.value.math
+            if isinstance(spec.get('restrictions'), Mapping):
+                spec['restrictions'] = [spec['restrictions']]
+            if isinstance(spec.get('non_revoked'), int):
+                spec['non_revoked'] = {t: spec.get('non_revoked') for t in ('from', 'to')}
+            rv['requested_predicates'][reft()] = spec
+
+        LOGGER.debug('Verifier.build_preq_json <<< %s', json.dumps(rv))
+        return json.dumps(rv)
+
     async def build_proof_req_json(self, cd_id2spec: dict) -> str:
         """
         Build and return indy-sdk proof request for input attributes and non-revocation intervals by cred def id.
@@ -280,8 +378,10 @@ class Verifier(BaseAnchor):
                     'to': fro_to if isinstance(fro_to, int) else max(fro_to)
                 }
 
-            for attr in (cd_id2spec[cd_id].get('attrs', cd_id2schema[cd_id]['attrNames']) or []
-                    if cd_id2spec[cd_id] else cd_id2schema[cd_id]['attrNames']):
+            for attr in (
+                cd_id2spec[cd_id].get('attrs', cd_id2schema[cd_id]['attrNames']) or []
+                if cd_id2spec[cd_id] else cd_id2schema[cd_id]['attrNames']
+            ):
                 attr_uuid = '{}_{}_uuid'.format(seq_no, canon(attr))
                 rv['requested_attributes'][attr_uuid] = {
                     'name': attr,

@@ -22,3 +22,18 @@ from .anchor.origin import Origin
 from .anchor.rrbuilder import RevRegBuilder
 from .anchor.smith import AnchorSmith
 from .anchor.verifier import Verifier
+
+__all__ = [
+    'NominalAnchor',
+    'OrgBookAnchor',
+    'OrgHubAnchor',
+    'ProctorAnchor',
+    'RegistrarAnchor',
+    'TrusteeAnchor',
+    'HolderProver',
+    'Issuer',
+    'Origin',
+    'RevRegBuilder',
+    'AnchorSmith',
+    'Verifier'
+]

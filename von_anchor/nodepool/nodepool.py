@@ -183,7 +183,6 @@ class NodePool:
 
         LOGGER.debug('NodePool.refresh <<<')
 
-
     def __repr__(self) -> str:
         """
         Return representation for current object.

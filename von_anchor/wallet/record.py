@@ -165,7 +165,7 @@ class StorageRecord:
 
         return {t: self._tags[t] for t in self.tags or {} if not t.startswith('~')} or None
 
-    def __eq__(self, other: 'DIDInfo') -> bool:
+    def __eq__(self, other: 'StorageRecord') -> bool:
         """
         Equivalence operator. Two instances are equivalent when their attributes are.
 

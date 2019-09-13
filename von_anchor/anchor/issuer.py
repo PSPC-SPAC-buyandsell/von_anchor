@@ -247,7 +247,7 @@ class Issuer(BaseAnchor):
         with REVO_CACHE.lock:
             revo_cache_entry = REVO_CACHE.get(rr_id, None)
             tails = None if revo_cache_entry is None else revo_cache_entry.tails
-            if tails is None:  #  it's a new revocation registry, or not yet set in cache
+            if tails is None:  # it's a new revocation registry, or not yet set in cache
                 try:
                     tails = await Tails(self.dir_tails, cd_id, tag).open()
                 except AbsentTails:   # it's a new revocation registry
@@ -316,7 +316,7 @@ class Issuer(BaseAnchor):
                 LOGGER.warning(
                     'New cred def on %s in wallet shadows existing one on ledger: private key not usable',
                     cred_def_id(self.did, schema['seqNo'], self.pool.protocol))
-                    # carry on though, this anchor may have other capacities so public key may be good enough
+                # carry on though, this anchor may have other capacities so public key may be good enough
         except IndyError as x_indy:
             if x_indy.error_code == ErrorCode.AnoncredsCredDefAlreadyExistsError:
                 if ledger_cred_def:

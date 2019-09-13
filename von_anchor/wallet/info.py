@@ -85,6 +85,7 @@ class KeyInfo:
 
         return 'KeyInfo({}, {})'.format(self.verkey, self.metadata)
 
+
 class DIDInfo:
     """
     Bundle for DID, verification key, and metadata.

@@ -326,7 +326,7 @@ class RevoCacheEntry:
     * a list of revocation delta frames.
     """
 
-    MARK = (int(sqrt(Tails.MAX_SIZE) * 15 / 16), int(sqrt(Tails.MAX_SIZE) * 17 / 16)) # heuristic: hover about sqrt
+    MARK = (int(sqrt(Tails.MAX_SIZE) * 15 / 16), int(sqrt(Tails.MAX_SIZE) * 17 / 16))  # heuristic: hover about sqrt
 
     def __init__(self, rev_reg_def: dict, tails: Tails = None):
         """

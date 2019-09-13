@@ -98,6 +98,7 @@ class VonAnchorError(Exception):
 
         return '({}) {}'.format(self.error_code, self.message)
 
+
 class CredentialFocus(VonAnchorError):
     """
     Attempt to prove credential in specification that resolve to no claims,

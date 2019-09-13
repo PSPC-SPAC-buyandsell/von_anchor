@@ -44,7 +44,7 @@ from von_anchor.error import (
     ClosedPool,
     CredentialFocus,
     WalletState)
-from von_anchor.indytween import Predicate
+from von_anchor.indytween import Predicate, Restriction
 from von_anchor.nodepool import NodePool
 from von_anchor.tails import Tails
 from von_anchor.util import (
@@ -182,7 +182,7 @@ class HolderProver(BaseAnchor):
         with REVO_CACHE.lock:
             revo_cache_entry = REVO_CACHE.get(rr_id, None)
             tails = revo_cache_entry.tails if revo_cache_entry else None
-            if tails is None:  #  it's not yet set in cache
+            if tails is None:  # it's not yet set in cache
                 try:
                     tails = await Tails(self._dir_tails, cd_id, tag).open()
                 except AbsentTails:  # get hash from ledger and check for tails file
@@ -938,6 +938,126 @@ class HolderProver(BaseAnchor):
         LOGGER.debug('HolderProver.get_cred_info_by_id <<< %s', rv_json)
         return rv_json
 
+    async def get_cred_briefs_by_proof_req(self, proof_req_json: str) -> str:
+        """
+        A cred-brief aggregates a cred-info and a non-revocation interval. A cred-brief-dict maps
+        wallet cred-ids to their corresponding cred-briefs.
+
+        Return json (cred-brief-dict) object mapping wallet credential identifiers to cred-briefs by
+        proof request.
+
+        Raise WalletState if the wallet is closed.
+
+        :param proof_req_json: indy proof request, supporting all indy restrictions; e.g,
+
+        ::
+
+            {
+                "nonce": "1532429687",
+                "name": "proof_req",
+                "version": "0.0",
+                "requested_predicates": {},
+                "requested_attributes": {
+                    "17_name_uuid": {
+                        "restrictions": [
+                            {
+                                "issuer_did": "LjgpST2rjsoxYegQDRm7EL",
+                                "schema_version": "1.0"
+                            }
+                        ],
+                        "name": "name"
+                    },
+                    "17_thing_uuid": {
+                        "restrictions": [
+                            {
+                                "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:tag"
+                            }
+                        ],
+                        "name": "thing"
+                    }
+                }
+            }
+
+        :return: json (cred-brief-dict) object mapping wallet cred ids to cred briefs; e.g.,
+
+        ::
+
+            {
+                "b42ce5bc-b690-43cd-9493-6fe86ad25e85": {
+                    "interval": null,
+                    "cred_info": {
+                        "schema_id": "LjgpST2rjsoxYegQDRm7EL:2:non-revo:1.0",
+                        "rev_reg_id": null,
+                        "attrs": {
+                            "name": "J.R. \"Bob\" Dobbs",
+                            "thing": "slack"
+                        },
+                        "cred_rev_id": null,
+                        "referent": "b42ce5bc-b690-43cd-9493-6fe86ad25e85",
+                        "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:tag"
+                    }
+                },
+                "d773434a-0080-4e3e-a03b-f2033eae7d75": {
+                    "interval": null,
+                    "cred_info": {
+                        "schema_id": "LjgpST2rjsoxYegQDRm7EL:2:non-revo:1.0",
+                        "rev_reg_id": null,
+                        "attrs": {
+                            "name": "Chicken Hawk",
+                            "thing": "chicken"
+                        },
+                        "cred_rev_id": null,
+                        "referent": "d773434a-0080-4e3e-a03b-f2033eae7d75",
+                        "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:tag"
+                    }
+                }
+            }
+
+        """
+
+        def _pred_filter(pred_specs, cred_info):
+            for pspec in pred_specs:
+                attr = pspec['name']
+                if attr not in cred_info['attrs']:
+                    continue
+                if Restriction.any_apply_list(cred_info, pspec.get('restrictions')):
+                    if Predicate.get(pspec['p_type']).value.no(cred_info['attrs'][attr], pspec['p_value']):
+                        return False
+            return True
+
+        rv = {}
+        proof_req = json.loads(proof_req_json)
+        item_refts = [
+            reft for reft in {
+                **proof_req['requested_attributes'],
+                **proof_req['requested_predicates']
+            }
+        ]
+
+        handle = await anoncreds.prover_search_credentials_for_proof_req(
+            self.wallet.handle,
+            proof_req_json,
+            None)
+
+        try:
+            for item_referent in item_refts:
+                count = Wallet.DEFAULT_CHUNK
+                while count == Wallet.DEFAULT_CHUNK:
+                    fetched = json.loads(await anoncreds.prover_fetch_credentials_for_proof_req(
+                        handle,
+                        item_referent,
+                        Wallet.DEFAULT_CHUNK))
+                    count = len(fetched)
+                    for brief in fetched:  # apply predicates from proof req here
+                        if (brief['cred_info']['referent'] not in rv
+                                and _pred_filter(proof_req['requested_predicates'].values(), brief['cred_info'])):
+                            rv[brief['cred_info']['referent']] = brief
+        finally:
+            await anoncreds.prover_close_credentials_search_for_proof_req(handle)
+
+        rv_json = json.dumps(rv)
+        return rv_json
+
     async def get_cred_briefs_by_proof_req_q(self, proof_req_json: str, x_queries_json: str = None) -> str:
         """
         A cred-brief aggregates a cred-info and a non-revocation interval. A cred-brief-dict maps
@@ -984,7 +1104,7 @@ class HolderProver(BaseAnchor):
                 }
             }
 
-        :param x_queries_json: json list of extra queries to apply to proof request attribute and predicate
+        :param x_queries_json: json object of extra queries to apply to proof request attribute and predicate
             referents; e.g.,
 
         ::
@@ -1090,7 +1210,6 @@ class HolderProver(BaseAnchor):
         rv_json = json.dumps(rv)
         LOGGER.debug('HolderProver.get_cred_briefs_by_proof_req_q <<< %s', rv_json)
         return rv_json
-
 
     async def create_proof(self, proof_req: dict, briefs: Union[dict, Sequence[dict]], requested_creds: dict) -> str:
         """

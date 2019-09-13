@@ -107,3 +107,6 @@ _site/
 
 # pytest
 .pytest_cache/
+
+# flake8
+.flake8

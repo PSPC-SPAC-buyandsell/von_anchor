@@ -286,8 +286,11 @@ class RevRegBuilder(BaseAnchor):
                 remove(file_pid)
                 break
 
-            p_pending = [join(self._dir_tails_sentinel, d) for d in listdir(self._dir_tails_sentinel)
-                if isdir(join(self._dir_tails_sentinel, d))]
+            p_pending = [
+                join(self._dir_tails_sentinel, d)
+                for d in listdir(self._dir_tails_sentinel)
+                if isdir(join(self._dir_tails_sentinel, d))
+            ]
             p_pending = [p for p in p_pending if [s for s in listdir(p) if s.startswith('.')]]  # size marker
             if p_pending:
                 pdir = basename(p_pending[0])

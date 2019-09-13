@@ -293,7 +293,7 @@ class BaseAnchor:
         LOGGER.debug('BaseAnchor.least_role <<< %s', rv)
         return rv
 
-    async def set_did_endpoint(self, remote_did: str, did_endpoint: str) ->  EndpointInfo:
+    async def set_did_endpoint(self, remote_did: str, did_endpoint: str) -> EndpointInfo:
         """
         Set endpoint as metadata for pairwise remote DID in wallet. Pick up (transport)
         verification key from pairwise relation and return with endpoint in EndpointInfo.

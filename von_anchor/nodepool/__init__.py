@@ -18,3 +18,9 @@ limitations under the License.
 from .manager import NodePoolManager
 from .nodepool import NodePool
 from .protocol import Protocol
+
+__all__ = [
+    NodePoolManager,
+    NodePool,
+    Protocol
+]

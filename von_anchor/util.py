@@ -167,7 +167,7 @@ def cred_def_id2schema_seq_no_or_id(cd_id: str) -> Union[str, int]:
         tokens = cd_id.split(':')
         if len(tokens) == 5:
             return int(tokens[3])  # seq no is token at 0-based position 3
-        elif len(tokens) == 8:
+        if len(tokens) == 8:
             return ':'.join(tokens[3:7])  # schema id spans 0-based positions 3 through 6 inclusively
     raise BadIdentifier('Bad credential definition identifier {}'.format(cd_id))
 
@@ -198,12 +198,14 @@ def ok_rev_reg_id(token: str, issuer_did: str = None) -> bool:
 
     rr_id_m = re.match(
         '([{0}]{{21,22}}):4:([{0}]{{21,22}}):3:CL:[1-9][0-9]*(:.+)?:CL_ACCUM:.+$'.format(B58),
-        token or '') or re.match(
-            '([{0}]{{21,22}}):'
-            '4:'
-            '([{0}]{{21,22}}):3:CL:(([1-9][0-9]*)|([{0}]{{21,22}}:2:.+:[0-9.]+))(:.+)?:'
-            'CL_ACCUM:.+$'.format(B58),
-        token or '')
+        token or ''
+    ) or re.match(
+        '([{0}]{{21,22}}):'
+        '4:'
+        '([{0}]{{21,22}}):3:CL:(([1-9][0-9]*)|([{0}]{{21,22}}:2:.+:[0-9.]+))(:.+)?:'
+        'CL_ACCUM:.+$'.format(B58),
+        token or ''
+    )
 
     return bool(rr_id_m) and ((not issuer_did) or (rr_id_m.group(1) == issuer_did and rr_id_m.group(2) == issuer_did))
 
@@ -376,6 +378,7 @@ def proof_req_infos2briefs(proof_req: dict, infos: Union[dict, Sequence[dict]]) 
         rv.append(brief)
 
     return rv
+
 
 def proof_req_briefs2req_creds(proof_req: dict, briefs: Union[dict, Sequence[dict]]) -> dict:
     """

@@ -18,7 +18,7 @@ limitations under the License.
 from collections import namedtuple
 from enum import Enum
 from hashlib import sha256
-from typing import Any, Union
+from typing import Any, Mapping, Sequence, Union
 
 from von_anchor.canon import raw
 
@@ -60,6 +60,73 @@ def cred_attr_value(orig: Any) -> dict:
     :return: dict on 'raw' and 'encoded' keys for indy-sdk processing
     """
     return {'raw': raw(orig), 'encoded': encode(orig)}
+
+
+class Restriction(Enum):
+    """
+    Enum for restrictions that indy-sdk supports.
+    """
+
+    SCHEMA_ID = "schema_id"
+    SCHEMA_ISSUER_DID = "schema_issuer_did"
+    SCHEMA_NAME = "schema_name"
+    SCHEMA_VERSION = "schema_version"
+    ISSUER_DID = "issuer_did"
+    CRED_DEF_ID = "cred_def_id"
+
+    @staticmethod
+    def get(specifier: str) -> 'Restriction':
+        """
+        Return enum instance corresponding to restriction specifier string.
+
+        :param specifier: specifier in proof request
+        :return: corresponding Restriction instance
+        """
+
+        return getattr(Restriction, specifier.upper(), None)
+
+    def applies(self, cred_info: Mapping, value: str) -> bool:
+        """
+        Return whether restriction applies to input cred-info.
+
+        :param cred_info: cred-info to check
+        :param value: restriction value to check
+        :return: whether cred-info satisfies current restriction
+        """
+
+        if not cred_info:
+            return True
+        if self == Restriction.SCHEMA_ISSUER_DID:
+            return cred_info['schema_id'].split(':')[0] == value
+        if self == Restriction.SCHEMA_NAME:
+            return cred_info['schema_id'].split(':')[2] == value
+        if self == Restriction.SCHEMA_VERSION:
+            return cred_info['schema_id'].split(':')[3] == value
+        if self == Restriction.ISSUER_DID:
+            return cred_info['cred_def_id'].split(':')[0] == value
+        return cred_info[self.value] == value
+
+    @staticmethod
+    def all_apply_dict(cred_info: Mapping, rdict: Mapping[str, str]) -> bool:
+        """
+        Whether all restrictions specified in dict apply to all input cred-info.
+
+        :param cred_info: cred-info to test
+        :param rdict: restriction specification dict
+        :return: whether cred-info satisfies all restrictions specified
+        """
+        return all(Restriction.get(r).applies(cred_info, rdict[r]) for r in rdict or {})
+
+    @staticmethod
+    def any_apply_list(cred_info: dict, rdict_list: Sequence[Mapping[str, str]]) -> bool:
+        """
+        Whether any restriction dict specifiers in list thereof apply to input cred-info.
+
+        :param cred_info: cred-info to test
+        :param rdict_list: list of restriction specification dicts
+        :return: whether cred-info satisfies any restriction dict in list of restriction dicts
+        """
+        return any(Restriction.all_apply_dict(cred_info, rdict) for rdict in rdict_list)
 
 
 class Predicate(Enum):
