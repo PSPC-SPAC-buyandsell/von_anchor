@@ -20,7 +20,7 @@ from .nodepool import NodePool
 from .protocol import Protocol
 
 __all__ = [
-    NodePoolManager,
-    NodePool,
-    Protocol
+    'NodePoolManager',
+    'NodePool',
+    'Protocol'
 ]

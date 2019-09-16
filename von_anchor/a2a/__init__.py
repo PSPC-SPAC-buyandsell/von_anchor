@@ -20,9 +20,9 @@ from .publickey import LinkedDataKeySpec, PublicKey, PublicKeyType
 from .service import Service
 
 __all__ = [
-    DIDDoc,
-    LinkedDataKeySpec,
-    PublicKey,
-    PublicKeyType,
-    Service
+    'DIDDoc',
+    'LinkedDataKeySpec',
+    'PublicKey',
+    'PublicKeyType',
+    'Service'
 ]

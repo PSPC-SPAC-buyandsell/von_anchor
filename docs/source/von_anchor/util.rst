@@ -189,12 +189,30 @@ Schema Key
 
 The content of a ``SchemaKey`` named tuple instance specifies a schema unambiguously through its ``origin_did``, ``name``, and ``version`` slots. Historically, the indy-sdk ledger used schema keys to identify schemas before migrating to schema identifiers. At present, the VON anchor design retains the schema key abstraction principally to help disambiguate calls to get a schema via ``_BaseAnchor.get_schema()`` as per :ref:`base-anchor`.
 
-Relation and Predicates
+Relation and Predicate
 ***********************************
 
 The ``Relation`` named tuple retains nomenclature by Fortran, WQL, and mathematical conventions, plus ``yes`` and ``no`` slots for lambdas indicating predicate satisfaction or failure.
 
 The ``Predicate`` enumeration specifies predicate relations as they appear in indy-sdk data specifications and VON anchor filters. Each takes a ``Relation`` namedtuple as its value; the ``yes`` and ``no`` lambdas for satisfaction or failure use an int converter to map reasonable values to integers before comparison. Reasonable values include integers, stringified integers, and booleans. They do not include floating point numbers as indy-sdk predicates only operate on 32-bit integers as the encoding specification earmarks them.
+
+Restriction
+***********************************
+
+The ``Restriction`` enumeration models indy-sdk restrictions on requested attributes and predictes in proof requests:
+
+* schema identifier
+* schema issuer DID
+* schema name
+* schema version
+* credential definition identifier
+* issuer.
+
+The ``applies()`` method takes a cred-info as per :ref:`cred-like-data` and the restriction specification's comparison value (e.g., '1.0' for a schema version); it returns whether the restriction applies to the cred-info.
+
+The ``all_apply_dict()`` method takes a cred-info as per :ref:`cred-like-data` and a dict of restriction specifications. It returns whether all the restrictions apply to the cred-info.
+
+The ``any_apply_list()`` method takes a cred-info as per :ref:`cred-like-data` and a list of dicts of restriction specifications. It returns whether any of the dicts of restrictions entirely apply to the cred-info. Note that this is the format for restrictions in specifications for requested attributes and predicates in indy proof requests: any of (all of (restrictions)).
 
 Encoding
 ***********************************

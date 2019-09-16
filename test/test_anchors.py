@@ -5012,7 +5012,7 @@ async def test_proof_request_alternatives(
             i += 1
 
         # BC Proctor agent requests proof: exercise builder
-        proof_req_json = await vpan.build_preq_json(
+        proof_req_json = await vpan.build_proof_req_x_json(
             req_attrs=[
                 {
                     'name':  'drink',
@@ -5052,7 +5052,7 @@ async def test_proof_request_alternatives(
         briefs_q_json = await hpan.get_cred_briefs_by_proof_req_q(proof_req_json)
         print('\n\n== 9 == Cred briefs by proof req and query: {}'.format(ppjson(briefs_q_json)))
 
-        proof_req_json = await vpan.build_preq_json(
+        proof_req_json = await vpan.build_proof_req_x_json(
             req_attrs=[
                 {
                     'name':  'drink',
@@ -5093,7 +5093,7 @@ async def test_proof_request_alternatives(
         print('\n\n== 11 == Cred briefs by proof req with schema-id restrictions: {}'.format(ppjson(briefs_json)))
         assert json.loads(briefs_json) == json.loads(briefs_q_json)
 
-        proof_req_json = await vpan.build_preq_json(
+        proof_req_json = await vpan.build_proof_req_x_json(
             req_attrs=[
                 {
                     'name':  'drink',
@@ -5166,9 +5166,20 @@ async def test_proof_request_alternatives(
         assert Restriction.all_apply_dict(
             cred_info, 
             {
+                'schema_issuer_did': schema_key(S_ID['PREFERENCES']).origin_did,
                 'schema_name': schema_key(S_ID['PREFERENCES']).name,
                 'schema_version': schema_key(S_ID['PREFERENCES']).version,
-                'cred_def_id': cd_id[S_ID['PREFERENCES']]
+                'schema_id': S_ID['PREFERENCES'],
+                'cred_def_id': cd_id[S_ID['PREFERENCES']],
+                'issuer_did': vpan.did
+            }
+        )
+
+        assert not Restriction.all_apply_dict(
+            cred_info, 
+            {
+                'cred_def_id': cd_id[S_ID['PREFERENCES']],
+                'issuer_did': hpan.did
             }
         )
 
@@ -5176,14 +5187,16 @@ async def test_proof_request_alternatives(
             cred_info,
             [
                 {
+                    'schema_issuer_did': schema_key(S_ID['PREFERENCES']).origin_did,
                     'schema_name': schema_key(S_ID['PREFERENCES']).name,
                     'schema_version': schema_key(S_ID['PREFERENCES']).version,
-                    'cred_def_id': cd_id[S_ID['PREFERENCES']]
+                    'schema_id': S_ID['PREFERENCES'],
+                    'cred_def_id': cd_id[S_ID['PREFERENCES']],
+                    'issuer_did': vpan.did
                 },
                 {
-                    'schema_name': schema_key(S_ID['SCORES']).name,
-                    'schema_version': schema_key(S_ID['SCORES']).version,
-                    'cred_def_id': cd_id[S_ID['SCORES']]
+                    'cred_def_id': cd_id[S_ID['PREFERENCES']],
+                    'issuer_did': hpan.did
                 }
             ]
         )

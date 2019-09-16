@@ -24,7 +24,7 @@ class ErrorCode {
 
 class VonAnchorError {
     +error_code
-    +message
+    +messagep
 }
 
 class SchemaKey {
@@ -234,6 +234,18 @@ enum Predicate {
     {static} +GT
 }
 
+enum Restriction {
+    {static} +SCHEMA_ID
+    {static} +SCHEMA_ISSUER_DID
+    {static} +SCHEMA_NAME
+    {static} +SCHEMA_VERSION
+    {static} +ISSUER_DID
+    {static} +CRED_DEF_ID
+    +applies()
+    +all_apply_dict()
+    +any_apply_list()
+}
+
 enum Role {
     {static} +STEWARD
     {static} +TRUSTEE
@@ -340,6 +352,7 @@ class HolderProver {
     +get_cred_info_by_id()
     +get_creds()
     +get_creds_by_id()
+    +get_cred_briefs_by_proof_req()
     +get_cred_briefs_by_proof_req_q()
     +create_proof()
     +reset_wallet()
@@ -351,6 +364,7 @@ class Verifier {
     -_build_rr_state_json()
     {static} +least_role()
     +build_proof_req_json()
+    +build_proof_req_x_json()
     +load_cache_for_verification()
     +open()
     +verify_proof()
@@ -462,32 +476,3 @@ Issuer *- RevRegBuilder
 Origin <|-left- ProctorAnchor
 Issuer <|-left- ProctorAnchor
 Verifier <|-right- ProctorAnchor
-
-Issuer <|-up- RegistrarAnchor
-Origin <|-up- RegistrarAnchor
-
-HolderProver <|-down- OrgBookAnchor
-
-OrgBookAnchor <|-- OrgHubAnchor
-Issuer <|-- OrgHubAnchor
-Origin <|-- OrgHubAnchor
-Verifier <|-- OrgHubAnchor
-
-HolderProver ..> ArchivableCaches
-Verifier ..> ArchivableCaches
-OrgHubAnchor ..> ArchivableCaches
-
-HolderProver ..> Predicate
-Verifier ..> Predicate
-
-BaseAnchor ..> Role
-AnchorSmith ..> Role
-Verifier ..> Role
-NominalAnchor ..> Role
-OrgHubAnchor ..> Role
-ProctorAnchor ..> Role
-
-PublicKey "1" *-- "1" PublicKeyType
-DIDDoc "1" *-- "n" PublicKey
-DIDDoc "1" *-- "n" Service
-@enduml

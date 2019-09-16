@@ -181,7 +181,7 @@ Because cache loading operations could monopolize the (shared) caches, it is bes
     :align: center
     :alt: Priming Holder-Prover Anchor for Off-Line Operation
  
-The class's ``offline_intervals()`` helper takes an iterable collection of credential definition identifiers. It returns a specification dict on credential definition identifiers, mapping to default non-revocation intervals by current cache content. The actuator can augment this specification structure with desired attributes and minima to pass to the Verifier's ``build_proof_req()`` method to build a proof request.
+The class's ``offline_intervals()`` helper takes an iterable collection of credential definition identifiers. It returns a specification dict on credential definition identifiers, mapping to default non-revocation intervals by current cache content. The actuator can augment this specification structure with desired attributes and minima to pass to the Verifier's ``build_proof_req_json()`` or ``build_proof_req_x_json()`` methods to build a proof request.
 
 Tails and Revocation Registry Helpers
 ====================================================
@@ -217,7 +217,7 @@ The design defines a cred-brief as a dict nesting a cred-info structure on key c
 Cred-Brief-Dict
 -----------------------------------------
 
-The design defines a cred-brief-dict as a dict mapping wallet cred identifiers to corresponding cred-briefs. As per :ref:`holder-prover-cred-like-ops`, ``HolderProver.get_cred_briefs_by_proof_req_q()`` returns a cred-brief-dict.
+The design defines a cred-brief-dict as a dict mapping wallet cred identifiers to corresponding cred-briefs. As per :ref:`holder-prover-cred-like-ops`, ``HolderProver.get_cred_briefs_by_proof_req_q()`` and ``HolderProver.get_cred_briefs_by_proof_req()`` return a cred-brief-dict.
 
 Credentials
 -----------------------------------------
@@ -254,7 +254,9 @@ Its  ``get_cred_infos_by_filter()`` method takes a coarse filter (matching value
 
 Its  ``get_cred_info_by_id()`` method takes a wallet credential identifier and retrieves cred-info for the corresponding credential in the wallet.
 
-Its  ``get_cred_briefs_by_proof_req_q()`` method takes a proof request and a structure of extra [WQL] queries, indexed as a dict by their referents in the proof request (the ``proof_req_attr_referents()`` and ``proof_req2wql_all()`` utilities of :ref:`wranglers` can aid in the construction of this WQL). It uses indy-sdk to search within the wallet to retrieve credential briefs matching the extra WQL queries. It filters the results against any predicates within the proof request before returning. Note however that predicate filtration is relatively expensive, since it occurs outside the wallet: indy-sdk supports only exact attribute matches for (WQL) in-wallet filtration. The method returns a cred-briefs-dict as per :ref:`cred-like-data`.
+Its  ``get_cred_briefs_by_proof_req_q()`` method takes a proof request and a structure of extra [WQL] queries, indexed as a dict by their referents in the proof request (the ``proof_req_attr_referents()`` and ``proof_req2wql_all()`` utilities of :ref:`wranglers` can aid in the construction of this WQL). It uses indy-sdk to search within the wallet to retrieve credential briefs matching the extra WQL queries. It filters the results against any predicates within the proof request before returning. Note however that predicate filtration is relatively expensive, since it occurs outside the wallet: indy-sdk supports only exact attribute matches for (WQL) in-wallet filtration. The method returns a cred-briefs-dict as per :ref:`cred-like-data`. This method assumes that all requested attribute and predicate specifications in the proof request use credential definition identifier as a restriction.
+
+Its  ``get_cred_briefs_by_proof_req()`` method takes a proof request. It uses indy-sdk to search within the wallet to retrieve credential briefs matching the extra WQL queries. It filters the results against any predicates within the proof request before returning. Note however that predicate filtration is relatively expensive, since it occurs outside the wallet: indy-sdk supports only exact attribute matches for (WQL) in-wallet filtration. The method returns a cred-briefs-dict as per :ref:`cred-like-data`. This method accepts any restrictions (not only credential definition identifier) on requested attribute and predicate specifications in the proof request.
 
 Note that a credential's revocation status does not affect whether any anchor returns it via the methods above.
 
@@ -304,6 +306,8 @@ The class's ``build_proof_req_json()`` helper takes a specification construct. I
 - ``'interval'`` to a single timestamp of interest, in integer epoch seconds, or to a pair of integers marking the boundaries of a non-revocation interval; if absent,
     - request the present moment if the credential definition supports revocation,
     - omit if the credential definition does not support revocation.
+
+The class's ``build_proof_req_x_json()`` helper takes components of an indy proof request and returns a proof request, filling in defaults where possible.
 
 Its ``load_cache_for_verification()`` method loads caches and archives enough data to go off-line and be able to verify proofs using the schemata, credential definitions, and revocation registries specified in configuration.
 

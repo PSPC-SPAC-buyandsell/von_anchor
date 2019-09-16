@@ -17,6 +17,6 @@ limitations under the License.
 from .setnym import AnchorData, NodePoolData
 
 __all__ = [
-    AnchorData,
-    NodePoolData
+    'AnchorData',
+    'NodePoolData'
 ]

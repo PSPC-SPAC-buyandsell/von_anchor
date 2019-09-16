@@ -193,7 +193,7 @@ class Verifier(BaseAnchor):
         LOGGER.debug('_Verifier._build_rr_state_json <<< %s', rv)
         return rv
 
-    async def build_preq_json(
+    async def build_proof_req_x_json(
         self,
         nonce: str = None,
         name: str = None,
@@ -203,16 +203,17 @@ class Verifier(BaseAnchor):
         req_preds: Sequence[Mapping] = None
     ) -> str:
         """
-        Build and return indy-sdk proof request for input attributes and predicates.
+        Build and return indy-sdk proof request for input explicit requested attributes and predicates.
 
         :param nonce: proof request nonce
         :param name: proof request name
         :param version: proof request version
-        :req_attrs: list/tuple of requested attribute specifications (method can
+        :param req_attrs: list/tuple of requested attribute specifications (method can
             build single restriction dict into a list, or expand single non_revoked
             timestamp into from/to dict); e.g.,
 
         ::
+
             {
                 "name": "height",
                 "restrictions": [{
@@ -224,10 +225,11 @@ class Verifier(BaseAnchor):
                 }
             }
 
-        :req_preds: list/tuple of requested predicate specifications (method can supply p_type,
+        :param req_preds: list/tuple of requested predicate specifications (method can supply p_type,
             or expand single non-revoked timesamp into from/to dict); e.g.,
 
         ::
+
             {
                 "name": "age",
                 "p_type": ">=",
@@ -245,7 +247,7 @@ class Verifier(BaseAnchor):
         """
 
         LOGGER.debug(
-            'Verifier.build_preq_json >>> nonce: %s, name: %s, version: %s, req_attrs: %s, req_preds: %s',
+            'Verifier.build_proof_req_x_json >>> nonce: %s, name: %s, version: %s, req_attrs: %s, req_preds: %s',
             nonce,
             name,
             version,
@@ -286,7 +288,7 @@ class Verifier(BaseAnchor):
                 spec['non_revoked'] = {t: spec.get('non_revoked') for t in ('from', 'to')}
             rv['requested_predicates'][reft()] = spec
 
-        LOGGER.debug('Verifier.build_preq_json <<< %s', json.dumps(rv))
+        LOGGER.debug('Verifier.build_proof_req_x_json <<< %s', json.dumps(rv))
         return json.dumps(rv)
 
     async def build_proof_req_json(self, cd_id2spec: dict) -> str:
