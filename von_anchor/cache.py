@@ -721,7 +721,7 @@ class RevocationCache(dict):
 
 class EndpointCache(dict):
     """
-    Retain endpoint attribute values by anchor DID.
+    Retain endpoint attribute values by public DID.
 
     A lock shares access to critical sections as relying code specifies them (e.g., check and get/set).
     Note that this one lock applies across all instances - the design of this class intends it to be a singleton.

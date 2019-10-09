@@ -259,10 +259,10 @@ async def test_anchors_api(
         'x-anchor': 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
     }
 
-    try:  # before opening wallet for the first time, creating an anchor DID ...
+    try:  # before opening wallet for the first time, creating an public DID ...
         wallet_x = (await get_wallets({'x-anchor': seeds['x-anchor']}, open_all=False))['x-anchor']
         xan = NominalAnchor(wallet_x)
-        await xan.get_endpoint()  # ... exercise error path; never been opened hence no anchor DID
+        await xan.get_endpoint()  # ... exercise error path; never been opened hence no public DID
         assert False
     except WalletState:
         pass
@@ -297,7 +297,7 @@ async def test_anchors_api(
         await xwallet.remove()  # could still be there from prior abend; silently fails if not present
         xan = ProctorAnchor(xwallet, p)
         try:
-            await xan.get_nym()  # wallet never opened: no anchor DID
+            await xan.get_nym()  # wallet never opened: no public DID
             assert False
         except WalletState:
             pass
@@ -2767,10 +2767,10 @@ async def test_anchor_reseed(
             pass
 
         # Anchor reseed wallet
-        old_found_did = await rsan.wallet.get_anchor_did()
+        old_found_did = await rsan.wallet.get_public_did()
         assert old_found_did == rsan.did
         verkey_in_wallet = (await rsan.wallet.get_local_did(rsan.did)).verkey
-        print('\n\n== 3 == Anchor DID {}, verkey in wallet {}'.format(rsan.did, verkey_in_wallet))
+        print('\n\n== 3 == Public DID {}, verkey in wallet {}'.format(rsan.did, verkey_in_wallet))
         nym_resp = json.loads(await rsan.get_nym(rsan.did))
         print('\n\n== 4 == Anchor nym on ledger {}'.format(ppjson(nym_resp)))
 
@@ -2778,7 +2778,7 @@ async def test_anchor_reseed(
         old_rsan_nym_role = await rsan.get_nym_role()
         await rsan.reseed(rsoban_seeds[1])
         assert rsan.verkey != old_rsan_verkey
-        assert old_found_did == await rsan.wallet.get_anchor_did()
+        assert old_found_did == await rsan.wallet.get_public_did()
         assert old_found_did == rsan.did
         assert await rsan.get_nym_role() == old_rsan_nym_role
 
@@ -2793,7 +2793,7 @@ async def test_anchor_reseed(
         await noman.reseed(rsoban_seeds[2])
         assert noman.verkey != old_rsan_verkey
         assert rsan.verkey == noman.verkey
-        assert old_found_did == await rsan.wallet.get_anchor_did()
+        assert old_found_did == await rsan.wallet.get_public_did()
         assert old_found_did == rsan.did
         assert await noman.get_nym_role() == old_rsan_nym_role
 
@@ -2812,10 +2812,10 @@ async def test_anchor_reseed(
         await rsan.create_link_secret('SecretLink')
 
         # Anchor reseed wallet on random seed
-        old_found_did = await rsan.wallet.get_anchor_did()
+        old_found_did = await rsan.wallet.get_public_did()
         assert old_found_did == rsan.did
         verkey_in_wallet = (await rsan.wallet.get_local_did(rsan.did)).verkey
-        print('\n\n== 7 == Anchor DID {}, verkey in wallet {}'.format(rsan.did, verkey_in_wallet))
+        print('\n\n== 7 == Public DID {}, verkey in wallet {}'.format(rsan.did, verkey_in_wallet))
         nym_resp = json.loads(await rsan.get_nym(rsan.did))
         print('\n\n== 8 == Anchor nym on ledger {}'.format(ppjson(nym_resp)))
 
@@ -2823,7 +2823,7 @@ async def test_anchor_reseed(
         old_rsan_nym_role = await rsan.get_nym_role()
         await rsan.reseed()
         assert rsan.verkey != old_rsan_verkey
-        assert old_found_did == await rsan.wallet.get_anchor_did()
+        assert old_found_did == await rsan.wallet.get_public_did()
         assert old_found_did == rsan.did
         assert await rsan.get_nym_role() == old_rsan_nym_role
 
@@ -4400,7 +4400,7 @@ async def test_free_holder_prover(
         pool_genesis_txn_file,
         seed_trustee1):
 
-    print(Ink.YELLOW('\n\n== Testing Free Holder-Prover (with no anchor DID on ledger) =='))
+    print(Ink.YELLOW('\n\n== Testing Free Holder-Prover (with no public DID on ledger) =='))
 
     # Set up node pool ledger config and wallets, open pool, init anchors
     p_mgr = NodePoolManager()

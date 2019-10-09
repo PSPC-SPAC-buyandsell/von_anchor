@@ -14,7 +14,7 @@ The Wallet Manager provides management utilities for wallets and retains default
 Initialization
 ++++++++++++++++++++++++++++
 
-The initializer takes and retains default configuration values to use in creating new VON Anchor wallets:
+The initializer takes and retains default configuration values to use in creating new VON anchor wallets:
 
 * ``storage_type``: storage type (default None for indy-sdk default)
 * ``freshness_time``: freshness time (default 0 for infinite)
@@ -39,7 +39,7 @@ The ``create()`` method takes configuration (overriding Wallet Manager instance 
 * ``auto_remove``: automatic removal behaviour on first wallet close
 * ``link_secret_label``: optional link secret label to use to create link secret.
 
-The implementation creates the indy-sdk wallet, sets the anchor DID and verification key (using the seed and DID if provided), and creates the link secret if the configuration specifies its label.
+The implementation creates the indy-sdk wallet, sets the public DID and verification key (using the seed and DID if provided), and creates the link secret if the configuration specifies its label.
 
 The ``get()`` method takes a configuration dict and an access credentials value. Its operation returns a corresponding VON anchor wallet instance. Note that the corresponding indy-sdk wallet need not exist in persistent storage.
 
@@ -62,7 +62,7 @@ The static method ``register_storage_library()`` registers a wallet storage plug
 VON Anchor Wallet
 #######################
 
-The VON Anchor wallet provides functionality for VON anchors to use indy-sdk wallets to manage keyed and non-secret storage records. It resides in ``von_anchor/wallet/wallet.py``.
+The VON anchor wallet provides functionality for VON anchors to use indy-sdk wallets to manage keyed and non-secret storage records. It resides in ``von_anchor/wallet/wallet.py``.
 
 Initialization
 ++++++++++++++++++++++++++++
@@ -81,7 +81,7 @@ Its operation stores input parameters or sensible defaults, in waiting for furth
 Accessors
 ++++++++++++++++++++++++++++
 
-The class exposes accessors for the wallet name, indy-sdk handle, configuration, automatic creation and remove status, access credentials, storage type, anchor DID, and (public) verification key.
+The class exposes accessors for the wallet name, indy-sdk handle, configuration, automatic creation and remove status, access credentials, storage type, public DID, and (public) verification key.
 
 .. _wallet-create:
 
@@ -159,18 +159,18 @@ DID Management
 
 The design identifies several kinds of DIDs.
 
-An **anchor DID** is a DID in current or past use for the VON anchor using the wallet, in transacting with the node pool implementing the distributed ledger. The current anchor DID is in its cryptonym on the ledger, and in its wallet with the corresponding private key.
+A **public DID** is a DID in current or past use for the VON anchor using the wallet, in transacting with the node pool implementing the distributed ledger. The current public DID is in its cryptonym on the ledger, and in its wallet with the corresponding private key.
 
 A **local DID** is a DID in use for communication between an agent using the current wallet (typically, via a VON anchor) and another agent. A local DID forms part of a pairwise DID. The wallet implementation uses ``DIDInfo`` objects (see :ref:`did-info`) to associate local DIDs with their verification keys and metadata.
 
 A **pairwise DID** groups a DID and verification key from both local ('my') and remote ('their') sides of an agent-to-agent ('pairwise') relation. The wallet implementation uses ``PairwiseInfo`` objects (see :ref:`pairwise-info`) to associate these data plus any metadata for the relation. The wallet's pairwise DID processing stores pairwise DIDs via the indy-sdk ``non_secret`` API, allowing updates and searches on such records.
 
-Anchor DID Operations
+Public DID Operations
 ---------------------
 
-The ``create()`` method (:ref:`wallet-create`) creates the anchor DID from seed. The ``reseed_apply()`` method (:ref:`wallet-reseed`) creates a new anchor DID in its operation.
+The ``create()`` method (:ref:`wallet-create`) creates the public DID from seed. The ``reseed_apply()`` method (:ref:`wallet-reseed`) creates a new public DID in its operation.
 
-The ``get_anchor_did()`` method returns the current anchor DID.
+The ``get_public_did()`` method returns the current public DID.
 
 Signing Key Pair Operations
 ---------------------------
@@ -243,15 +243,15 @@ The ``delete_pairwise()`` method takes a remote DID and delegates to ``delete_no
 Cryptographic Operations
 ++++++++++++++++++++++++++++
 
-The ``encrypt()`` method takes a message, a recipient verification key (default value of current verification key for anchor DID), and whether to use authenticated encryption for proof of origin. Its operation delegates to indy-sdk to encrypt the message and return the ciphertext as a byte string.
+The ``encrypt()`` method takes a message, a recipient verification key (default value of current verification key for public DID), and whether to use authenticated encryption for proof of origin. Its operation delegates to indy-sdk to encrypt the message and return the ciphertext as a byte string.
 
 The ``decrypt()`` method takes ciphertext and a verification key (default value of ``None`` for unauthenticated decryption). It delegates to indy-sdk to decrypt the message and, given a verification key, authenticate against it for proof of origin. It returns the plaintext payload as a byte string.
 
-The ``sign()`` method takes a message and a verification key (default value of current verification key for anchor DID). It delegates to indy-sdk to sign the message and returns the signature as a byte string.
+The ``sign()`` method takes a message and a verification key (default value of current verification key for public DID). It delegates to indy-sdk to sign the message and returns the signature as a byte string.
 
-The ``verify()`` method takes a message and putative signature plus a verification key (default value of current verification key for anchor DID). It delegates to indy-sdk to verify the signature and returns ``True`` or ``False`` to indicate the goodness of the signature.
+The ``verify()`` method takes a message and putative signature plus a verification key (default value of current verification key for public DID). It delegates to indy-sdk to verify the signature and returns ``True`` or ``False`` to indicate the goodness of the signature.
 
-The ``pack()`` method takes a message, recipient verification key or keys (default value of current verification key for anchor DID), and sender verification key (default ``None`` for anonymous encryption). Its operation delegates to the indy-sdk to pack a JWE of https://tools.ietf.org/html/rfc7516, which it returns.
+The ``pack()`` method takes a message, recipient verification key or keys (default value of current verification key for public DID), and sender verification key (default ``None`` for anonymous encryption). Its operation delegates to the indy-sdk to pack a JWE of https://tools.ietf.org/html/rfc7516, which it returns.
 
 The ``unpack()`` method takes JWE ciphertext and delegates to indy-sdk to unpack it. It returns a triple with the message, the sender verification key, and the recipient verification key (``None`` for anonymous encryption).
 
@@ -307,7 +307,7 @@ PairwiseInfo
 
 The ``info.py`` file holds class ``PairwiseInfo`` and utilities.
 
-The ``PairwiseInfo`` class bundles information for a pairwise DID to store via the indy-sdk ``non_secret`` API in the wallet. It aggregates a remote DID and verification key, a local DID and verification key, and metadata. VON Anchor operation intermediates to direct indy-sdk to store such metadata unencrypted, canonicalizing tags accordingly as per :ref:`canon-util`, to maximize WQL search capacity.
+The ``PairwiseInfo`` class bundles information for a pairwise DID to store via the indy-sdk ``non_secret`` API in the wallet. It aggregates a remote DID and verification key, a local DID and verification key, and metadata. VON anchor operation intermediates to direct indy-sdk to store such metadata unencrypted, canonicalizing tags accordingly as per :ref:`canon-util`, to maximize WQL search capacity.
 
 The ``storage_record2pairwise_info()`` free function creates a ``PairwiseInfo`` instance from a ``StorageRecord`` that a ``non_secret`` API search returns.
 

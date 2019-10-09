@@ -101,6 +101,9 @@ async def test_ids():
         'LjgpST2rjsoxYegQDRm7EL')
     assert ok_rev_reg_id(  # long form
         'LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:Q4zqM7aXqm7gDQkUVLng9h:2:schema_name:1.0:tag:CL_ACCUM:1')
+    assert ok_rev_reg_id(  # long form
+        'LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:Q4zqM7aXqm7gDQkUVLng9h:2:schema_name:1.0:tag:CL_ACCUM:1',
+        'LjgpST2rjsoxYegQDRm7EL')
     assert not ok_rev_reg_id(
         'LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:tag:CL_ACCUM:1',
         'Xxxxxxxxxxxxxxxxxxxxxx')

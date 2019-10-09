@@ -434,7 +434,7 @@ class HolderProver(BaseAnchor):
 
         :param cred_offer_json: credential offer json
         :param cd_id: credential definition identifier
-        :param my_did: HolderProver DID to use in offer creation (default to anchor DID,
+        :param my_did: HolderProver DID to use in offer creation (default to public DID,
             or specify local DID in pairwise relation)
         :return: cred request json and corresponding metadata json as created and stored in wallet
         """

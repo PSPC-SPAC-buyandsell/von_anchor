@@ -360,7 +360,7 @@ async def test_pairwise():
         open_all=False,
         auto_remove=True)
 
-    pairwises = {}  # naive pairwise info, with anchor dids and verkeys
+    pairwises = {}  # naive pairwise info, with public dids and verkeys
     for name in wallets:
         if name != 'multipass':
             async with wallets[name] as their_wallet:  # engage auto-remove

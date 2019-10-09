@@ -122,9 +122,9 @@ class BaseAnchor:
     @property
     def did(self) -> str:
         """
-        Accessor for anchor DID.
+        Accessor for public DID.
 
-        :return: anchor DID
+        :return: public DID
         """
 
         return self.wallet.did

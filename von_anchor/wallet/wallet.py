@@ -62,7 +62,7 @@ class Wallet:
         :param von_config: VON wallet configuration particulars:
 
             - 'seed': (optional) seed to use on creation
-            - 'did': (optional) anchor DID to use on creation
+            - 'did': (optional) public DID to use on creation
             - 'link_secret_label': (optional) label to use to create link secret
             - 'auto_create': whether to create wallet automatically on first open
             - 'auto_remove': whether to remove wallet automatically on next close
@@ -193,9 +193,9 @@ class Wallet:
     @property
     def did(self) -> str:
         """
-        Accessor for anchor DID in wallet.
+        Accessor for public DID in wallet.
 
-        :return: anchor DID in wallet
+        :return: public DID in wallet
         """
 
         return self._did
@@ -203,9 +203,9 @@ class Wallet:
     @did.setter
     def did(self, value: str) -> None:
         """
-        Set anchor DID in wallet.
+        Set public DID in wallet.
 
-        :param value: anchor DID
+        :param value: public DID
         """
 
         self._did = value
@@ -408,7 +408,7 @@ class Wallet:
         for did_with_meta in dids_with_meta:
             meta = json.loads(did_with_meta['metadata']) if did_with_meta['metadata'] else {}
             if meta.get('anchor', False):
-                continue  # exclude anchor DIDs past and present
+                continue  # exclude public DIDs past and present
             rv.append(DIDInfo(did_with_meta['did'], did_with_meta['verkey'], meta))
 
         LOGGER.debug('Wallet.get_local_dids <<< %s', rv)
@@ -459,17 +459,17 @@ class Wallet:
         LOGGER.debug('Wallet.get_local_did <<< %s', rv)
         return rv
 
-    async def get_anchor_did(self) -> str:
+    async def get_public_did(self) -> str:
         """
-        Get current anchor DID by metadata, None for not yet set.
+        Get current public DID by metadata, None for not yet set.
 
         :return: DID
         """
 
-        LOGGER.debug('Wallet.get_anchor_did >>>')
+        LOGGER.debug('Wallet.get_public_did >>>')
 
         if not self.handle:
-            LOGGER.debug('Wallet.get_anchor_did <!< Wallet %s is closed', self.name)
+            LOGGER.debug('Wallet.get_public_did <!< Wallet %s is closed', self.name)
             raise WalletState('Wallet {} is closed'.format(self.name))
 
         rv = None
@@ -484,9 +484,9 @@ class Wallet:
                 if isinstance(meta, dict) and meta.get('since', -1) > latest:
                     rv = did_with_meta.get('did')
             except json.decoder.JSONDecodeError:
-                continue  # it's not an anchor DID, carry on
+                continue  # it's not an public DID, carry on
 
-        LOGGER.debug('Wallet.get_anchor_did <<< %s', rv)
+        LOGGER.debug('Wallet.get_public_did <<< %s', rv)
         return rv
 
     async def create_link_secret(self, label: str) -> None:
@@ -623,7 +623,7 @@ class Wallet:
                 LOGGER.debug('Wallet %s open raised indy error %s', self.name, x_indy.error_code)
                 raise
 
-        self.did = await self.get_anchor_did()
+        self.did = await self.get_public_did()
         self.verkey = await did.key_for_local_did(self.handle, self.did) if self.did else None
         LOGGER.info('Wallet %s got verkey %s for existing DID %s', self.name, self.verkey, self.did)
 

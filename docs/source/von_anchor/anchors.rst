@@ -230,7 +230,7 @@ A credentials (in indy-sdk, "credentials for proof request") structure, is a dic
 Methods Implementing Operations with Credential-Like Data
 ==============================================================
 
-Its  ``create_cred_req()`` method creates a credential request for an input credential offer and credential definition, using a specified local DID (from a pairwise relation) or defaulting to the anchor DID. It returns the credential request and its associated metadata.
+Its  ``create_cred_req()`` method creates a credential request for an input credential offer and credential definition, using a specified local DID (from a pairwise relation) or defaulting to the public DID. It returns the credential request and its associated metadata.
 
 Its  ``store_cred()`` method stores a credential in the wallet. It returns the credential identifier as it appears in the wallet. Note that the credential attribute tagging policy :ref:`catpol` specifies the credential attributes for which the indy-sdk builds WQL searchable tags in the wallet on storage.
 

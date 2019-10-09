@@ -125,7 +125,7 @@ class Wallet {
     +create_local_did()
     +get_local_dids()
     +get_local_did()
-    +get_anchor_did()
+    +get_public_did()
     +create_link_secret()
     -_write_link_secret_label()
     +get_link_secret_label()

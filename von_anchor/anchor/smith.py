@@ -50,12 +50,12 @@ class AnchorSmith(BaseAnchor):
 
     async def send_nym(self, did: str, verkey: str = None, alias: str = None, role: Role = None) -> None:
         """
-        Send input anchor's cryptonym (including DID, verification key, plus optional alias and role)
+        Send input anchor's cryptonym (including public DID, verification key, plus optional alias and role)
         to the distributed ledger.
 
         Raise BadLedgerTxn on failure, BadIdentifier for bad DID, or BadRole for bad role.
 
-        :param did: anchor DID to send to ledger
+        :param did: public DID to send to ledger
         :param verkey: optional anchor verification key
         :param alias: optional alias
         :param role: anchor role on the ledger (default value of USER)
