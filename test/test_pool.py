@@ -228,4 +228,4 @@ async def test_pool_open(path_home, pool_name, pool_genesis_txn_data, pool_ip):
         assert x_indy.error_code == ErrorCode.CommonInvalidStructure
     pool.config.pop('timeout')
 
-    print('\n\n== 1 == Pool {} opens and closes OK from existing ledger configuration'.format(pool))
+    print('\n\n== 1 == Pool {} opens and closes OK from existing ledger configuration'.format(pool_name))

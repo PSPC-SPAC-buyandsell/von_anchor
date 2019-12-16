@@ -511,7 +511,7 @@ class HolderProver(BaseAnchor):
         elif isinstance(taggables, list):
             taggables_json = json.dumps(taggables)
         elif taggables is not None:
-            taggables_json = json.dumps([t for t in taggables])  # coerce to list for JSON
+            taggables_json = json.dumps(list(taggables))  # coerce to list for JSON
 
         await anoncreds.prover_set_credential_attr_tag_policy(
             self.wallet.handle,
@@ -958,22 +958,14 @@ class HolderProver(BaseAnchor):
                 "version": "0.0",
                 "requested_predicates": {},
                 "requested_attributes": {
-                    "17_name_uuid": {
+                    "17_uuid": {
                         "restrictions": [
                             {
                                 "issuer_did": "LjgpST2rjsoxYegQDRm7EL",
                                 "schema_version": "1.0"
                             }
                         ],
-                        "name": "name"
-                    },
-                    "17_thing_uuid": {
-                        "restrictions": [
-                            {
-                                "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:tag"
-                            }
-                        ],
-                        "name": "thing"
+                        "names": ["name", "thing"]
                     }
                 }
             }
@@ -1027,12 +1019,7 @@ class HolderProver(BaseAnchor):
 
         rv = {}
         proof_req = json.loads(proof_req_json)
-        item_refts = [
-            reft for reft in {
-                **proof_req['requested_attributes'],
-                **proof_req['requested_predicates']
-            }
-        ]
+        item_refts = list({**proof_req['requested_attributes'], **proof_req['requested_predicates']}.keys())
 
         handle = await anoncreds.prover_search_credentials_for_proof_req(
             self.wallet.handle,
@@ -1085,21 +1072,13 @@ class HolderProver(BaseAnchor):
                 "version": "0.0",
                 "requested_predicates": {},
                 "requested_attributes": {
-                    "17_name_uuid": {
+                    "17_uuid": {
                         "restrictions": [
                             {
                                 "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:tag"
                             }
                         ],
-                        "name": "name"
-                    },
-                    "17_thing_uuid": {
-                        "restrictions": [
-                            {
-                                "cred_def_id": "LjgpST2rjsoxYegQDRm7EL:3:CL:17:tag"
-                            }
-                        ],
-                        "name": "thing"
+                        "names": ["name", "thing"]
                     }
                 }
             }
@@ -1110,7 +1089,7 @@ class HolderProver(BaseAnchor):
         ::
 
             {
-                "17_thing_uuid": { # require attr presence on name 'thing', cred def id from proof req above
+                "17_uuid": { # require attr presence on name 'thing', cred def id from proof req above
                     "$or": [
                         {
                             "attr::name::value": "J.R. 'Bob' Dobbs"

@@ -380,19 +380,24 @@ class Verifier(BaseAnchor):
                     'to': fro_to if isinstance(fro_to, int) else max(fro_to)
                 }
 
-            for attr in (
+            reft = '{}_uuid'.format(seq_no)
+            attrs = (
                 cd_id2spec[cd_id].get('attrs', cd_id2schema[cd_id]['attrNames']) or []
-                if cd_id2spec[cd_id] else cd_id2schema[cd_id]['attrNames']
-            ):
-                attr_uuid = '{}_{}_uuid'.format(seq_no, canon(attr))
-                rv['requested_attributes'][attr_uuid] = {
-                    'name': attr,
+                    if cd_id2spec[cd_id] else cd_id2schema[cd_id]['attrNames']
+            )
+            for pred in Predicate:  # do not ask to reveal attributes in predicates
+                for pred_attr in (cd_id2spec.get(cd_id, {}) or {}).get(pred.value.math, {}):
+                    if pred_attr in attrs:
+                        attrs.remove(pred_attr)
+            if attrs:
+                rv['requested_attributes'][reft] = {
+                    **{'names' if len(attrs) > 1 else 'name': (
+                        attrs if len(attrs) > 1 else attrs[0]) for _ in [''] if attrs},
                     'restrictions': [{
                         'cred_def_id': cd_id
-                    }]
+                    }],
+                    **{'non_revoked': interval for _ in [''] if interval}
                 }
-                if interval:
-                    rv['requested_attributes'][attr_uuid]['non_revoked'] = interval
 
             for pred in Predicate:
                 for attr in (cd_id2spec[cd_id].get(pred.value.math, {}) or {} if cd_id2spec[cd_id] else {}):
@@ -537,18 +542,24 @@ class Verifier(BaseAnchor):
             }
 
         for (uuid, req_attr) in proof_req['requested_attributes'].items():  # proof req xref proof per revealed attr
-            canon_attr = canon(req_attr['name'])
-            proof_ident_idx = cd_id2proof_id[req_attr['restrictions'][0]['cred_def_id']]
-            enco = proof['proof']['proofs'][proof_ident_idx]['primary_proof']['eq_proof']['revealed_attrs'].get(
-                canon_attr)
-            if not enco:
-                continue  # requested but declined from revelation in proof: must appear in a predicate
-            if enco != proof['requested_proof']['revealed_attrs'][uuid]['encoded']:
-                LOGGER.debug('Verifier.check_proof_encoding <<< False')
-                return False
-            if enco != encode(proof['requested_proof']['revealed_attrs'][uuid]['raw']):
-                LOGGER.debug('Verifier.check_proof_encoding <<< False')
-                return False
+            for attr in [req_attr['name']] if 'name' in req_attr else req_attr['names']:
+                canon_attr = canon(attr)
+                proof_ident_idx = cd_id2proof_id[req_attr['restrictions'][0]['cred_def_id']]
+                primary_enco = proof['proof']['proofs'][proof_ident_idx]['primary_proof']['eq_proof'][
+                    'revealed_attrs'
+                ].get(canon_attr)
+                if not primary_enco:
+                    continue  # requested but declined from revelation in proof: must appear in a predicate
+                req_revealed = proof['requested_proof'].get('revealed_attr_groups', {}).get(
+                    uuid,
+                    {'values': {attr: None}}
+                )['values'][attr] or proof['requested_proof']['revealed_attrs'][uuid]
+                if primary_enco != req_revealed['encoded']:
+                    LOGGER.debug('Verifier.check_proof_encoding <<< False')
+                    return False
+                if primary_enco != encode(req_revealed['raw']):
+                    LOGGER.debug('Verifier.check_proof_encoding <<< False')
+                    return False
 
         for (uuid, req_pred) in proof_req['requested_predicates'].items():  # proof req xref proof per pred
             canon_attr = canon(req_pred['name'])

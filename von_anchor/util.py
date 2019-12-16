@@ -23,6 +23,7 @@ from typing import Sequence, Union
 
 from base58 import alphabet, b58decode
 
+from von_anchor.canon import canon
 from von_anchor.error import BadIdentifier
 from von_anchor.nodepool import Protocol
 from von_anchor.indytween import Role, Predicate, SchemaKey
@@ -421,37 +422,7 @@ def proof_req_briefs2req_creds(proof_req: dict, briefs: Union[dict, Sequence[dic
 
         {
             "requested_attributes": {
-                "15_endDate_uuid": {
-                    "timestamp": 1532448939,
-                    "cred_id": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
-                    "revealed": true
-                },
-                "15_id_uuid": {
-                    "timestamp": 1532448939,
-                    "cred_id": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
-                    "revealed": true
-                },
-                "15_effectiveDate_uuid": {
-                    "timestamp": 1532448939,
-                    "cred_id": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
-                    "revealed": true
-                },
-                "15_busId_uuid": {
-                    "timestamp": 1532448939,
-                    "cred_id": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
-                    "revealed": true
-                },
-                "15_orgTypeId_uuid": {
-                    "timestamp": 1532448939,
-                    "cred_id": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
-                    "revealed": false
-                },
-                "15_jurisdictionId_uuid": {
-                    "timestamp": 1532448939,
-                    "cred_id": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
-                    "revealed": true
-                },
-                "15_legalName_uuid": {
+                "15_uuid": {
                     "timestamp": 1532448939,
                     "cred_id": "43f8dc18-ac00-4b72-8a96-56f47dba77ca",
                     "revealed": true
@@ -655,7 +626,7 @@ def proof_req2wql_all(proof_req: dict, x_cd_ids: Union[str, Sequence[str]] = Non
 def proof_req_attr_referents(proof_req: dict) -> dict:
     """
     Given a proof request with all requested attributes having cred def id restrictions,
-    return its attribute referents by cred def id and attribute.
+    return its attribute referents by cred def id.
 
     The returned structure can be useful in populating the extra WQL query parameter
     in the credential search API.
@@ -668,31 +639,19 @@ def proof_req_attr_referents(proof_req: dict) -> dict:
             'name": 'proof_req',
             'version': '0.0',
             'requested_attributes': {
-                '18_greenLevel_uuid': {
+                '18_uuid': {  # TODO: simplify
                     'restrictions': [
                         {
                             'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:18:tag'
                         }
                     ],
-                    'name': 'greenLevel',
+                    'names': ['greenLevel', 'legalName']
                     'non_revoked': {
                         'to': 1532367957,
                         'from': 1532367957
                     }
                 },
-                '18_legalName_uuid': {
-                    'restrictions': [
-                        {
-                            'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:18:tag'
-                        }
-                    ],
-                    'name': 'legalName',
-                    'non_revoked': {
-                        'to': 1532367957,
-                        'from': 1532367957
-                    }
-                },
-                '15_id_uuid': {  # this specification will not show up in response: no cred def id restriction :-(
+                '15_uuid': {  # this specification will not show up in response: no cred def id restriction :-(
                     'name': 'id',
                     'non_revoked': {
                         'to': 1532367957,
@@ -710,8 +669,8 @@ def proof_req_attr_referents(proof_req: dict) -> dict:
 
         {
             'WgWxqztrNooG92RXvxSTWv:3:CL:18:tag': {
-                'legalName': '18_legalName_uuid'
-                'greenLevel': '18_greenLevel_uuid'
+                'legalName': '18_0_uuid'
+                'greenLevel': '18_0_uuid'
             }
         }
 
@@ -728,7 +687,12 @@ def proof_req_attr_referents(proof_req: dict) -> dict:
             continue
         if cd_id not in rv:  # cd_id of None is not OK
             rv[cd_id] = {}
-        rv[cd_id][spec['name']] = uuid
+        if 'name' in spec:
+            rv[cd_id][spec['name']] = uuid
+        elif 'names' in spec:
+            rv[cd_id] = {
+                name: uuid for name in spec['names']
+            }
 
     return rv
 
@@ -755,11 +719,9 @@ def proof_req_pred_referents(proof_req: dict) -> dict:
                     'name': 'highscore',
                     'p_type': '>=',
                     'p_value': '100000',
-                    'restrictions': [
-                        {
-                            'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:194:tag'
-                        }
-                    ],
+                    'restrictions': {
+                        'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:194:tag'
+                    },
                     'non_revoked': {
                         ...
                     }
@@ -768,11 +730,9 @@ def proof_req_pred_referents(proof_req: dict) -> dict:
                     'name': 'level',
                     'p_type': '>=',
                     'p_value': '10',
-                    'restrictions': [
-                        {
-                            'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:194:tag'
-                        }
-                    ],
+                    'restrictions': {
+                        'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:194:tag'
+                    },
                     'non_revoked': {
                         ...
                     }
@@ -781,11 +741,9 @@ def proof_req_pred_referents(proof_req: dict) -> dict:
                     'name': 'attempts',
                     'p_type': '<=',
                     'p_value': '3',
-                    'restrictions': [
-                        {
-                            'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:194:tag'
-                        }
-                    ],
+                    'restrictions': {
+                        'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:194:tag'
+                    },
                     'non_revoked': {
                         ...
                     }
@@ -794,11 +752,9 @@ def proof_req_pred_referents(proof_req: dict) -> dict:
                     'name': 'employees',
                     'p_type': '<',
                     'p_value': '100',
-                    'restrictions': [
-                        {
-                            'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:198:tag'
-                        }
-                    ],
+                    'restrictions': {
+                        'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:198:tag'
+                    },
                     'non_revoked': {
                         ...
                     }
@@ -807,11 +763,9 @@ def proof_req_pred_referents(proof_req: dict) -> dict:
                     'name': 'employees',
                     'p_type': '>=',
                     'p_value': '50',
-                    'restrictions': [
-                        {
-                            'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:198:tag'
-                        }
-                    ],
+                    'restrictions': {
+                        'cred_def_id': 'WgWxqztrNooG92RXvxSTWv:3:CL:198:tag'
+                    },
                     'non_revoked': {
                         ...
                     }
@@ -932,11 +886,23 @@ def revealed_attrs(proof: dict) -> dict:
     """
 
     rv = {}
-    for sub_index in range(len(proof['identifiers'])):
+    sub_index2cd_id = {}
+
+    for (sub_index, sub_proof) in enumerate(proof['proof']['proofs']):
         cd_id = proof['identifiers'][sub_index]['cred_def_id']
-        rv[cd_id] = ({  # uses von_anchor convention for uuid (referent) construction: will break on foreign anchor's
-            '_'.join(uuid.split('_')[1:-1]): proof['requested_proof']['revealed_attrs'][uuid]['raw']
-            for uuid in proof['requested_proof']['revealed_attrs']
-            if proof['requested_proof']['revealed_attrs'][uuid]['sub_proof_index'] == sub_index})
+        sub_index2cd_id[sub_index] = cd_id
+        rv[cd_id] = sub_proof['primary_proof']['eq_proof']['revealed_attrs']  # start with encoded
+
+    for revealed_attr in proof['requested_proof'].get('revealed_attrs', {}).values():
+        cd_id = sub_index2cd_id[revealed_attr['sub_proof_index']]
+        for (canon_attr, enco) in rv[cd_id]:
+            if revealed_attr['encoded'] == enco:
+                rv[cd_id][canon_attr] = revealed_attr['raw']  # replace encoded (replaces repeated values one at a time)
+                break
+
+    for revealed_attr_group in proof['requested_proof'].get('revealed_attr_groups', {}).values():
+        cd_id = sub_index2cd_id[revealed_attr_group['sub_proof_index']]
+        for (attr, spec) in revealed_attr_group['values'].items():
+            rv[cd_id][canon(attr)] = spec['raw']
 
     return rv
