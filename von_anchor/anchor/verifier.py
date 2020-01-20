@@ -263,7 +263,7 @@ class Verifier(BaseAnchor):
         referent = 0
 
         rv = {
-            'nonce': nonce or str(int(time())),
+            'nonce': nonce or await anoncreds.generate_nonce(),
             'name': name or 'proof_req',
             'version': version or '0.0',
             'requested_attributes': {},
@@ -355,7 +355,7 @@ class Verifier(BaseAnchor):
         cd_id2schema = {}
         now = int(time())
         rv = {
-            'nonce': str(int(time())),
+            'nonce': await anoncreds.generate_nonce(),
             'name': 'proof_req',
             'version': '0.0',
             'requested_attributes': {},

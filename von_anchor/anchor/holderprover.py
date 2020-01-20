@@ -953,7 +953,7 @@ class HolderProver(BaseAnchor):
         ::
 
             {
-                "nonce": "1532429687",
+                "nonce": "1042130321436287373092476",
                 "name": "proof_req",
                 "version": "0.0",
                 "requested_predicates": {},
@@ -1067,7 +1067,7 @@ class HolderProver(BaseAnchor):
         ::
 
             {
-                "nonce": "1532429687",
+                "nonce": "1042130321436287373092476",
                 "name": "proof_req",
                 "version": "0.0",
                 "requested_predicates": {},
