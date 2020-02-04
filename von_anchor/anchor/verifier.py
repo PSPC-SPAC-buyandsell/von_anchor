@@ -548,7 +548,7 @@ class Verifier(BaseAnchor):
                 primary_enco = proof['proof']['proofs'][proof_ident_idx]['primary_proof']['eq_proof'][
                     'revealed_attrs'
                 ].get(canon_attr)
-                if not primary_enco:
+                if primary_enco is None:
                     continue  # requested but declined from revelation in proof: must appear in a predicate
                 req_revealed = proof['requested_proof'].get('revealed_attr_groups', {}).get(
                     uuid,
