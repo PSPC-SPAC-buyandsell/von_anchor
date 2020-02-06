@@ -49,7 +49,7 @@ def encode(orig: Any) -> str:
     except (ValueError, TypeError):
         pass
 
-    return str(int.from_bytes(sha256(str(orig).encode()).digest(), 'big'))  # OK for indy: sha256 changes all str(i32)s
+    return str(int.from_bytes(sha256(raw(orig).encode()).digest(), 'big'))  # OK for indy: sha256 changes all str(i32)s
 
 
 def cred_attr_value(orig: Any) -> dict:

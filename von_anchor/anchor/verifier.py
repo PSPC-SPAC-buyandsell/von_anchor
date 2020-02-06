@@ -580,15 +580,6 @@ class Verifier(BaseAnchor):
         :return: json encoded True if proof is valid; False if not
         """
 
-        LOGGER.debug('Verifier.verify_proof >>> proof_req: %s, proof: %s', proof_req, proof)
-
-        if not Verifier.check_encoding(proof_req, proof):
-            LOGGER.info(
-                'Proof encoding does not cross-reference with proof request %s: failing verification',
-                proof_req.get('nonce', '(missing nonce)'))
-            LOGGER.debug('Verifier.verify_proof <<< "False"')
-            return json.dumps(False)
-
         async def _set_schema(s_id: str) -> None:
             nonlocal s_id2schema
             if not ok_schema_id(s_id):
@@ -633,6 +624,15 @@ class Verifier(BaseAnchor):
                 if rr_id not in rr_id2rr:
                     rr_id2rr[rr_id] = {}
                 rr_id2rr[rr_id][timestamp] = json.loads(rr_json)
+
+        LOGGER.debug('Verifier.verify_proof >>> proof_req: %s, proof: %s', proof_req, proof)
+
+        if not Verifier.check_encoding(proof_req, proof):
+            LOGGER.info(
+                'Proof encoding does not cross-reference with proof request %s: failing verification',
+                proof_req.get('nonce', '(missing nonce)'))
+            LOGGER.debug('Verifier.verify_proof <<< "False"')
+            return json.dumps(False)
 
         s_id2schema = {}
         cd_id2cred_def = {}

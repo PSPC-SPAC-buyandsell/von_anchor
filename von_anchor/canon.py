@@ -34,7 +34,7 @@ def raw(orig: Any) -> dict:
     :return: stringified raw value
     """
 
-    return '' if orig is None else str(orig)
+    return str(orig)
 
 
 def canon(raw_attr_name: str) -> str:
