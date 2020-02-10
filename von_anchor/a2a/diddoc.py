@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 
+import collections
 import json
 import logging
 
@@ -123,10 +124,9 @@ class DIDDoc:
             '@context': DIDDoc.CONTEXT,
             'id': canon_ref(self.did, self.did),
             'publicKey': [pubkey.to_dict() for pubkey in self.pubkey.values()],
-            'authentication': [{
-                'type': pubkey.type.authn_type,
-                'publicKey': canon_ref(self.did, pubkey.id)
-            } for pubkey in self.pubkey.values() if pubkey.authn],
+            'authentication': [
+                canon_ref(self.did, pubkey.id) for pubkey in self.pubkey.values() if pubkey.authn
+            ],
             'service': [
                 service.to_dict(service_key_refs) for service in self.service.values()
             ]
@@ -220,8 +220,9 @@ class DIDDoc:
         for pubkey in did_doc.get('publicKey', {}):  # include all public keys, authentication pubkeys by reference
             pubkey_type = PublicKeyType.get(pubkey['type'])
             authn = any(
-                canon_ref(rv.did, ak.get('publicKey', '')) == canon_ref(rv.did, pubkey['id'])
-                for ak in did_doc.get('authentication', {}) if isinstance(ak.get('publicKey', None), str))
+                canon_ref(rv.did, ak) == canon_ref(rv.did, pubkey['id'])
+                for ak in did_doc.get('authentication', '') if isinstance(ak, str)
+            )
             key = PublicKey(  # initialization canonicalizes id
                 rv.did,
                 pubkey['id'],
@@ -232,7 +233,7 @@ class DIDDoc:
             rv.pubkey[key.id] = key
 
         for akey in did_doc.get('authentication', {}):  # include embedded authentication keys
-            if 'publicKey' not in akey:  # not yet got it with public keys
+            if isinstance(akey, collections.Mapping):
                 pubkey_type = PublicKeyType.get(akey['type'])
                 key = PublicKey(  # initialization canonicalized id
                     rv.did,

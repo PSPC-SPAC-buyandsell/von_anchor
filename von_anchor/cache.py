@@ -719,32 +719,9 @@ class RevocationCache(dict):
         return rv
 
 
-class EndpointCache(dict):
-    """
-    Retain endpoint attribute values by public DID.
-
-    A lock shares access to critical sections as relying code specifies them (e.g., check and get/set).
-    Note that this one lock applies across all instances - the design of this class intends it to be a singleton.
-    """
-
-    lock = RLock()
-
-    def __init__(self):
-        """
-        Initialize endpoint cache; set re-entrant lock.
-        """
-
-        LOGGER.debug('EndpointCache.__init__ >>>')
-
-        super().__init__()
-
-        LOGGER.debug('EndpointCache.__init__ <<<')
-
-
 SCHEMA_CACHE = SchemaCache()
 CRED_DEF_CACHE = CredDefCache()
 REVO_CACHE = RevocationCache()
-ENDPOINT_CACHE = EndpointCache()
 
 
 class ArchivableCaches:

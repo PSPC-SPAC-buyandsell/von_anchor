@@ -22,7 +22,6 @@ from von_anchor.tails import Tails
 from von_anchor.util import (
     ok_cred_def_id,
     ok_did,
-    ok_endpoint,
     ok_rev_reg_id,
     ok_role,
     ok_schema_id,
@@ -125,14 +124,3 @@ async def test_ids():
         'LjgpST2rjsoxYegQDRm7EL:4:LjgpST2rjsoxYegQDRm7EL:3:CL:20:CL_ACCUM:1',
         'Xxxxxxxxxxxxxxxxxxxxxx')
     print('\n\n== 7 == Revocation registry identifier checks pass OK')
-
-    assert ok_endpoint('10.0.0.2:9702')
-    assert ok_endpoint('0.0.0.0:0')
-    assert not ok_endpoint('canada.gc.ca:8088')
-    assert not ok_endpoint(':37')
-    assert not ok_endpoint('http://url-wrong')
-    assert not ok_endpoint('2.3.4.5')
-    assert not ok_endpoint('2.3.4:8080')
-    assert not ok_endpoint('1.2.3.4:abc')
-    assert not ok_endpoint('1.2.3.4:1234.56')
-    print('\n\n== 8 == Endpoint checks pass OK')

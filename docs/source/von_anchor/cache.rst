@@ -2,16 +2,11 @@
 Caching
 *****************************************************
 
-This section outlines the cache implementations for endpoints, schemata, credential definitions, and revocation registries.
+This section outlines the cache implementations for schemata, credential definitions, and revocation registries.
 
-A cache is archivable if the implementation allows anchors to serialize them on going off-line, and then to parse their content upon returning to on-line operation. The design calls for all caches to be archivable except the endpoint cache.
+A cache is archivable if the implementation allows anchors to serialize them on going off-line, and then to parse their content upon returning to on-line operation. The design calls for all caches to be archivable.
 
-The von_anchor package defines singletons for caching endpoints, schemata, claim definitions, and revocation registries in ``von_anchor/cache.py``. The singleton construction allows all anchors running in a process to share the caches; for example, if an issuer anchor sends a credential definition to its cache, then a holder-prover in the same process may use the cache to get it without going to the ledger. Each class has a (re-entrant) lock to manage access.
-
-Endpoint Cache
-===========================================
-
-The singleton endpoint cache derives from simple ``dict``. It retains endpoint values by DID. 
+The von_anchor package defines singletons for caching schemata, claim definitions, and revocation registries in ``von_anchor/cache.py``. The singleton construction allows all anchors running in a process to share the caches; for example, if an issuer anchor sends a credential definition to its cache, then a holder-prover in the same process may use the cache to get it without going to the ledger. Each class has a (re-entrant) lock to manage access.
 
 Schema Cache
 ===========================================

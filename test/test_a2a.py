@@ -53,10 +53,7 @@ async def test_a2a():
             }
         ],
         'authentication': [
-            {
-                'type': 'RsaSignatureAuthentication2018',
-                'publicKey': 'did:sov:LjgpST2rjsoxYegQDRm7EL#4'
-            }
+            'did:sov:LjgpST2rjsoxYegQDRm7EL#4'
         ],
         'service': [
             {
@@ -116,10 +113,7 @@ async def test_a2a():
             }
         ],
         'authentication': [
-            {
-                'type': 'RsaSignatureAuthentication2018',
-                'publicKey': 'did:sov:LjgpST2rjsoxYegQDRm7EL#4'
-            },
+            'did:sov:LjgpST2rjsoxYegQDRm7EL#4',
             {
                 'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL#6',
                 'type': 'RsaVerificationKey2018',
@@ -162,10 +156,7 @@ async def test_a2a():
             }
         ],
         'authentication': [
-            {
-                'type': 'RsaSignatureAuthentication2018',
-                'publicKey': 'did:sov:LjgpST2rjsoxYegQDRm7EL#4'
-            },
+            'did:sov:LjgpST2rjsoxYegQDRm7EL#4',
             {
                 'id': 'did:sov:LjgpST2rjsoxYegQDRm7EL#6',
                 'type': 'RsaVerificationKey2018',

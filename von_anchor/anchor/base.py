@@ -24,7 +24,7 @@ from typing import Union
 from indy import did, ledger
 from indy.error import IndyError, ErrorCode
 
-from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, ENDPOINT_CACHE, REVO_CACHE, SCHEMA_CACHE
+from von_anchor.cache import RevoCacheEntry, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE
 from von_anchor.error import (
     AbsentCredDef,
     AbsentPool,
@@ -357,101 +357,6 @@ class BaseAnchor:
         rv = EndpointInfo(pairwise_info.metadata['did_endpoint'], pairwise_info.their_verkey)
 
         LOGGER.debug('BaseAnchor.get_did_endpoint <<< %s', rv)
-        return rv
-
-    async def send_endpoint(self, endpoint: str) -> None:
-        """
-        Send anchor's own endpoint attribute to ledger (and endpoint cache),
-        if ledger does not yet have input value. Specify None to clear.
-
-        Raise BadIdentifier on endpoint not formatted as '<ip-address>:<port>',
-        BadLedgerTxn on failure, WalletState if wallet is closed.
-
-        :param endpoint: value to set as endpoint attribute on ledger and cache:
-            specify URL or None to clear.
-        """
-
-        LOGGER.debug('BaseAnchor.send_endpoint >>> endpoint: %s', endpoint)
-
-        ledger_endpoint = await self.get_endpoint()
-        if ledger_endpoint == endpoint:
-            LOGGER.info('%s endpoint already set as %s', self.name, endpoint)
-            LOGGER.debug('BaseAnchor.send_endpoint <<< (%s already set for %s )')
-            return
-
-        attr_json = json.dumps({
-            'endpoint': {
-                'endpoint': endpoint  # indy-sdk likes 'ha' here but won't map 'ha' to a URL, only ip:port
-            }
-        })
-        req_json = await ledger.build_attrib_request(self.did, self.did, None, attr_json, None)
-        await self._sign_submit(req_json)
-
-        for _ in range(16):  # reasonable timeout
-            if await self.get_endpoint(None, False) == endpoint:
-                break
-            await asyncio.sleep(1)
-            LOGGER.info('Sent endpoint %s to ledger, waiting 1s for its confirmation', endpoint)
-        else:
-            LOGGER.debug('BaseAnchor.send_endpoint <!< timed out waiting on send endpoint %s', endpoint)
-            raise BadLedgerTxn('Timed out waiting on sent endpoint {}'.format(endpoint))
-
-        LOGGER.debug('BaseAnchor.send_endpoint <<<')
-
-    async def get_endpoint(self, target_did: str = None, from_cache: bool = True) -> str:
-        """
-        Get endpoint attribute for anchor having input DID (default own DID).
-        Raise WalletState if target DID is default (own DID) value but wallet does not have it
-        (neither created nor opened since initialization).
-
-        :param target_did: DID of anchor for which to find endpoint attribute on ledger
-        :param from_cache: check endpoint cache first before visiting ledger; always update cache with ledger value
-        :return: endpoint attribute value, or None for no such value
-        """
-
-        LOGGER.debug('BaseAnchor.get_endpoint >>> target_did: %s, from_cache: %s', target_did, from_cache)
-
-        rv = None
-
-        if not (target_did or self.did):
-            LOGGER.debug('BaseAnchor.get_endpoint <!< Bad wallet state: DID for %s unavailable', self.name)
-            raise WalletState('Bad wallet state: DID for {} unavailable'.format(self.name))
-
-        target_did = target_did or self.did
-        if not ok_did(target_did):
-            LOGGER.debug('BaseAnchor.get_endpoint <!< Bad DID %s', target_did)
-            raise BadIdentifier('Bad DID {}'.format(target_did))
-
-        if from_cache:
-            with ENDPOINT_CACHE.lock:
-                if target_did in ENDPOINT_CACHE:
-                    LOGGER.info('BaseAnchor.get_endpoint: got endpoint for %s from cache', target_did)
-                    rv = ENDPOINT_CACHE[target_did]
-                    LOGGER.debug('BaseAnchor.get_endpoint <<< %s', rv)
-                    return rv
-
-        req_json = await ledger.build_get_attrib_request(
-            self.did,
-            target_did,
-            'endpoint',
-            None,
-            None)
-        resp_json = await self._submit(req_json)
-
-        data_json = (json.loads(resp_json))['result']['data']  # it's double-encoded on the ledger
-        if data_json:
-            rv = json.loads(data_json)['endpoint'].get('endpoint', None)
-        else:
-            LOGGER.info('_AgentCore.get_endpoint: ledger query returned response with no data')
-
-        with ENDPOINT_CACHE.lock:
-            if rv:
-                ENDPOINT_CACHE[target_did] = rv
-            else:
-                ENDPOINT_CACHE.pop(target_did, None)
-                assert target_did not in ENDPOINT_CACHE
-
-        LOGGER.debug('BaseAnchor.get_endpoint <<< %s', rv)
         return rv
 
     async def _submit(self, req_json: str) -> str:

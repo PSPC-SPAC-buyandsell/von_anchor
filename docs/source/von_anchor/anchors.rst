@@ -27,8 +27,6 @@ Its ``get_nym_role()`` method fetches and return the anchor's role from its curr
 
 Its ``get_did_endpoint()`` and ``set_did_endpoint()`` methods manage endpoint and (transport) verification keys for pairwise remote DIDs. These methods use ``EndpointInfo`` instances as per :ref:`endpoint-info`. At present, indy-sdk does not define a practice to store pairwise remote DID on the ledger, but anticipates such a development shortly. As such, ``BaseAnchor`` stores remote DID information as metadata in pairwise relations via the indy-sdk ``non_secrets`` API in the wallet. Once indy defines a practice to write such data to the ledger, the implementation will adapt accordingly.
 
-Its ``get_endpoint()`` method gets the endpoint attribute that the ledger associates with the identity on the input DID, or the current anchor's endpoint if the caller specifies no DID. The ``send_endpoint()`` method sends the input endpoint attribute value to the ledger to associate with the current anchor, if such is not already the case – the caller can specify a null to clear the anchor's endpoint attribute on the ledger.
-
 Its ``get_rev_reg_def()`` method gets a revocation registry definition from the ledger. Typically the result comes from the revocation cache; if it goes to the ledger, the implementation populates the cache before returning.
 
 Its (static) ``least_role()`` method returns the ``TRUST_ANCHOR`` role, sufficing for most subclasses.

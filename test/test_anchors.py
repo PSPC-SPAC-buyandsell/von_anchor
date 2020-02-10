@@ -48,7 +48,7 @@ from von_anchor import (
     TrusteeAnchor,
     Verifier)
 from von_anchor.a2a import DIDDoc, PublicKey
-from von_anchor.cache import ArchivableCaches, CRED_DEF_CACHE, ENDPOINT_CACHE, REVO_CACHE, SCHEMA_CACHE, RevoCacheEntry
+from von_anchor.cache import ArchivableCaches, CRED_DEF_CACHE, REVO_CACHE, SCHEMA_CACHE, RevoCacheEntry
 from von_anchor.canon import canon
 from von_anchor.error import (
     AbsentCred,
@@ -259,10 +259,10 @@ async def test_anchors_api(
         'x-anchor': 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
     }
 
-    try:  # before opening wallet for the first time, creating an public DID ...
+    try:  # before opening wallet for the first time, creating a public DID ...
         wallet_x = (await get_wallets({'x-anchor': seeds['x-anchor']}, open_all=False))['x-anchor']
         xan = NominalAnchor(wallet_x)
-        await xan.get_endpoint()  # ... exercise error path; never been opened hence no public DID
+        await xan.get_nym()  # ... exercise error path; never been opened hence no public DID
         assert False
     except WalletState:
         pass
@@ -406,30 +406,6 @@ async def test_anchors_api(
     for k in nyms:
         assert 'dest' in nyms[k]
 
-    # Exercise set/get endpoint
-    url_endpoint = "https://192.168.56.102"
-    await san.send_endpoint(url_endpoint)
-    assert ENDPOINT_CACHE[san.did] == url_endpoint
-    assert await san.get_endpoint() == url_endpoint
-    assert await bcran.get_endpoint(san.did) == url_endpoint
-    await san.send_endpoint(url_endpoint)  # exercise double-tap: should silently carry on
-    assert ENDPOINT_CACHE[san.did] == url_endpoint
-    try:
-        await san.get_endpoint('not-a-DID')
-        assert False
-    except BadIdentifier:
-        pass
-
-    await san.send_endpoint(None)
-    assert san.did not in ENDPOINT_CACHE
-    assert await bcohan.get_endpoint(san.did) is None
-
-    assert await san.get_endpoint(None, False) is None
-    await san.send_endpoint(url_endpoint)
-    assert await san.get_endpoint() == url_endpoint  # check cache correctness
-    assert await san.get_endpoint(None, False) == url_endpoint
-    print('\n\n== 2 == Endpoint set/get/clear/cache OK')
-
     # Publish schema to ledger if not yet present; get from ledger
     S_ID = {
         'BC': schema_id(bcran.did, 'bc-reg', '1.0'),
@@ -554,7 +530,7 @@ async def test_anchors_api(
 
         seq_no2schema_id[schema[s_id]['seqNo']] = s_id
         seq_no2schema[schema[s_id]['seqNo']] = schema[s_id]
-        print('\n\n== 3.{} == Schema [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
+        print('\n\n== 2.{} == Schema [{} v{}]: {}'.format(i, s_key.name, s_key.version, ppjson(schema[s_id])))
         assert schema[s_id]
         i += 1
 
@@ -605,7 +581,7 @@ async def test_anchors_api(
 
         cred_def_json[s_id] = await holder_prover[s_key.origin_did].get_cred_def(cd_id[s_id])  # ought to exist now
         cred_def[s_id] = json.loads(cred_def_json[s_id])
-        print('\n\n== 4.{}.0 == Cred def [{} v{}]: {}'.format(
+        print('\n\n== 3.{}.0 == Cred def [{} v{}]: {}'.format(
             i,
             s_key.name,
             s_key.version,
@@ -620,7 +596,7 @@ async def test_anchors_api(
 
         cred_offer_json[s_id] = await an.create_cred_offer(schema[s_id]['seqNo'])
         cred_offer[s_id] = json.loads(cred_offer_json[s_id])
-        print('\n\n== 4.{}.1 == Credential offer [{} v{}]: {}'.format(
+        print('\n\n== 3.{}.1 == Credential offer [{} v{}]: {}'.format(
             i,
             s_key.name,
             s_key.version,
@@ -654,7 +630,7 @@ async def test_anchors_api(
             'attrs': schema_data[seq_no2schema_id[cred_def_id2schema_seq_no_or_id(cd_id[s_id])]]['attr_names'][0:2]
         } for s_id in schema_data
     })
-    print('\n\n== 5.0 == Built big sample proof request: {}'.format(ppjson(big_proof_req_json)))
+    print('\n\n== 4 == Built big sample proof request: {}'.format(ppjson(big_proof_req_json)))
     assert sum(
         [len(reqa.get('names', [''])) for reqa in json.loads(big_proof_req_json)['requested_attributes'].values()]
     ) == 2 * len(schema_data)
@@ -664,7 +640,7 @@ async def test_anchors_api(
             'attrs': schema_data[seq_no2schema_id[cred_def_id2schema_seq_no_or_id(cd_id[s_id])]]['attr_names'][0:1]
         } for s_id in schema_data
     })
-    print('\n\n== 5.1 == Built sample proof request, 1 attr per cred def id: {}'.format(ppjson(small_proof_req_json)))
+    print('\n\n== 5 == Built sample proof request, 1 attr per cred def id: {}'.format(ppjson(small_proof_req_json)))
     assert sum(  # count 1 for each req-attr without 'names' list: it has 'name' scalar value
         [len(reqa.get('names', [''])) for reqa in json.loads(small_proof_req_json)['requested_attributes'].values()]
     ) == len(schema_data)
@@ -4396,7 +4372,6 @@ async def test_did_endpoints():
 
     print(Ink.YELLOW('\n\n== Testing DID endpoints =='))
 
-    ENDPOINT_CACHE.clear()
     seeds = {
         'sri': 'SRI-Anchor-000000000000000000000',
         'pspc-org-book': 'PSPC-Org-Book-Anchor-00000000000'
@@ -4425,7 +4400,6 @@ async def test_did_endpoints():
 
         print('\n\n== 1 == DIDs: {}'.format(ppjson(dids)))
 
-        # Fail to get endpoint on bad DID or no such pairwise
         try:
             await pspcoban.get_did_endpoint('not-a-did')  # exercise bad DID
             assert False
@@ -4461,12 +4435,12 @@ async def test_did_endpoints():
             pass
         print('\n\n== 4 == PSPC Org Book Anchor correctly fails to get DID endpoint for pairwise with no endpoint set')
 
-        # Set endpoint
+        # Set DID endpoint
         endpoint_info = await pspcoban.set_did_endpoint(san.did, '1.2.3.4:56')
         assert await pspcoban.get_did_endpoint(san.did) == endpoint_info
         print('\n\n== 5 == PSPC Org Book Anchor set and got DID endpoint info for SRI Anchor: {}'.format(endpoint_info))
 
-        # Overwrite endpoint
+        # Overwrite DID endpoint
         endpoint_info = await pspcoban.set_did_endpoint(san.did, '7.8.9.10:1112')
         assert await pspcoban.get_did_endpoint(san.did) == endpoint_info
         print('\n\n== 6 == PSPC Org Book Anchor set and got DID endpoint info for SRI Anchor: {}'.format(endpoint_info))
