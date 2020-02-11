@@ -84,7 +84,7 @@ class NodePool:
         return self._config
 
     @property
-    def protocol(self) -> str:
+    def protocol(self) -> Protocol:
         """
         Accessor for protocol version pool config setting.
 
