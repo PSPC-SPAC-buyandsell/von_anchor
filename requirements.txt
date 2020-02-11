@@ -1,0 +1,3 @@
+base58>=0.2.5
+python3-indy==1.7.0-dev-916
+jsonschema>=2.6.0

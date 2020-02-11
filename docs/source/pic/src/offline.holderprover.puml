@@ -1,0 +1,104 @@
+@startuml
+/'
+Copyright 2017-2019 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+'/
+
+skinparam ParticipantPadding 20
+skinparam BoxPadding 20
+
+title Priming Holder-Prover Anchor for Off-Line Operation
+
+box "Indy" #LightBlue
+    participant "Ledger" as ledger
+endbox
+
+participant "Caches" as caches
+box "Holder-Prover" #Linen
+    participant "Archive" as archive
+    actor "Holder-Prover\nVON Anchor" as hpan
+    participant "Wallet" as wallet
+endbox
+
+actor "Actuator" as ator
+
+=== CACHING CONTENT AND ARCHIVING ==
+note over ledger, ator
+    Holder-Prover VON anchor is on-line (i.e., its node pool is open)
+endnote
+
+ator -> hpan: init(config 'archive-cache-on-close': True)
+group init() implements
+    hpan -> hpan: validate and set config
+    hpan --> ator:
+end
+ator -> hpan: open()
+group open() implements
+    hpan -> wallet: open()
+    wallet --> hpan:
+    hpan --> ator:
+end
+
+note over ledger, ator
+    Actuator performs Holder-Prover session operations
+endnote
+
+ator -> hpan: close()
+group close() implements
+    hpan -> hpan: archive-cache-on-close? Yes
+    hpan -> hpan: load_cache(archive=True)
+    group load_cache() implements
+        hpan -> wallet: get all creds
+        wallet --> hpan: all creds
+        hpan -> hpan: get box ids from creds
+        hpan -> caches: load for box ids
+        caches -> ledger: get updates for missing box ids
+        ledger --> caches: updates
+        caches -> archive: write
+        archive --> caches:
+        caches --> hpan:
+    end
+    hpan -> archive: purge older than newest
+    archive --> hpan:
+    hpan --> ator:
+end
+
+=== OFF-LINE OPERATION ==
+note over ledger, ator
+    Holder-Prover VON anchor is off-line (i.e., its node pool is closed)
+endnote
+
+ator -> hpan: init(config 'parse-cache-on-open': True)
+group init() implements
+    hpan -> hpan: validate and set config
+    hpan --> ator:
+end
+ator -> hpan: open()
+group open() implements
+    hpan -> wallet: open()
+    wallet --> hpan:
+    hpan -> hpan: parse-cache-on-open? Yes
+    hpan -> caches: parse(cache dir)
+    caches -> archive: get most recent archive
+    archive --> caches: most recent archive
+    caches -> caches: parse from most recent archive
+    caches --> hpan: timestamp
+    hpan --> ator:
+end
+
+note over ledger, ator
+    Actuator performs Holder-Prover off-line session operations (from caches only)
+endnote
+
+@enduml

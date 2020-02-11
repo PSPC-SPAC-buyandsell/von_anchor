@@ -1,0 +1,107 @@
+@startuml
+/'
+Copyright 2017-2019 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+'/
+
+skinparam ParticipantPadding 20
+skinparam BoxPadding 20
+
+title Proof Sequences
+
+box "Indy" #LightBlue
+    participant "Ledger" as ledger
+endbox
+
+actor "Verifier Anchor" as van
+actor "Holder-Prover\n(e.g., The Org Book)\nVON Anchor" as oban
+actor "Issuer\n(e.g., BC Registrar)\nVON Anchor" as bcran
+actor "Actuator" as ator
+
+=== TAILS FILE MARSHALLING SEQUENCE ==
+note over ledger, ator
+    All VON anchor service wrapper APIs are up
+    Actuator has creds of interest
+endnote
+
+ator -> ator: call revoc_info()\nto get rev reg id
+ator -> bcran: call service wrapper to download tails file for rev reg id
+group #lightPink service wrapper must implement
+    bcran -> bcran: call path_tails(rev_reg_id)
+    group path_tails() implements
+        bcran -> bcran: call Tails.linked() to get tails file for rev reg id
+    end
+    bcran --> ator: tails file
+end
+
+ator -> oban: call service wrapper to upload tails file
+group #lightPink service wrapper must implement
+    oban -> oban: call dir_tails() to get correct directory for tails file
+    group dir_tails() implements
+        oban -> oban: call Tails.dir() to get directory by rev reg id
+    end
+    oban -> oban: save tails file
+    oban -> ator: OK
+end
+
+=== PROOF CREATION SEQUENCE ==
+note over ledger, ator
+    All VON anchor service wrapper APIs are up
+    Schema, cred defs, rev reg defs are on ledger
+    Actuator has cred-briefs of interest
+endnote
+
+ator -> van: call build_proof_req_json(attrs, timestamps by cred def)
+van -> van: build proof_req
+van --> ator: proof_req json
+
+ator -> oban: call get_cred_briefs_by_proof_req_q(proof_req, wql)
+group get_cred_briefs_by_proof_req_q() implements
+    oban -> oban: search wallet for cred-briefs of interest
+    oban --> ator: cred-briefs json
+end
+
+ator -> ator: call proof_req_briefs2req_creds()
+group proof_req_briefs2req_creds() implements
+    ator -> ator: create req_creds
+end
+
+ator -> oban: call create_proof(proof_req, cred-briefs, req_creds)
+group create_proof() implements
+    loop each schema in cred-briefs
+        oban -> ledger: get schema
+        ledger --> oban: schema
+    end
+
+    loop each cred def in cred-briefs
+        oban -> ledger: get cred def
+        ledger --> oban: cred def
+    end
+
+    loop each rev reg in cred-briefs
+        oban -> ledger: get rev reg def
+        ledger --> oban: rev reg def
+        oban -> oban: sync rev reg to tails file
+        alt no such tails file
+            oban -[#blue]-> ator: absent tails file
+        end
+        oban -> ledger: get rev reg delta at timestamp
+        ledger --> oban: rev reg delta
+    end
+    oban -> oban: construct all rev reg states
+    oban -> oban: create proof
+    oban --> ator: proof
+end
+
+@enduml

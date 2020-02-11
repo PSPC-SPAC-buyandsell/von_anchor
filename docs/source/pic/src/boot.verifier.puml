@@ -1,0 +1,52 @@
+@startuml
+/'
+Copyright 2017-2019 Government of Canada - Public Services and Procurement Canada - buyandsell.gc.ca
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+'/
+
+skinparam ParticipantPadding 20
+skinparam BaloxPadding 20
+
+title Verifier Anchor (On-Line) Boot Sequence
+
+
+box "Indy" #LightBlue
+    participant "Ledger" as ledger
+endbox
+actor "Trustee VON Anchor" as tan
+actor "Verifier\n(e.g., SRI)\nVON Anchor" as san
+
+=== BOOTSTRAP ==
+note over ledger, san
+    Verifier VON anchor is on-line (i.e., its node pool is open)
+endnote
+
+san -> san: call get_nym(did)
+group get_nym() implements
+    san -> ledger: Look up own nym
+    ledger --> san: nym if present
+end
+alt Nym not present
+    note over ledger, san
+        Trustee VON anchor service wrapper API is up
+    endnote
+    san -[#blue]> tan: call send_nym(did, verkey, alias, role)
+    group send_nym() implements
+        tan -[#blue]> ledger: send anchor nym
+        ledger --[#blue]> tan: anchor nym
+        tan --[#blue]> san: anchor nym
+    end
+end
+
+@enduml
