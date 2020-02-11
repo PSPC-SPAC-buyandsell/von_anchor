@@ -340,7 +340,10 @@ class BaseAnchor:
 
         :param endpoint: value to set as endpoint attribute on ledger and cache; specify None to clear.
         """
-
+        # don't update the endpoint on the ledger
+        # this is a work-around to handle the openshift scenario of multiple agents using the same DID,
+        # with different endpoints
+        """
         LOGGER.debug('BaseAnchor.send_endpoint >>> endpoint: %s', endpoint)
 
         ledger_endpoint = await self.get_endpoint()
@@ -367,6 +370,8 @@ class BaseAnchor:
             raise BadLedgerTxn('Timed out waiting on sent endpoint {}'.format(endpoint))
 
         LOGGER.debug('BaseAnchor.send_endpoint <<<')
+        """
+        pass
 
     async def _submit(self, req_json: str) -> str:
         """

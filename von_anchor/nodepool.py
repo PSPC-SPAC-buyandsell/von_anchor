@@ -235,7 +235,7 @@ class NodePool:
         return self._auto_remove
 
     @property
-    def protocol(self) -> str:
+    def protocol(self) -> Protocol:
         """
         Accessor for protocol version pool config setting.
 
