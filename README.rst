@@ -113,6 +113,6 @@ for any release *x.y.z*. For example, development release 1.6.7-dev-834 follows 
 References
 ==========
 
-[VT] – "The von_tails External Tails File Server". Public Services and Procurement Canada, 2018-2019. https://github.com/PSPC-SPAC-buyandsell/von_tails/blob/master/README.rst
+[VT] – "The von_tails External Tails File Server". Public Services and Procurement Canada, 2018-2020. https://github.com/PSPC-SPAC-buyandsell/von_tails/blob/master/README.rst
 
 [WQL] – "Wallet Query Language". Sovrin Foundation, 2018. https://github.com/hyperledger/indy-sdk/tree/master/docs/design/011-wallet-query-language

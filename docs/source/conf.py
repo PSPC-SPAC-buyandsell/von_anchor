@@ -58,7 +58,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'VON Anchor'
-copyright = '2018-2019, Stephen Klump'
+copyright = '2018-2020, Stephen Klump'
 author = 'Stephen Klump'
 
 # The version info for the project you're documenting, acts as replacement for
