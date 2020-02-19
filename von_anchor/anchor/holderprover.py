@@ -212,60 +212,96 @@ class HolderProver(BaseAnchor):
 
         LOGGER.debug('HolderProver._sync_revoc_for_proof <<<')
 
-    async def _build_rr_delta_json(self, rr_id: str, to: int, fro: int = None, fro_delta: dict = None) -> (str, int):
+    async def _build_rr_state_json(
+        self,
+        rr_id: str,
+        to: int,
+        fro: int = None,
+        fro_state: dict = None,
+        cr_id: str = None
+    ) -> (str, int):
         """
-        Build rev reg delta json, potentially starting from existing (earlier) delta.
+        Build rev reg state json, potentially starting from prior state.
 
-        Return delta json and its timestamp on the distributed ledger.
+        Return state json and its timestamp on the distributed ledger.
 
-        Raise AbsentRevReg for no such revocation registry, or BadRevStateTime for a requested delta to
+        Raise AbsentRevReg for no such revocation registry, or BadRevStateTime for a requested state at
         a time preceding revocation registry creation.
 
         :param rr_id: rev reg id
         :param to: time (epoch seconds) of interest; upper-bounds returned timestamp
-        :param fro: optional prior time of known delta json
-        :param fro_delta: optional known delta as of time fro
-        :return: rev reg delta json and ledger timestamp (epoch seconds)
+        :param fro: optional prior time of known state json
+        :param fro_state: optional known state as of time fro, to update revocation state from prior state
+        :param cr_id: cred rev id to update revocation state from prior state
+        :return: rev reg state json and ledger timestamp (epoch seconds)
         """
 
         LOGGER.debug(
-            '_HolderProver._build_rr_delta_json >>> rr_id: %s, to: %s, fro: %s, fro_delta: %s',
+            'HolderProver._build_rr_state_json >>> rr_id: %s, to: %s, fro: %s, fro_state: %s, cr_id: %s',
             rr_id,
             to,
             fro,
-            fro_delta)
+            fro_state,
+            cr_id
+        )
 
         if not ok_rev_reg_id(rr_id):
-            LOGGER.debug('HolderProver._build_rr_delta_json <!< Bad rev reg id %s', rr_id)
+            LOGGER.debug('HolderProver._build_rr_state_json <!< Bad rev reg id %s', rr_id)
             raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
-        rr_delta_json = None
+        rr_state_json = None
         ledger_timestamp = None
 
-        get_rr_delta_req_json = await ledger.build_get_revoc_reg_delta_request(self.did, rr_id, fro, to)
-        resp_json = await self._submit(get_rr_delta_req_json)
-        resp = json.loads(resp_json)
-        if resp.get('result', {}).get('data', None) and resp['result']['data'].get('value', None):
-            # delta is to some time at or beyond rev reg creation, carry on
-            try:
-                (_, rr_delta_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_delta_response(resp_json)
-            except IndyError:  # ledger replied, but there is no such rev reg
-                LOGGER.debug('_HolderProver._build_rr_delta_json <!< no rev reg exists on %s', rr_id)
-                raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
+        if fro and fro_state and cr_id:
+            get_rr_delta_req_json = await ledger.build_get_revoc_reg_delta_request(self.did, rr_id, fro, to)
+            resp_json = await self._submit(get_rr_delta_req_json)
+            resp = json.loads(resp_json)
+            if resp.get('result', {}).get('data', None) and resp['result']['data'].get('value', None):
+                # delta is to some time at or beyond rev reg creation, carry on
+                try:
+                    (_, rr_delta_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_delta_response(resp_json)
+
+                    rr_state_json = await anoncreds.update_revocation_state(
+                        REVO_CACHE[rr_id].tails.reader_handle,
+                        REVO_CACHE[rr_id].rev_reg_def,
+                        rr_delta_json,
+                        ledger_timestamp,
+                        cr_id
+                    )
+                except IndyError:  # ledger replied, but there is no such rev reg
+                    LOGGER.debug('HolderProver._build_rr_state_json <!< no rev reg exists on %s', rr_id)
+                    raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
+            else:
+                LOGGER.debug(
+                    'HolderProver._build_rr_state_json <!< Rev reg %s created after asked-for time %s',
+                    rr_id,
+                    to)
+                raise BadRevStateTime('Rev reg {} created after asked-for time {}'.format(rr_id, to))
+
         else:
-            LOGGER.debug(
-                '_HolderProver._build_rr_delta_json <!< Rev reg %s created after asked-for time %s',
-                rr_id,
-                to)
-            raise BadRevStateTime('Rev reg {} created after asked-for time {}'.format(rr_id, to))
+            rr_state_json = None
+            ledger_timestamp = None
 
-        if fro and fro_delta:
-            rr_delta_json = await anoncreds.issuer_merge_revocation_registry_deltas(
-                json.dumps(fro_delta),
-                rr_delta_json)
+            get_rr_req_json = await ledger.build_get_revoc_reg_request(self.did, rr_id, to)
+            resp_json = await self._submit(get_rr_req_json)
+            resp = json.loads(resp_json)
+            if resp.get('result', {}).get('data', None) and resp['result']['data'].get('value', None):
+                # timestamp at or beyond rev reg creation, carry on
+                try:
+                    (_, rr_state_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_response(resp_json)
+                except IndyError:  # ledger replied, but there is no such rev reg available
+                    LOGGER.debug('HolderProver._build_rr_state_json <!< no rev reg exists on %s', rr_id)
+                    raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
+            else:
+                LOGGER.debug(
+                    'HolderProver._build_rr_state_json <!< Rev reg %s created after asked-for time %s',
+                    rr_id,
+                    timestamp)
+                raise BadRevStateTime('Rev reg {} created after asked-for time {}'.format(rr_id, timestamp))
 
-        rv = (rr_delta_json, ledger_timestamp)
-        LOGGER.debug('_HolderProver._build_rr_delta_json <<< %s', rv)
+        rv = (rr_state_json, ledger_timestamp)
+
+        LOGGER.debug('HolderProver._build_rr_state_json <<< %s', rv)
         return rv
 
     def dir_tails(self, rr_id: str) -> str:
@@ -352,7 +388,7 @@ class HolderProver(BaseAnchor):
         """
         Return default non-revocation intervals for input cred def ids, based on content of revocation cache,
         for augmentation into specification for Verifier.build_proof_req_json. Note that the close() call
-        to set the anchor off-line extends all revocation cache registry delta entries to its time of execution:
+        to set the anchor off-line extends all revocation cache registry state entries to its time of execution:
         in this case, the intervals will all be single timestamps rather than (to, fro) pairs.
 
         Raise CacheIndex if proof request cites credential definition without corresponding
@@ -400,9 +436,9 @@ class HolderProver(BaseAnchor):
                     (fro, to) = REVO_CACHE.dflt_interval(cd_id)
                     if not (fro and to):
                         LOGGER.debug(
-                            'HolderProver.offline_intervals <!< no cached delta for non-revoc interval on %s',
+                            'HolderProver.offline_intervals <!< no cached state for non-revoc interval on %s',
                             cd_id)
-                        raise CacheIndex('No cached delta for non-revoc interval on {}'.format(cd_id))
+                        raise CacheIndex('No cached state for non-revoc interval on {}'.format(cd_id))
 
                     rv[cd_id]['interval'] = to if fro == to else (fro, to)
 
@@ -612,10 +648,10 @@ class HolderProver(BaseAnchor):
                 revo_cache_entry = REVO_CACHE.get(rr_id, None)
                 if revo_cache_entry:
                     try:
-                        await revo_cache_entry.get_delta_json(self._build_rr_delta_json, rv, rv)
+                        await revo_cache_entry.get_state_json(self._build_rr_state_json, rv, rv)
                     except (AbsentPool, ClosedPool):
                         LOGGER.warning(
-                            'HolderProver %s pool %s, cannot update revo cache reg delta for %s to %s',
+                            'HolderProver %s pool %s, cannot update revo cache reg state for %s to %s',
                             self.name,
                             '{} closed'.format(self.pool.name) if self.pool else 'absent',
                             rr_id,
@@ -1319,16 +1355,11 @@ class HolderProver(BaseAnchor):
                     LOGGER.debug('HolderProver.create_proof <!< missing tails file for rev reg id %s', rr_id)
                     raise AbsentTails('Missing tails file for rev reg id {}'.format(rr_id))
                 rr_def_json = await self.get_rev_reg_def(rr_id)
-                (rr_delta_json, ledger_timestamp) = await revo_cache_entry.get_delta_json(
-                    self._build_rr_delta_json,
+                (rr_state_json, ledger_timestamp) = await revo_cache_entry.get_state_json(
+                    self._build_rr_state_json,
                     rr_id2timestamp[rr_id],
-                    rr_id2timestamp[rr_id])
-                rr_state_json = await anoncreds.create_revocation_state(
-                    tails.reader_handle,
-                    rr_def_json,
-                    rr_delta_json,
-                    ledger_timestamp,
-                    rr_id2cr_id[rr_id])
+                    rr_id2timestamp[rr_id]
+                )
                 rr_id2rev_state[rr_id] = {
                     rr_id2timestamp[rr_id]: json.loads(rr_state_json)
                 }

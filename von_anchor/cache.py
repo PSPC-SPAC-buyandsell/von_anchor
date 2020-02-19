@@ -24,7 +24,7 @@ from os.path import isdir, join
 from shutil import rmtree
 from threading import RLock
 from time import time
-from typing import Awaitable, Callable, Tuple, Union
+from typing import Awaitable, Awaitable, Tuple, Union
 
 from von_anchor.error import BadIdentifier, BadRevStateTime, CacheIndex
 from von_anchor.indytween import SchemaKey
@@ -214,30 +214,28 @@ class SchemaCache:
         LOGGER.debug('SchemaCache.clear <<<')
 
 
-class RevRegUpdateFrame:
+class RevRegStateFrame:
     """
-    Revocation registry delta or state update, plus metadata, in revocation cache (which indexes on rev reg id).
-    Keeps track of last query time, asked-for ('to') time, timestamp on distributed ledger, and rev reg update.
+    Revocation registry state, plus metadata, in revocation cache (which indexes on rev reg id).
+    Keeps track of last query time, asked-for ('to') time, timestamp on distributed ledger, and rev reg state.
     The last query time is purely for cache management.
 
-    Holder-Prover anchors use deltas to create proof; verifier anchors use states to verify them.
-
-    Necessarily for each cached update frame, timestamp <= frame.to <= qtime.
+    Necessarily for each cached state frame, timestamp <= frame.to <= qtime.
     """
 
-    def __init__(self, to: int, timestamp: int, rr_update: dict):
+    def __init__(self, to: int, timestamp: int, rr_state: dict):
         """
-        Initialize a new revocation registry update frame for revocation cache.
+        Initialize a new revocation registry state frame for revocation cache.
 
         :param to: the time (epoch sec) of interest
-        :param timestamp: the timestamp (epoch sec) corresponding to the revocation delta on the ledger
-        :param rr_update: the indy-sdk revocation registry delta or state update
+        :param timestamp: the timestamp (epoch sec) corresponding to the revocation registry state on the ledger
+        :param rr_state: the indy-sdk revocation registry state
         """
 
         self._qtime = int(time())
         self._timestamp = timestamp
         self._to = to
-        self._rr_update = rr_update
+        self._rr_state = rr_state
 
     @property
     def qtime(self) -> int:
@@ -262,9 +260,9 @@ class RevRegUpdateFrame:
     @property
     def timestamp(self) -> int:
         """
-        Accessor for timestamp on the distributed ledger for the rev reg update.
+        Accessor for timestamp on the distributed ledger for the rev reg state.
 
-        :return: timestamp on distributed ledger for current frame's rev reg update
+        :return: timestamp on distributed ledger for current frame's rev reg state
         """
 
         return self._timestamp
@@ -272,9 +270,9 @@ class RevRegUpdateFrame:
     @property
     def to(self) -> int:
         """
-        Accessor for the latest cached time of interest associated with the rev reg update.
+        Accessor for the latest cached time of interest associated with the rev reg state.
 
-        :return: latest time of interest requested regarding current frame's rev reg update
+        :return: latest time of interest requested regarding current frame's rev reg state
         """
 
         return self._to
@@ -290,32 +288,32 @@ class RevRegUpdateFrame:
         self._to = value
 
     @property
-    def rr_update(self) -> dict:
+    def rr_state(self) -> dict:
         """
-        Accessor for rev reg update.
+        Accessor for rev reg state.
 
-        :return: current frame's rev reg update
+        :return: current frame's rev reg state
         """
 
-        return self._rr_update
+        return self._rr_state
 
     def __repr__(self):
         """
         Return canonical representation of the item.
         """
 
-        return 'RevRegUpdateFrame({}, {}, {})'.format(self.to, self.timestamp, self.rr_update)
+        return 'RevRegStateFrame({}, {}, {})'.format(self.to, self.timestamp, self.rr_state)
 
     def __str__(self):
         """
         Return representation of the item showing query time.
         """
 
-        return 'RevRegUpdateFrame<qtime={}, to={}, timestamp={}, rr_update={}>'.format(
+        return 'RevRegStateFrame<qtime={}, to={}, timestamp={}, rr_state={}>'.format(
             self.qtime,
             self.to,
             self.timestamp,
-            self.rr_update)
+            self.rr_state)
 
 
 class RevoCacheEntry:
@@ -323,7 +321,7 @@ class RevoCacheEntry:
     Revocation cache entry housing:
     * a revocation registry definition
     * a Tails structure
-    * a list of revocation delta frames.
+    * a list of revocation state frames.
     """
 
     MARK = (int(sqrt(Tails.MAX_SIZE) * 15 / 16), int(sqrt(Tails.MAX_SIZE) * 17 / 16))  # heuristic: hover about sqrt
@@ -331,7 +329,7 @@ class RevoCacheEntry:
     def __init__(self, rev_reg_def: dict, tails: Tails = None):
         """
         Initialize with revocation registry definition, optional tails file.
-        Set revocation delta frames lists for rev reg deltas and rev reg states empty.
+        Set revocation frames list empty.
 
         :param rev_reg_def: revocation registry definition
         :param tails: current tails file object
@@ -341,8 +339,7 @@ class RevoCacheEntry:
 
         self._rev_reg_def = rev_reg_def or None
         self._tails = tails or None
-        self._rr_delta_frames = []  # for holder-prover, creating proof
-        self._rr_state_frames = []  # for verifier, verifying proof
+        self._rr_frames = []
 
         LOGGER.debug('RevoCacheEntry.__init__ <<<')
 
@@ -383,127 +380,106 @@ class RevoCacheEntry:
         self._tails = value
 
     @property
-    def rr_delta_frames(self) -> list:
-        """
-        Return current revocation delta frame list.
-        """
-
-        return self._rr_delta_frames
-
-    @rr_delta_frames.setter
-    def rr_delta_frames(self, value: list) -> None:
-        """
-        Set rev reg delta frames list for cache entry.
-
-        :param value: rev reg delta frames list.
-        """
-
-        self._rr_delta_frames = value
-
-    @property
-    def rr_state_frames(self) -> list:
+    def rr_frames(self) -> list:
         """
         Return current revocation state frame list.
         """
 
-        return self._rr_state_frames
+        return self._rr_frames
 
-    @rr_state_frames.setter
-    def rr_state_frames(self, value: list) -> None:
+    @rr_frames.setter
+    def rr_frames(self, value: list) -> None:
         """
         Set rev reg state frames list for cache entry.
 
         :param value: rev reg state frames list.
         """
 
-        self._rr_state_frames = value
+        self._rr_frames = value
 
-    def cull(self, delta: bool) -> None:
+    def cull(self) -> None:
         """
         Cull cache entry frame list to size, favouring most recent query time.
-
-        :param delta: True to operate on rev reg deltas, False for rev reg states
         """
 
-        LOGGER.debug('RevoCacheEntry.cull >>> delta: %s', delta)
+        LOGGER.debug('RevoCacheEntry.cull >>>')
 
-        rr_frames = self.rr_delta_frames if delta else self.rr_state_frames
-        if len(rr_frames) > RevoCacheEntry.MARK[1]:
-            rr_frames.sort(key=lambda x: -x.qtime)  # order by descending query time
-            del rr_frames[RevoCacheEntry.MARK[0]:]  # retain most recent, grow again from here
+        if len(self.rr_frames) > RevoCacheEntry.MARK[1]:
+            self.rr_frames.sort(key=lambda x: -x.qtime)  # order by descending query time
+            del self.rr_frames[RevoCacheEntry.MARK[0]:]  # retain most recent, grow again from here
             LOGGER.info(
-                'Pruned revocation cache entry %s to %s %s frames',
+                'Pruned revocation cache entry %s to %s state frames',
                 self.rev_reg_def['id'],
-                len(rr_frames),
-                'delta' if delta else 'state')
+                len(self.rr_frames)
+            )
 
         LOGGER.debug('RevoCacheEntry.cull <<<')
 
-    async def _get_update(self, rr_builder: Callable, fro: int, to: int, delta: bool) -> (str, int):
+    async def get_state_json(self, rr_builder: Awaitable, fro: int, to: int, cr_id: str = None) -> (str, int):
         """
-        Get rev reg delta/state json, and its timestamp on the distributed ledger,
-        from cached rev reg delta/state frames list or distributed ledger,
+        Get rev reg state json, and its timestamp on the distributed ledger,
+        from cached rev reg state frames list or distributed ledger,
         updating cache as necessary.
 
-        Raise BadRevStateTime if caller asks for a delta/state in the future. Raise ClosedPool
-        if an update requires the ledger but the node pool is closed.
+        Raise BadRevStateTime if caller asks for a state in the future. Raise ClosedPool
+        if a state update requires the ledger but the node pool is closed.
 
         Issuer anchors cannot revoke retroactively.
         Hence, for any new request against asked-for interval (fro, to):
         * if the cache has a frame f on f.timestamp <= to <= f.to,
-          > return its rev reg delta/state; e.g., starred frame below:
+          > return its rev reg state; e.g., starred frame below:
 
           Frames: --------[xxxxx]----[xx]-----[*********]-----[x]-----------[xx]---------> time
           Fro-to:                                ^----^
 
         * otherwise, if there is a maximum frame f with fro <= f.to and f.timestamp <= to
-          > return its rev reg delta/state; e.g., starred frame below:
+          > return its rev reg state; e.g., starred frame below:
 
           Frames: --------[xxxxx]----[xx]-----[xxxxxxxxx]-----[*]-----------[xx]---------> time
           Fro-to:                  ^----------------------------------^
 
         * otherwise, if the cache has a frame f on f.timestamp < to,
-          > check the distributed ledger for a delta to/state for the rev reg since e.timestamp;
-            - if there is one, bake it through 'to' into a new delta/state, add new frame to cache and
-              return rev reg delta/state; e.g., starred frame below:
+          > check the distributed ledger for a state for the rev reg since e.timestamp;
+            - if there is one, bake it through 'to' into a state, add new frame to cache and
+              return rev reg state; e.g., starred frame below:
 
               Frames: --------[xxxxx]----[xx]-----[xxxxxxxxx]-----[x]-----------[xx]---------> time
               Fro-to:                                                 ^------^
               Ledger: --------[xxxxx]----[xx]-----[xxxxxxxxx]-----[x]--!--------[xx]---------> time
-              Update: --------[xxxxx]----[xx]-----[xxxxxxxxx]-----[x]--[*****]--[xx]---------> time
+              State:  --------[xxxxx]----[xx]-----[xxxxxxxxx]-----[x]--[*****]--[xx]---------> time
 
-            - otherwise, update the 'to' time in the frame and return the rev reg delta/state;
+            - otherwise, update the 'to' time in the frame and return the rev reg state;
               e.g., starred frame below:
 
               Frames: --------[xxxxx]----[xx]-----[xxxxxxxxx]-----[x]-----------[xx]---------> time
               Fro-to:                                                 ^------^
               Ledger: --------[xxxxx]----[xx]-----[xxxxxxxxx]-----[x]-----------[xx]---------> time
-              Update: --------[xxxxx]----[xx]-----[xxxxxxxxx]-----[**********]--[xx]---------> time
+              State:  --------[xxxxx]----[xx]-----[xxxxxxxxx]-----[**********]--[xx]---------> time
 
         * otherwise, there is no cache frame f on f.timestamp < to:
-          > create new frame and add it to cache; return rev reg delta/state; e.g., starred frame below:
+          > create new frame and add it to cache; return rev reg state; e.g., starred frame below:
 
           Frames: --------[xxxxx]----[xx]-----[xxxxxxxxx]-----[*]-----------[xx]-----> time
           Fro-to:   ^--^
           Ledger: -!------[xxxxx]----[xx]-----[xxxxxxxxx]-----[x]-----------[xx]---------> time
-          Update: -[***]--[xxxxx]----[xx]-----[xxxxxxxxx]-----[x]-----------[xx]---------> time
+          State:  -[***]--[xxxxx]----[xx]-----[xxxxxxxxx]-----[x]-----------[xx]---------> time
 
-        On return of any previously existing rev reg delta/state frame, always update its query time beforehand.
+        On return of any previously existing rev reg state frame, always update its query time beforehand.
 
-        :param rr_builder: callback to build rev reg delta/state if need be (specify holder-prover anchor's
-            _build_rr_delta_json() or verifier anchor's _build_rr_state_json() as needed)
+        :param rr_builder: callback to build rev reg state if need be
         :param fro: least time (epoch seconds) of interest; lower-bounds 'to' on frame housing return data
-        :param to: greatest time (epoch seconds) of interest; upper-bounds returned revocation delta/state timestamp
-        :param delta: True to operate on rev reg deltas, False for states
-        :return: rev reg delta/state json and ledger timestamp (epoch seconds)
+        :param to: greatest time (epoch seconds) of interest; upper-bounds returned revocation state timestamp
+        :param cr_id: optional credential revocation identifier, if known (to update rather than rebuild state)
+        :return: rev reg state json and ledger timestamp (epoch seconds)
         """
 
         LOGGER.debug(
-            'RevoCacheEntry.get_update >>> rr_builder: %s, fro: %s, to: %s, delta: %s',
+            'RevoCacheEntry.get_state >>> rr_builder: %s, fro: %s, to: %s, cr_id: %s',
             rr_builder.__name__,
             fro,
             to,
-            delta)
+            cr_id
+        )
 
         if fro > to:
             (fro, to) = (to, fro)
@@ -511,117 +487,57 @@ class RevoCacheEntry:
         now = int(time())
         if to > now:
             LOGGER.debug(
-                'RevoCacheEntry._get_update <!< Cannot query a rev reg %s in the future (%s > %s)',
-                'delta' if delta else 'state',
+                'RevoCacheEntry.get_state <!< Cannot query a rev reg state in the future (%s > %s)',
                 to,
-                now)
-            raise BadRevStateTime('Cannot query a rev reg {} in the future ({} > {})'.format(
-                'delta' if delta else 'state',
-                to,
-                now))
+                now
+            )
+            raise BadRevStateTime(
+                'Cannot query a rev reg state in the future ({} > {})'.format(
+                    to,
+                    now
+                )
+            )
 
         cache_frame = None
-        rr_update_json = None
-        rr_frames = self.rr_delta_frames if delta else self.rr_state_frames
+        rr_state_json = None
 
-        frames = [frame for frame in rr_frames if frame.timestamp <= to <= frame.to]
+        frames = [frame for frame in self.rr_frames if frame.timestamp <= to <= frame.to]
         if frames:
             cache_frame = max(frames, key=lambda f: f.timestamp)  # should be unique in any case
             # do not update frame.to, it's already past asked-for 'to'
         else:
-            frames = [frame for frame in rr_frames if (fro <= frame.to and frame.timestamp <= to)]
+            frames = [frame for frame in self.rr_frames if (fro <= frame.to and frame.timestamp <= to)]
             if frames:
                 cache_frame = max(frames, key=lambda f: f.timestamp)
                 # do not update frame.to - another update might occur, but we don't care; fro < frame.to, good enough
         if not frames:
-            frames = [frame for frame in rr_frames if frame.timestamp < to]  # frame.to < to since not frames coming in
+            frames = [
+                frame for frame in self.rr_frames if frame.timestamp < to
+            ]  # frame.to < to since not frames coming in
             if frames:
                 latest_cached = max(frames, key=lambda frame: frame.timestamp)
-                if delta:
-                    (rr_update_json, timestamp) = await rr_builder(
-                        self.rev_reg_def['id'],
-                        to=to,
-                        fro=latest_cached.timestamp,
-                        fro_delta=latest_cached.rr_update)
-                else:
-                    (rr_update_json, timestamp) = await rr_builder(self.rev_reg_def['id'], to)
+                (rr_state_json, timestamp) = await rr_builder(
+                    self.rev_reg_def['id'],
+                    to,  # to
+                    latest_cached.timestamp,  # fro
+                    latest_cached.rr_state,  # fro-state
+                    cr_id
+                )
                 if timestamp == latest_cached.timestamp:
                     latest_cached.to = to  # this timestamp now known good through more recent 'to'
                     cache_frame = latest_cached
             else:
-                (rr_update_json, timestamp) = await rr_builder(self.rev_reg_def['id'], to)
+                (rr_state_json, timestamp) = await rr_builder(self.rev_reg_def['id'], to)
 
         if cache_frame is None:
-            cache_frame = RevRegUpdateFrame(to, timestamp, json.loads(rr_update_json))  # sets qtime to now
-            rr_frames.append(cache_frame)
-            self.cull(delta)
+            cache_frame = RevRegStateFrame(to, timestamp, json.loads(rr_state_json))  # sets qtime to now
+            self.rr_frames.append(cache_frame)
+            self.cull()
         else:
             cache_frame.qtime = int(time())
 
-        rv = (json.dumps(cache_frame.rr_update), cache_frame.timestamp)
-        LOGGER.debug('RevoCacheEntry._get_update <<< %s', rv)
-        return rv
-
-    async def get_delta_json(
-            self,
-            rr_delta_builder: Callable[['HolderProver', str, int, int, dict], Awaitable[Tuple[str, int]]],
-            fro: int,
-            to: int) -> (str, int):
-        """
-        Get rev reg delta json, and its timestamp on the distributed ledger,
-        from cached rev reg delta frames list or distributed ledger,
-        updating cache as necessary.
-
-        Raise BadRevStateTime if caller asks for a delta to the future.
-
-        On return of any previously existing rev reg delta frame, always update its query time beforehand.
-
-        :param rr_delta_builder: callback to build rev reg delta if need be (specify anchor instance's
-            _build_rr_delta())
-        :param fro: least time (epoch seconds) of interest; lower-bounds 'to' on frame housing return data
-        :param to: greatest time (epoch seconds) of interest; upper-bounds returned revocation delta timestamp
-        :return: rev reg delta json and ledger timestamp (epoch seconds)
-        """
-
-        LOGGER.debug(
-            'RevoCacheEntry.get_delta_json >>> rr_delta_builder: %s, fro: %s, to: %s',
-            rr_delta_builder.__name__,
-            fro,
-            to)
-
-        rv = await self._get_update(rr_delta_builder, fro, to, True)
-        LOGGER.debug('RevoCacheEntry.get_delta_json <<< %s', rv)
-        return rv
-
-    async def get_state_json(
-            self,
-            rr_state_builder: Callable[['Verifier', str, int], Awaitable[Tuple[str, int]]],
-            fro: int,
-            to: int) -> (str, int):
-        """
-        Get rev reg state json, and its timestamp on the distributed ledger,
-        from cached rev reg state frames list or distributed ledger,
-        updating cache as necessary.
-
-        Raise BadRevStateTime if caller asks for a state in the future.
-
-        On return of any previously existing rev reg state frame, always update its query time beforehand.
-
-        :param rr_state_builder: callback to build rev reg state if need be (specify anchor instance's
-            _build_rr_state())
-        :param fro: least time (epoch seconds) of interest; lower-bounds 'to' on frame housing return data
-        :param to: greatest time (epoch seconds) of interest; upper-bounds returned revocation state timestamp
-        :return: rev reg state json and ledger timestamp (epoch seconds)
-        """
-
-        LOGGER.debug(
-            'RevoCacheEntry.get_state_json >>> rr_state_builder: %s, fro: %s, to: %s',
-            rr_state_builder.__name__,
-            fro,
-            to)
-
-        rv = await self._get_update(rr_state_builder, fro, to, False)
-        LOGGER.debug('RevoCacheEntry.get_state_json <<< %s', rv)
+        rv = (json.dumps(cache_frame.rr_state), cache_frame.timestamp)
+        LOGGER.debug('RevoCacheEntry.get_state <<< %s', rv)
         return rv
 
 
@@ -670,11 +586,11 @@ class RevocationCache(dict):
 
     def dflt_interval(self, cd_id: str) -> (int, int):
         """
-        Return default non-revocation interval from latest 'to' times on delta frames
+        Return default non-revocation interval from latest 'to' times on state frames
         of revocation cache entries on indices stemming from input cred def id.
 
         Compute the 'from'/'to' values as the earliest/latest 'to' values of all
-        cached delta frames on all rev reg ids stemming from the input cred def id.
+        cached state frames on all rev reg ids stemming from the input cred def id.
 
         E.g., on frames for
             rev-reg-0: -[xx]---[xxxx]-[x]---[xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]--> time
@@ -704,14 +620,15 @@ class RevocationCache(dict):
             if cd_id != rev_reg_id2cred_def_id(rr_id):
                 continue
             entry = self[rr_id]
-            if entry.rr_delta_frames:
-                to = max(entry.rr_delta_frames, key=lambda f: f.to).to
+            if entry.rr_frames:
+                to = max(entry.rr_frames, key=lambda f: f.to).to
                 fro = min(fro or to, to)
 
         if not (fro and to):
             LOGGER.debug(
                 'RevocationCache.dflt_interval <!< No data for default non-revoc interval on cred def id %s',
-                cd_id)
+                cd_id
+            )
             raise CacheIndex('No data for default non-revoc interval on cred def id {}'.format(cd_id))
 
         rv = (fro, to)
@@ -775,8 +692,7 @@ class ArchivableCaches:
                 for rr_id in REVO_CACHE:
                     revo_cache_dict[rr_id] = {
                         'rev_reg_def': REVO_CACHE[rr_id].rev_reg_def,
-                        'rr_delta_frames': [vars(f) for f in REVO_CACHE[rr_id].rr_delta_frames],
-                        'rr_state_frames': [vars(f) for f in REVO_CACHE[rr_id].rr_state_frames]
+                        'rr_frames': [vars(f) for f in REVO_CACHE[rr_id].rr_frames]
                     }
                 print(json.dumps(revo_cache_dict), file=archive)
 
@@ -844,19 +760,11 @@ class ArchivableCaches:
                     else:
                         rr_cache_entry = RevoCacheEntry(entry['rev_reg_def'])
 
-                        rr_cache_entry.rr_delta_frames = [
-                            RevRegUpdateFrame(
-                                f['_to'],
-                                f['_timestamp'],
-                                f['_rr_update']) for f in entry['rr_delta_frames']
-                        ]
-                        rr_cache_entry.cull(True)
-
                         rr_cache_entry.rr_state_frames = [
-                            RevRegUpdateFrame(
+                            RevRegStateFrame(
                                 f['_to'],
                                 f['_timestamp'],
-                                f['_rr_update']) for f in entry['rr_state_frames']
+                                f['_rr_state']) for f in entry['rr_frames']
                         ]
                         rr_cache_entry.cull(False)
 

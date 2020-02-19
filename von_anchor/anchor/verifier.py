@@ -148,49 +148,50 @@ class Verifier(BaseAnchor):
 
         return self._dir_cache
 
-    async def _build_rr_state_json(self, rr_id: str, timestamp: int) -> (str, int):
+    async def _build_rr_state_json(self, rr_id: str, to: int, *args, **kwargs) -> (str, int):
         """
         Build rev reg state json at a given requested timestamp.
 
         Return rev reg state json and its transaction time on the distributed ledger,
-        with upper bound at input timestamp of interest.
+        with upper bound at input 'to' timestamp of interest.
 
         Raise AbsentRevReg if no revocation registry exists on input rev reg id,
-        or BadRevStateTime if requested timestamp predates revocation registry creation.
+        or BadRevStateTime if requested 'to' timestamp predates revocation registry creation.
 
         :param rr_id: rev reg id
-        :param timestamp: timestamp of interest (epoch seconds)
+        :param to: timestamp of interest (epoch seconds)
         :return: rev reg state json and ledger timestamp (epoch seconds)
         """
 
-        LOGGER.debug('_Verifier._build_rr_state_json >>> rr_id: %s, timestamp: %s', rr_id, timestamp)
+        LOGGER.debug('Verifier._build_rr_state_json >>> rr_id: %s, to: %s', rr_id, to)
 
         if not ok_rev_reg_id(rr_id):
             LOGGER.debug('Verifier._build_rr_state_json <!< Bad rev reg id %s', rr_id)
             raise BadIdentifier('Bad rev reg id {}'.format(rr_id))
 
-        rr_json = None
+        rr_state_json = None
         ledger_timestamp = None
 
-        get_rr_req_json = await ledger.build_get_revoc_reg_request(self.did, rr_id, timestamp)
+        get_rr_req_json = await ledger.build_get_revoc_reg_request(self.did, rr_id, to)
         resp_json = await self._submit(get_rr_req_json)
         resp = json.loads(resp_json)
         if resp.get('result', {}).get('data', None) and resp['result']['data'].get('value', None):
-            # timestamp at or beyond rev reg creation, carry on
+            # 'to' timestamp at or beyond rev reg creation, carry on
             try:
-                (_, rr_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_response(resp_json)
+                (_, rr_state_json, ledger_timestamp) = await ledger.parse_get_revoc_reg_response(resp_json)
             except IndyError:  # ledger replied, but there is no such rev reg available
                 LOGGER.debug('Verifier._build_rr_state_json <!< no rev reg exists on %s', rr_id)
                 raise AbsentRevReg('No rev reg exists on {}'.format(rr_id))
         else:
             LOGGER.debug(
-                '_Verifier._build_rr_state_json <!< Rev reg %s created after asked-for time %s',
+                'Verifier._build_rr_state_json <!< Rev reg %s created after asked-for time %s',
                 rr_id,
-                timestamp)
-            raise BadRevStateTime('Rev reg {} created after asked-for time {}'.format(rr_id, timestamp))
+                to
+            )
+            raise BadRevStateTime('Rev reg {} created after asked-for time {}'.format(rr_id, to))
 
-        rv = (rr_json, ledger_timestamp)
-        LOGGER.debug('_Verifier._build_rr_state_json <<< %s', rv)
+        rv = (rr_state_json, ledger_timestamp)
+        LOGGER.debug('Verifier._build_rr_state_json <<< %s', rv)
         return rv
 
     async def build_proof_req_x_json(
